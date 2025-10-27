@@ -1,0 +1,182 @@
+CREATE OR REPLACE TABLE anios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    Anio VARCHAR(11) NULL,
+    Estado VARCHAR(15) NULL,
+    Visibilidad VARCHAR(15) NULL,
+    Rector VARCHAR(100) NULL,
+    DirAcademico VARCHAR(100) NULL,
+    Predeterminado VARCHAR(50) NULL,
+    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- PARA LAS INSTITUCIONES
+CREATE OR REPLACE TABLE instituciones (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    Nombre VARCHAR(100) NULL,
+    Logo TEXT NULL,
+    BannerInicial VARCHAR(80) NULL,
+    Direccion VARCHAR(150) NULL,
+    UbicacionGps VARCHAR(100) NULL,
+    Telefono VARCHAR(15) NULL,
+    Celular VARCHAR(15) NULL,
+    Celular2 VARCHAR(15) NULL,
+    Celular3 VARCHAR(15) NULL,
+    Mision VARCHAR(300) NULL,
+    Vision VARCHAR(300) NULL,
+    Facebook VARCHAR(100) NULL,
+    Tiktok VARCHAR(100) NULL,
+    Instagram VARCHAR(100) NULL,
+    PlataformaEducativa VARCHAR(100) NULL,
+    Historia TEXT NULL,
+    Funciones VARCHAR(250) NULL,
+    Caractisticas VARCHAR(250) NULL,
+    Estado VARCHAR(10) NULL,
+    Visibilidad VARCHAR(10) NULL,
+    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE OR REPLACE TABLE carreras (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    instituciones_id INT NOT NULL,
+    NombreCarrera VARCHAR(100) NULL,
+    Descripcion TEXT NULL,
+    Area VARCHAR(50) NULL,
+    Mencion VARCHAR(50) NULL,
+    Resolucion VARCHAR(50) NULL,
+    Programa VARCHAR(50) NULL,
+    
+    Nivel VARCHAR(50) NULL, -- TECNICO SUPERIOR, CAPACITACION
+    Capacitacion VARCHAR(50) NULL, -- PARA AQUELLAS INSTITUCIONES Q MANEJAN MUY APARTE SUS ESTUDIANTES PEQUEÑOS
+    CarreraProfesional VARCHAR(50) NULL, -- PARA AQUELLAS INSTITUCIONES Q MANEJAN MUY APARTE SUS ESTUDIANTES GRANDES
+    Modalidad VARCHAR(50) NULL,
+    Duracion VARCHAR(50) NULL,
+    HorasTotales VARCHAR(50) NULL,
+    TituloOficial VARCHAR(100) NULL,
+    Estado VARCHAR(10) NULL,
+    Visibilidad VARCHAR(10) NULL,
+    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE OR REPLACE TABLE plandeestudios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    carreras_id INT NOT NULL,
+    Rango INT NULL,
+    NombreMateria VARCHAR(100) NULL,
+    SiglaMateria VARCHAR(20) NULL,
+    Prerrequisitos VARCHAR(100) NULL,
+    SiglasPrerrequisitos VARCHAR(50) NULL,
+    TipoMateria VARCHAR(50) NULL,
+    Periodo INT NULL,
+    RelacionDocenteCursoAEstudiante VARCHAR(60) NULL,
+    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (carreras_id) REFERENCES carreras(id) ON UPDATE CASCADE ON DELETE CASCADE
+);
+-- PARA LOS USUARIOS DOCENTES Y ADMINS DE LAS INSTITUCIONES
+CREATE OR REPLACE TABLE usuarioslcchs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    Nombres VARCHAR(100) NULL,
+    Apellidos VARCHAR(100) NULL,
+    Usuario VARCHAR(50) NULL,
+    Contrasenia VARCHAR(500) NULL,
+    CelularTrabajo INT NULL,
+    Foto VARCHAR(500) NULL,
+    Estado VARCHAR(10) NULL,
+    Tipo VARCHAR(500) NULL,
+    Permisos VARCHAR(50) NULL,
+    Cargo VARCHAR(100) NULL,
+    Biografia TEXT NULL,
+    Visibilidad VARCHAR(15) NULL,
+    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+CREATE OR REPLACE TABLE planteldocadmins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    instituciones_id INT NOT NULL,
+    Nombres VARCHAR(100) NULL,
+    Apellidos VARCHAR(100) NULL,
+    Sexo VARCHAR(10) NULL,
+    FechaNac DATE NULL,
+    Usuario VARCHAR(50) NULL,
+    Contrasenia VARCHAR(500) NULL,
+    Celular INT NULL,
+    CelularTrabajo INT NULL,
+    Carnet VARCHAR(50) NULL,
+    Foto VARCHAR(500) NULL,
+    Estado VARCHAR(10) NULL,
+    Tipo VARCHAR(500) NULL,
+    Permisos VARCHAR(50) NULL,
+    Cargo VARCHAR(100) NULL,
+    Biografia TEXT NULL,
+    Visibilidad VARCHAR(15) NULL,
+    
+    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE
+);
+-- ESTUDIANTES IFAS
+CREATE OR REPLACE TABLE estudiantesifas (
+    id INT AUTO_INCREMENT PRIMARY KEY, 
+    Foto VARCHAR(250) NULL, -- INFORMACION PERSONAL
+    Ap_Paterno VARCHAR(50) NULL,
+    Ap_Materno VARCHAR(50) NULL,
+    Nombre VARCHAR(60) NULL,
+    Sexo VARCHAR(10) NULL,
+    FechaNac DATE NULL,
+    Edad INT NULL,
+    CI VARCHAR(20) NULL,
+    Expedido VARCHAR(20) NULL,
+    Celular VARCHAR(15) NULL,
+    Direccion VARCHAR(150) NULL,
+    Correo VARCHAR(100) NULL,
+    Nombre_Padre VARCHAR(50) NULL, -- INFORMACION FAMILIA
+    Nombre_Madre VARCHAR(50) NULL,
+    OcupacionP VARCHAR(20) NULL,
+    OcupacionM VARCHAR(20) NULL,
+    NumCelP VARCHAR(15) NULL,
+    NumCelM VARCHAR(15) NULL,
+    NColegio VARCHAR(100) NULL, -- INFORMACION ACADEMICA 
+    TipoColegio VARCHAR(50) NULL,
+    CGrado VARCHAR(50) NULL,
+    CNivel VARCHAR(50) NULL,
+    Usuario VARCHAR(50) NULL, -- INFORMACION DE IFA
+    Contrasenia VARCHAR(50) NULL,
+    Estado VARCHAR(10) NULL,
+    Matricula VARCHAR(25) NULL,
+    InstrumentoMusical VARCHAR(100) NULL,
+    IntrumentoMusicalSecundario VARCHAR(100) NULL,
+    InformacionCompartidaIFAS TEXT NULL,
+
+    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE OR REPLACE TABLE infoestudiantesifas (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    estudiantesifas_id INT NOT NULL,
+    planteldocadmins_id INT NULL,
+    planteldocadmins_idPC INT NULL,
+    planteldocadmins_idOtros INT NULL,
+    instituciones_id INT NOT NULL,
+    FechInsc DATE NULL, -- INFO QUE ESTABA EN TABLA ORIGINAL
+    Verificacion VARCHAR(100) NULL,
+    Anotaciones TEXT NULL,
+    Notas TEXT NULL,
+    Observacion TEXT NULL,
+    Categoria VARCHAR(50) NULL, -- ANTIGUO, NUEVO, TRANSFERIDO
+    Turno VARCHAR(20) NULL, -- MAÑANA, TARDE, NOCHE
+    Curso_Solicitado VARCHAR(60) NULL, -- PRIMERO SUPERIOR, SEGUNDO SUPERIOR, TERCERO SUPERIOR
+    Paralelo_Solicitado VARCHAR(5) NULL, -- A, B, C
+    CantidadMateriasAsignadas INT NULL,
+    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (estudiantesifas_id) REFERENCES estudiantesifas(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (planteldocadmins_id) REFERENCES planteldocadmins(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    FOREIGN KEY (planteldocadmins_idPC) REFERENCES planteldocadmins(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    FOREIGN KEY (planteldocadmins_idOtros) REFERENCES planteldocadmins(id) ON UPDATE CASCADE ON DELETE SET NULL,
+    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE
+);
