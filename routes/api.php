@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AniosController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\usuarioslcchsController;
 use Illuminate\Http\Request;
@@ -23,13 +24,13 @@ Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como e
 //     Route::resource('usuarioslcchs', usuarioslcchsController::class);
 // });
 Route::resource('usuarioslcchs', usuarioslcchsController::class);
-
+Route::resource('anios', AniosController::class);
 
 
 
 
 // ============================================================
-// RUTAS API PARA COREDU - SISTEMA DE GESTIÓN DE DOCUMENTACIÓN
+// RUTAS API PARA EL SISTEMA DOCS LCCH
 // Agregar esto en: routes/api.php
 // ============================================================
 

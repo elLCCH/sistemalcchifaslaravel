@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\usuarioslcchs;
+use App\Models\gestionesaltorango\usuarioslcchs;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
