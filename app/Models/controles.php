@@ -1,0 +1,24 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Laravel\Sanctum\HasApiTokens;
+
+class controles extends Model
+{
+    use HasApiTokens;
+    protected $table = 'controles';
+    // Lista de atributos asignables
+    protected $fillable = [
+        'instituciones_id',
+        'Estado',
+        'Visibilidad',
+        'Categoria',
+
+        'NivelCurso',
+        'ParaI',
+        'Edades',
+    ];
+    //
+}

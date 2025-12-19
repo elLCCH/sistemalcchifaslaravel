@@ -2,7 +2,21 @@
 
 use App\Http\Controllers\AniosController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CalificacionesController;
+use App\Http\Controllers\InstitucionesController;
 use App\Http\Controllers\usuarioslcchsController;
+
+use App\Http\Controllers\CarrerasController;
+use App\Http\Controllers\ControlesController;
+use App\Http\Controllers\EstudiantesIfasController;
+use App\Http\Controllers\HistorialInformacionEstudiantesController;
+use App\Http\Controllers\InfoEstudiantesIfasController;
+use App\Http\Controllers\IniciosController;
+use App\Http\Controllers\MateriasController;
+use App\Http\Controllers\PlanDeEstudiosController;
+use App\Http\Controllers\PlantelAdministrativosController;
+use App\Http\Controllers\PlantelDocentesController;
+use App\Http\Controllers\PlantelDocentesMateriasController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -25,6 +39,22 @@ Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como e
 // });
 Route::resource('usuarioslcchs', usuarioslcchsController::class);
 Route::resource('anios', AniosController::class);
+Route::resource('instituciones', InstitucionesController::class);
+Route::resource('calificaciones', CalificacionesController::class);
+
+Route::resource('carreras', CarrerasController::class);
+Route::resource('controles', ControlesController::class);
+Route::resource('estudiantesifas', EstudiantesIfasController::class);
+Route::resource('historialinformacionestudiantes', HistorialInformacionEstudiantesController::class);
+Route::resource('infoestudiantesifas', InfoEstudiantesIfasController::class);
+Route::resource('inicios', IniciosController::class);
+Route::resource('materias', MateriasController::class);
+Route::resource('plandeestudios', PlanDeEstudiosController::class);
+Route::resource('planteladministrativos', PlantelAdministrativosController::class);
+Route::resource('planteldocentes', PlantelDocentesController::class);
+Route::resource('planteldocentesmaterias', PlantelDocentesMateriasController::class);
+
+
 
 
 
