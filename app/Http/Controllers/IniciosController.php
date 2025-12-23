@@ -9,8 +9,9 @@ use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
 class IniciosController extends Controller
 {
-    public function __construct() {
-        $this->middleware(UpdateTokenExpiration::class);
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
     //controllerPHPlcch inicios, $
     //#region Inicio Controller de Crud PHP de inicios

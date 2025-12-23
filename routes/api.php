@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CalificacionesController;
 use App\Http\Controllers\InstitucionesController;
 use App\Http\Controllers\usuarioslcchsController;
+use App\Http\Middleware\CheckAbilities;
 
 use App\Http\Controllers\CarrerasController;
 use App\Http\Controllers\ControlesController;
@@ -17,10 +18,12 @@ use App\Http\Controllers\PlanDeEstudiosController;
 use App\Http\Controllers\PlantelAdministrativosController;
 use App\Http\Controllers\PlantelDocentesController;
 use App\Http\Controllers\PlantelDocentesMateriasController;
+use App\Models\planteladministrativos;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-
+use App\Http\Controllers\TokenController;
+Route::post('/verify-token', [TokenController::class, 'verify']);
 Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como el routing de angular: v1/auth/login
     Route::post('/login', [AuthController::class, "login"]); //EJECUTAR LA FUNCION login desde el authcontroller
     Route::post('/logout', [AuthController::class, 'logout']); //v1/auth/logout
@@ -37,25 +40,35 @@ Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como e
 // Route::middleware("auth:sanctum")->group(function(){
 //     Route::resource('usuarioslcchs', usuarioslcchsController::class);
 // });
-Route::resource('usuarioslcchs', usuarioslcchsController::class);
-Route::resource('anios', AniosController::class);
-Route::resource('instituciones', InstitucionesController::class);
-Route::resource('calificaciones', CalificacionesController::class);
-
-Route::resource('carreras', CarrerasController::class);
-Route::resource('controles', ControlesController::class);
-Route::resource('estudiantesifas', EstudiantesIfasController::class);
-Route::resource('historialinformacionestudiantes', HistorialInformacionEstudiantesController::class);
-Route::resource('infoestudiantesifas', InfoEstudiantesIfasController::class);
-Route::resource('inicios', IniciosController::class);
-Route::resource('materias', MateriasController::class);
-Route::resource('plandeestudios', PlanDeEstudiosController::class);
-Route::resource('planteladministrativos', PlantelAdministrativosController::class);
-Route::resource('planteldocentes', PlantelDocentesController::class);
-Route::resource('planteldocentesmaterias', PlantelDocentesMateriasController::class);
 
 
 
+Route::middleware(['auth:sanctum'])->group(function () {
+    //planteladministrativos
+    Route::get('/planteladministrativos', [PlantelAdministrativosController::class, 'index'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
+    Route::get('/planteladministrativos/{id}', [PlantelAdministrativosController::class, 'show'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
+    Route::post('/planteladministrativos', [PlantelAdministrativosController::class, 'store'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::put('/planteladministrativos/{id}', [PlantelAdministrativosController::class, 'update'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::delete('/planteladministrativos/{id}', [PlantelAdministrativosController::class, 'destroy'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+
+
+    Route::resource('usuarioslcchs', usuarioslcchsController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('anios', AniosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('instituciones', InstitucionesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('calificaciones', CalificacionesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+
+    Route::resource('carreras', CarrerasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('controles', ControlesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('estudiantesifas', EstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('historialinformacionestudiantes', HistorialInformacionEstudiantesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('infoestudiantesifas', InfoEstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('inicios', IniciosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('materias', MateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('plandeestudios', PlanDeEstudiosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('planteldocentes', PlantelDocentesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('planteldocentesmaterias', PlantelDocentesMateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+});
 
 
 

@@ -2,15 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\gestionesaltorango\anios;
+use App\Models\anios;
 use Illuminate\Http\Request;
 use App\Http\Middleware\UpdateTokenExpiration;
 use Illuminate\Routing\Controller;
 
 class AniosController extends Controller
 {
-    public function __construct() {
-        $this->middleware(UpdateTokenExpiration::class);
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
     //#region Inicio Controller de Crud PHP de anios
     public function index()

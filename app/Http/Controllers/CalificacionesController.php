@@ -10,8 +10,9 @@ use App\Http\Middleware\UpdateTokenExpiration;
 
 class CalificacionesController extends Controller
 {
-    public function __construct() {
-        $this->middleware(UpdateTokenExpiration::class);
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
     //#region Inicio Controller de Crud PHP de calificaciones
     public function index()

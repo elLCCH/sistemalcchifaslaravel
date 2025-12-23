@@ -7,19 +7,40 @@ use Illuminate\Http\Request;
 
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
+use Illuminate\Support\Facades\DB;
+
 class PlandeestudiosController extends Controller
 {
-    public function __construct() {
-        $this->middleware(UpdateTokenExpiration::class);
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
     //controllerPHPlcch plandeestudios, $
     //#region Inicio Controller de Crud PHP de plandeestudios
     public function index()
     {
-        $plandeestudios = plandeestudios::all();
-        return response()->json(['data' => $plandeestudios]);
+        
+        // $plandeestudios = plandeestudios::all();
+        $user = request()->user();
+        $plandeestudios = DB::table('plandeestudios as pe')
+            ->leftJoin('anios as a', 'a.id', '=', 'pe.anio_id')
+            ->join('carreras as c', 'c.id', '=', 'pe.carreras_id')
+            ->join('instituciones as i', 'i.id', '=', 'c.instituciones_id')
+            ->select(
+            'pe.*',
+            'a.Anio as Anio',
+            'c.NombreCarrera',
+            'c.Resolucion',
+            'i.Nombre as NombreInstitucion'
+            )
+            ->where('i.id', '=', $user->instituciones_id)
+            ->orderBy('pe.carreras_id')->orderBy('pe.RangoLvlCurso')->orderBy('pe.Rango')
+            ->get();
+
+        return response()->json([
+            'data' => $plandeestudios
+        ]);
     }
-    
     
     public function store(Request $request)
     {

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\gestionesaltorango\usuarioslcchs;
+use App\Models\usuarioslcchs;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
@@ -10,8 +10,9 @@ use Illuminate\Support\Facades\Hash;
 
 class UsuarioslcchsController extends Controller
 {
-    public function __construct() {
-        $this->middleware(UpdateTokenExpiration::class);
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
     //#region Inicio Controller de Crud PHP de usuarioslcchs
     public function index()
@@ -24,6 +25,7 @@ class UsuarioslcchsController extends Controller
     public function store(Request $request)
     {
         $usuarioslcchs = $request->all();
+        $usuarioslcchs['Contrasenia'] = Hash::make($request->input('Contrasenia'));
         usuarioslcchs::insert($usuarioslcchs);
         return response()->json(['data' => $usuarioslcchs]);
     }
@@ -37,8 +39,26 @@ class UsuarioslcchsController extends Controller
     
     public function update(Request $request)
     {
-        $usuarioslcchs = $request->all();
-        usuarioslcchs::where('id','=',$request->id)->update($usuarioslcchs);
+        // $usuarioslcchs = $request->all();
+        // usuarioslcchs::where('id','=',$request->id)->update($usuarioslcchs);
+        // return response()->json(['data' => $usuarioslcchs]);
+
+        $usuarioslcchs = usuarioslcchs::findOrFail($request->id);
+        $requestData = $request->all();
+
+        if ($request->has('Contrasenia')) {
+            // Si se envió la contraseña
+            if (Hash::needsRehash($request->Contrasenia)) {
+            $requestData['Contrasenia'] = Hash::make($request->Contrasenia);
+            } else {
+            $requestData['Contrasenia'] = $request->Contrasenia;
+            }
+        } else {
+            // No se envió la contraseña, mantener la actual
+            $requestData['Contrasenia'] = $usuarioslcchs->Contrasenia;
+        }
+
+        $usuarioslcchs->update($requestData);
         return response()->json(['data' => $usuarioslcchs]);
     }
     

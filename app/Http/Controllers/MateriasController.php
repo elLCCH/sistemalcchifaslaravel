@@ -9,14 +9,35 @@ use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
 class MateriasController extends Controller
 {
-    public function __construct() {
-        $this->middleware(UpdateTokenExpiration::class);
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
     //controllerPHPlcch materias, $
     //#region Inicio Controller de Crud PHP de materias
     public function index()
     {
-        $materias = materias::all();
+        $query = materias::query()
+            ->select([
+            'materias.*',
+            'plandeestudios.NombreMateria',
+            'plandeestudios.LvlCurso',
+            'carreras.Resolucion',
+            'carreras.NombreCarrera',
+            'instituciones.Nombre as NombreInstitucion',
+            'anios.Anio',
+            ])
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->join('instituciones', 'carreras.instituciones_id', '=', 'instituciones.id')
+            ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id');
+
+        if (request()->filled('instituciones_id')) {
+            $query->where('carreras.instituciones_id', request()->get('instituciones_id'));
+        }
+
+        $materias = $query->get();
+
         return response()->json(['data' => $materias]);
     }
     

@@ -10,8 +10,9 @@ use App\Http\Middleware\UpdateTokenExpiration;
 
 class SectionController extends Controller
 {
-    public function __construct() {
-        $this->middleware(UpdateTokenExpiration::class);
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
     /**
      * Obtener secciones por proyecto

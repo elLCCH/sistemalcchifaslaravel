@@ -10,23 +10,37 @@ class UpdateTokenExpiration
 {
     public function handle(Request $request, Closure $next)
     {
-        if ($request->user()) {
-            $token = $request->bearerToken();
-            if ($token) {
-                $personalAccessToken = PersonalAccessToken::findToken($token);
-                if ($personalAccessToken) {
-                    $expiresAt = Carbon::parse($personalAccessToken->expires_at);
-                    $now = Carbon::now();
+        $user = $request->user();
 
-                    if ($now->gt($expiresAt)) {
-                        return response()->json(['message' => 'EL TOKEN ESTA EXPIRADO'], 401);
-                    }
-
-                    $personalAccessToken->expires_at = $now->addMinutes(60);
-                    $personalAccessToken->save();
-                }
-            }
+        if (!$user) {
+            return $next($request);
         }
+
+        $token = $request->bearerToken();
+
+        if (!$token) {
+            return $next($request);
+        }
+
+        $personalAccessToken = PersonalAccessToken::findToken($token);
+
+        if (!$personalAccessToken) {
+            return $next($request);
+        }
+
+        $now = Carbon::now();
+
+        // Si tiene expiración y ya venció
+        if ($personalAccessToken->expires_at &&
+            $now->greaterThan($personalAccessToken->expires_at)) {
+            return response()->json([
+                'message' => 'EL TOKEN ESTA EXPIRADO'
+            ], 401);
+        }
+
+        // Renovar expiración (sliding expiration)
+        $personalAccessToken->expires_at = $now->copy()->addMinutes(60);
+        $personalAccessToken->save();
 
         return $next($request);
     }

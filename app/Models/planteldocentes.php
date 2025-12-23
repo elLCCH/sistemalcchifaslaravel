@@ -5,7 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Laravel\Sanctum\HasApiTokens;
 
-class planteldocentes extends Model
+use Illuminate\Foundation\Auth\User as Authenticatable;
+class planteldocentes extends Authenticatable
 {
     use HasApiTokens;
     protected $table = 'planteldocentes';
@@ -30,4 +31,14 @@ class planteldocentes extends Model
         'Visibilidad',
     ];
     //
+    
+    public function createPersonalizedToken($tokenName, $abilities, $expiration, $additionalInfo = [])
+    {
+        $token = $this->createToken($tokenName, $abilities,$expiration);
+
+        // Agregar información adicional al token
+        $token->accessToken->forceFill($additionalInfo)->save();
+
+        return $token;
+    }
 }

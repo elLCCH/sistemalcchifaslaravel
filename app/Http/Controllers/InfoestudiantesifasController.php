@@ -9,14 +9,21 @@ use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
 class InfoestudiantesifasController extends Controller
 {
-    public function __construct() {
-        $this->middleware(UpdateTokenExpiration::class);
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
     //controllerPHPlcch infoestudiantesifas, $
     //#region Inicio Controller de Crud PHP de infoestudiantesifas
     public function index()
     {
-        $infoestudiantesifas = infoestudiantesifas::all();
+        // $infoestudiantesifas = infoestudiantesifas::all();
+        $user = request()->user();
+        $infoestudiantesifas = \App\Models\infoestudiantesifas::where('instituciones_id', $user->instituciones_id)->get();
+        foreach ($infoestudiantesifas as $infoestudiantesifas) {
+            $institucion = \App\Models\instituciones::find($infoestudiantesifas->instituciones_id);
+            $infoestudiantesifas->NombreInstitucion = $institucion ? $institucion->Nombre : null;
+        }
         return response()->json(['data' => $infoestudiantesifas]);
     }
     
@@ -24,6 +31,10 @@ class InfoestudiantesifasController extends Controller
     public function store(Request $request)
     {
         $infoestudiantesifas = $request->all();
+        $user = request()->user();
+        if ($user->instituciones_id) {
+            $infoestudiantesifas['instituciones_id'] = $user->instituciones_id;
+        }
         infoestudiantesifas::insert($infoestudiantesifas);
         return response()->json(['data' => $infoestudiantesifas]);
     }

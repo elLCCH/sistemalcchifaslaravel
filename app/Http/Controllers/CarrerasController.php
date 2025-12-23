@@ -9,14 +9,22 @@ use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
 class CarrerasController extends Controller
 {
-    public function __construct() {
-        $this->middleware(UpdateTokenExpiration::class);
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
     //controllerPHPlcch carreras, $
     //#region Inicio Controller de Crud PHP de carreras
     public function index()
     {
-        $carreras = carreras::all();
+        // $carreras = carreras::all();
+        
+        $user = request()->user();
+        $carreras = \App\Models\carreras::where('instituciones_id', $user->instituciones_id)->get();
+        foreach ($carreras as $carrera) {
+            $institucion = \App\Models\instituciones::find($carrera->instituciones_id);
+            $carrera->NombreInstitucion = $institucion ? $institucion->Nombre : null;
+        }
         return response()->json(['data' => $carreras]);
     }
     
@@ -24,6 +32,10 @@ class CarrerasController extends Controller
     public function store(Request $request)
     {
         $carreras = $request->all();
+        $user = request()->user();
+        if ($user->instituciones_id) {
+            $carreras['instituciones_id'] = $user->instituciones_id;
+        }
         carreras::insert($carreras);
         return response()->json(['data' => $carreras]);
     }
