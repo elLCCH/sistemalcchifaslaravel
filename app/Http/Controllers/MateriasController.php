@@ -21,6 +21,7 @@ class MateriasController extends Controller
             ->select([
             'materias.*',
             'plandeestudios.NombreMateria',
+            'plandeestudios.SiglaMateria',
             'plandeestudios.LvlCurso',
             'carreras.Resolucion',
             'carreras.NombreCarrera',

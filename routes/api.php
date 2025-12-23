@@ -17,8 +17,7 @@ use App\Http\Controllers\MateriasController;
 use App\Http\Controllers\PlanDeEstudiosController;
 use App\Http\Controllers\PlantelAdministrativosController;
 use App\Http\Controllers\PlantelDocentesController;
-use App\Http\Controllers\PlantelDocentesMateriasController;
-use App\Models\planteladministrativos;
+use App\Http\Controllers\PlanteldocentesmateriasController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -54,20 +53,24 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
 
     Route::resource('usuarioslcchs', usuarioslcchsController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('anios', AniosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('instituciones', InstitucionesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('calificaciones', CalificacionesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('anios', AniosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('instituciones', InstitucionesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('calificaciones', CalificacionesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
 
-    Route::resource('carreras', CarrerasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('controles', ControlesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('estudiantesifas', EstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('historialinformacionestudiantes', HistorialInformacionEstudiantesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('infoestudiantesifas', InfoEstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('inicios', IniciosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('materias', MateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('plandeestudios', PlanDeEstudiosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('planteldocentes', PlantelDocentesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
-    Route::resource('planteldocentesmaterias', PlantelDocentesMateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);;
+    Route::resource('carreras', CarrerasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('controles', ControlesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('estudiantesifas', EstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('historialinformacionestudiantes', HistorialInformacionEstudiantesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('infoestudiantesifas', InfoEstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('inicios', IniciosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('materias', MateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('plandeestudios', PlanDeEstudiosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('planteldocentes', PlantelDocentesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('planteldocentesmaterias', PlantelDocentesMateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    // Asignación 1-click docente <-> materia (por llaves)
+    Route::post('planteldocentesmaterias/assign', [PlanteldocentesmateriasController::class, 'assign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('planteldocentesmaterias/unassign', [PlanteldocentesmateriasController::class, 'unassign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 });
 
 

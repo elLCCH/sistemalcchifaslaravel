@@ -196,7 +196,7 @@ CREATE OR REPLACE TABLE estudiantesifas (
     CGrado VARCHAR(50) NULL,
     CNivel VARCHAR(50) NULL,
     Usuario VARCHAR(50) NULL, -- INFORMACION DE IFA
-    Contrasenia VARCHAR(50) NULL,
+    Contrasenia VARCHAR(500) NULL,
     Estado VARCHAR(10) NULL,
     Matricula VARCHAR(25) NULL,
     InstrumentoMusical VARCHAR(100) NULL,

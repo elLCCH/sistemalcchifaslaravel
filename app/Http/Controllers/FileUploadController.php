@@ -15,23 +15,8 @@ class FileUploadController extends Controller
         $fileName = time() . '' . $file->getClientOriginalName();
 
         switch ($request->input('type')) {
-            case 'Certificado':
-                $path = 'CertificadosNacDocumentos';
-                break;
-            case 'CIDoc':
-                $path = 'CIDocumentos';
-                break;
-            case 'Boleta':
-                $path = 'BoletaDocumentos';
-                break;
-            case 'DocColUni':
-                $path = 'DocColUniDocumentos';
-                break;
-            case 'Boleta_Pago':
-                $path = 'BoletasEventos';
-                break;
             case 'Foto':
-                $path = 'FotoEventos';
+                $path = 'FotosPerfiles';
                 break;
             default:
                 return response()->json(['error' => 'Tipo de archivo no válido'], 400);

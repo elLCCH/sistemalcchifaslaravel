@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\infoestudiantesifas;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
@@ -17,13 +18,34 @@ class InfoestudiantesifasController extends Controller
     //#region Inicio Controller de Crud PHP de infoestudiantesifas
     public function index()
     {
-        // $infoestudiantesifas = infoestudiantesifas::all();
+        $infoestudiantesifas = infoestudiantesifas::all();
         $user = request()->user();
-        $infoestudiantesifas = \App\Models\infoestudiantesifas::where('instituciones_id', $user->instituciones_id)->get();
-        foreach ($infoestudiantesifas as $infoestudiantesifas) {
-            $institucion = \App\Models\instituciones::find($infoestudiantesifas->instituciones_id);
-            $infoestudiantesifas->NombreInstitucion = $institucion ? $institucion->Nombre : null;
-        }
+
+        $query = infoestudiantesifas::query()
+            ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
+            ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
+            ->select([
+                'infoestudiantesifas.*',
+                'instituciones.Nombre as NombreInstitucion',
+                'estudiantesifas.Ap_Paterno',
+                'estudiantesifas.Ap_Materno',
+                'estudiantesifas.Nombre',
+                DB::raw("COALESCE((
+                    SELECT MAX(a.Anio)
+                    FROM calificaciones c
+                    INNER JOIN materias m ON m.id = c.materias_id
+                    INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+                    INNER JOIN anios a ON a.id = p.anio_id
+                    WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+                ), 'SIN ASIGNAR') as Anio"),
+            ])
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            })
+            ->orderByDesc('infoestudiantesifas.FechInsc')
+            ->orderByDesc('infoestudiantesifas.id');
+
+        $infoestudiantesifas = $query->get();
         return response()->json(['data' => $infoestudiantesifas]);
     }
     
