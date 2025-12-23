@@ -16,10 +16,66 @@ class EstudiantesifasController extends Controller
     }
     //controllerPHPlcch estudiantesifas, $
     //#region Inicio Controller de Crud PHP de estudiantesifas
-    public function index()
+    public function index(Request $request)
     {
-        $estudiantesifas = estudiantesifas::all();
-        return response()->json(['data' => $estudiantesifas]);
+        $perPage = (int) $request->query('per_page', 10);
+        if ($perPage < 1) {
+            $perPage = 10;
+        }
+        if ($perPage > 200) {
+            $perPage = 200;
+        }
+
+        $search = trim((string) $request->query('search', ''));
+        $sortBy = (string) $request->query('sort_by', 'id');
+        $sortDir = strtolower((string) $request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        $allowedSort = [
+            'id',
+            'Ap_Paterno',
+            'Ap_Materno',
+            'Nombre',
+            'CI',
+            'Expedido',
+            'Matricula',
+            'Sexo',
+            'Edad',
+            'Estado',
+        ];
+        if (!in_array($sortBy, $allowedSort, true)) {
+            $sortBy = 'id';
+        }
+
+        $query = estudiantesifas::query()
+            ->when($search !== '', function ($q) use ($search) {
+                $q->where(function ($qq) use ($search) {
+                    $like = '%' . $search . '%';
+                    $qq->where('Ap_Paterno', 'like', $like)
+                        ->orWhere('Ap_Materno', 'like', $like)
+                        ->orWhere('Nombre', 'like', $like)
+                        ->orWhere('CI', 'like', $like)
+                        ->orWhere('Matricula', 'like', $like);
+                });
+            })
+            ->orderBy($sortBy, $sortDir);
+
+        if ($sortBy !== 'id') {
+            $query->orderByDesc('id');
+        }
+
+        $paginator = $query->paginate($perPage);
+
+        return response()->json([
+            'data' => $paginator->items(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+        ]);
     }
     
     

@@ -48,6 +48,40 @@ class InfoestudiantesifasController extends Controller
         $infoestudiantesifas = $query->get();
         return response()->json(['data' => $infoestudiantesifas]);
     }
+
+
+    public function byEstudiante($estudianteId)
+    {
+        $user = request()->user();
+
+        $query = infoestudiantesifas::query()
+            ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
+            ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
+            ->select([
+                'infoestudiantesifas.*',
+                'instituciones.Nombre as NombreInstitucion',
+                'estudiantesifas.Ap_Paterno',
+                'estudiantesifas.Ap_Materno',
+                'estudiantesifas.Nombre',
+                DB::raw("COALESCE((
+                    SELECT MAX(a.Anio)
+                    FROM calificaciones c
+                    INNER JOIN materias m ON m.id = c.materias_id
+                    INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+                    INNER JOIN anios a ON a.id = p.anio_id
+                    WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+                ), 'SIN ASIGNAR') as Anio"),
+            ])
+            ->where('infoestudiantesifas.estudiantesifas_id', $estudianteId)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            })
+            ->orderByDesc('infoestudiantesifas.FechInsc')
+            ->orderByDesc('infoestudiantesifas.id');
+
+        $infoestudiantesifas = $query->get();
+        return response()->json(['data' => $infoestudiantesifas]);
+    }
     
     
     public function store(Request $request)
