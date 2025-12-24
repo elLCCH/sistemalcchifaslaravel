@@ -296,6 +296,188 @@ class CalificacionesController extends Controller
         }
     }
 
+    public function assignBulkCategoria(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || !$user->instituciones_id) {
+            return response()->json(['message' => 'Usuario sin institución'], 422);
+        }
+
+        $validated = $request->validate([
+            'infoestudiantesifas_id' => ['required', 'integer'],
+            'curso' => ['required', 'string', 'max:60'],
+            'paralelo' => ['nullable', 'string', 'max:20'],
+            'forzar' => ['sometimes', 'boolean'],
+            'EstadoRegistroMateria' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $forzar = (bool) ($validated['forzar'] ?? false);
+
+        $info = infoestudiantesifas::query()
+            ->where('id', $validated['infoestudiantesifas_id'])
+            ->where('instituciones_id', $user->instituciones_id)
+            ->first();
+
+        if (!$info) {
+            return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
+        }
+
+        $curso = trim((string) ($validated['curso'] ?? ''));
+        if ($curso === '') {
+            return response()->json(['message' => 'Curso no definido para asignación masiva'], 422);
+        }
+
+        $paralelo = trim((string) ($validated['paralelo'] ?? ''));
+
+        $materiasQuery = materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('plandeestudios.LvlCurso', $curso)
+            ->select(['materias.id', 'materias.Paralelo']);
+
+        if ($paralelo !== '') {
+            $materiasQuery->where('materias.Paralelo', $paralelo);
+        } elseif (!$forzar && !empty($info->Paralelo_Solicitado)) {
+            $materiasQuery->where('materias.Paralelo', $info->Paralelo_Solicitado);
+        }
+
+        $materiasIds = $materiasQuery->pluck('materias.id')->values();
+
+        if ($materiasIds->count() === 0) {
+            return response()->json(['data' => ['created' => 0, 'total_materias' => 0]]);
+        }
+
+        $existing = calificaciones::query()
+            ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
+            ->whereIn('materias_id', $materiasIds)
+            ->pluck('materias_id')
+            ->map(fn($v) => (int) $v)
+            ->all();
+        $existingSet = array_flip($existing);
+
+        $rowsToInsert = [];
+        foreach ($materiasIds as $mid) {
+            $mid = (int) $mid;
+            if (isset($existingSet[$mid])) {
+                continue;
+            }
+            $rowsToInsert[] = [
+                'infoestudiantesifas_id' => (int) $validated['infoestudiantesifas_id'],
+                'materias_id' => $mid,
+                'EstadoRegistroMateria' => $validated['EstadoRegistroMateria'] ?? null,
+            ];
+        }
+
+        DB::beginTransaction();
+        try {
+            $created = 0;
+            if (count($rowsToInsert) > 0) {
+                // Insert masivo; evita N requests desde el frontend.
+                DB::table('calificaciones')->insert($rowsToInsert);
+                $created = count($rowsToInsert);
+            }
+
+            $count = calificaciones::query()
+                ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
+                ->count();
+
+            $info->CantidadMateriasAsignadas = $count;
+            $info->save();
+
+            DB::commit();
+            return response()->json([
+                'data' => [
+                    'created' => $created,
+                    'total_materias' => $materiasIds->count(),
+                    'total_asignadas' => $count,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    public function unassignBulkCategoria(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || !$user->instituciones_id) {
+            return response()->json(['message' => 'Usuario sin institución'], 422);
+        }
+
+        $validated = $request->validate([
+            'infoestudiantesifas_id' => ['required', 'integer'],
+            'curso' => ['required', 'string', 'max:60'],
+            'paralelo' => ['nullable', 'string', 'max:20'],
+            'forzar' => ['sometimes', 'boolean'],
+        ]);
+
+        $forzar = (bool) ($validated['forzar'] ?? false);
+
+        $info = infoestudiantesifas::query()
+            ->where('id', $validated['infoestudiantesifas_id'])
+            ->where('instituciones_id', $user->instituciones_id)
+            ->first();
+
+        if (!$info) {
+            return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
+        }
+
+        $curso = trim((string) ($validated['curso'] ?? ''));
+        if ($curso === '') {
+            return response()->json(['message' => 'Curso no definido para desasignación masiva'], 422);
+        }
+
+        $paralelo = trim((string) ($validated['paralelo'] ?? ''));
+
+        $materiasQuery = materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('plandeestudios.LvlCurso', $curso)
+            ->select(['materias.id', 'materias.Paralelo']);
+
+        if ($paralelo !== '') {
+            $materiasQuery->where('materias.Paralelo', $paralelo);
+        } elseif (!$forzar && !empty($info->Paralelo_Solicitado)) {
+            $materiasQuery->where('materias.Paralelo', $info->Paralelo_Solicitado);
+        }
+
+        $materiasIds = $materiasQuery->pluck('materias.id')->values();
+
+        if ($materiasIds->count() === 0) {
+            return response()->json(['data' => ['deleted' => 0, 'total_materias' => 0]]);
+        }
+
+        DB::beginTransaction();
+        try {
+            $deleted = calificaciones::query()
+                ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
+                ->whereIn('materias_id', $materiasIds)
+                ->delete();
+
+            $count = calificaciones::query()
+                ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
+                ->count();
+
+            $info->CantidadMateriasAsignadas = $count;
+            $info->save();
+
+            DB::commit();
+            return response()->json([
+                'data' => [
+                    'deleted' => $deleted,
+                    'total_materias' => $materiasIds->count(),
+                    'total_asignadas' => $count,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
     public function unassignAll(Request $request)
     {
         $user = $request->user();
