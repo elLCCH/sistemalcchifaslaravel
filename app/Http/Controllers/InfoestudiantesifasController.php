@@ -16,10 +16,45 @@ class InfoestudiantesifasController extends Controller
     }
     //controllerPHPlcch infoestudiantesifas, $
     //#region Inicio Controller de Crud PHP de infoestudiantesifas
-    public function index()
+    public function index(Request $request)
     {
-        $infoestudiantesifas = infoestudiantesifas::all();
+        $perPage = (int) $request->query('per_page', 10);
+        if ($perPage < 1) {
+            $perPage = 10;
+        }
+        if ($perPage > 200) {
+            $perPage = 200;
+        }
+
+        $search = trim((string) $request->query('search', ''));
+        $sortBy = (string) $request->query('sort_by', 'FechInsc');
+        $sortDir = strtolower((string) $request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        // Campos permitidos para ordenar (alias "Anio" se maneja con orderByRaw)
+        $allowedSort = [
+            'id',
+            'FechInsc',
+            'NombreInstitucion',
+            'Ap_Paterno',
+            'Ap_Materno',
+            'Nombre',
+            'Anio',
+        ];
+        if (!in_array($sortBy, $allowedSort, true)) {
+            $sortBy = 'FechInsc';
+        }
+
         $user = request()->user();
+
+        // Subquery (mismo que en el select) para ordenar por Anio si se requiere
+        $anioSubquery = "COALESCE((
+            SELECT MAX(a.Anio)
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+        ), 'SIN ASIGNAR')";
 
         $query = infoestudiantesifas::query()
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
@@ -30,23 +65,54 @@ class InfoestudiantesifasController extends Controller
                 'estudiantesifas.Ap_Paterno',
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre',
-                DB::raw("COALESCE((
-                    SELECT MAX(a.Anio)
-                    FROM calificaciones c
-                    INNER JOIN materias m ON m.id = c.materias_id
-                    INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
-                    INNER JOIN anios a ON a.id = p.anio_id
-                    WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
-                ), 'SIN ASIGNAR') as Anio"),
+                DB::raw($anioSubquery . " as Anio"),
             ])
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
             })
-            ->orderByDesc('infoestudiantesifas.FechInsc')
-            ->orderByDesc('infoestudiantesifas.id');
+            ->when($search !== '', function ($q) use ($search) {
+                $like = '%' . $search . '%';
+                $q->where(function ($qq) use ($like) {
+                    $qq->where('estudiantesifas.Ap_Paterno', 'like', $like)
+                        ->orWhere('estudiantesifas.Ap_Materno', 'like', $like)
+                        ->orWhere('estudiantesifas.Nombre', 'like', $like)
+                        ->orWhere('instituciones.Nombre', 'like', $like);
+                });
+            });
 
-        $infoestudiantesifas = $query->get();
-        return response()->json(['data' => $infoestudiantesifas]);
+        // Ordenamiento (mapeando alias a columnas reales)
+        if ($sortBy === 'NombreInstitucion') {
+            $query->orderBy('instituciones.Nombre', $sortDir);
+        } elseif ($sortBy === 'Ap_Paterno') {
+            $query->orderBy('estudiantesifas.Ap_Paterno', $sortDir);
+        } elseif ($sortBy === 'Ap_Materno') {
+            $query->orderBy('estudiantesifas.Ap_Materno', $sortDir);
+        } elseif ($sortBy === 'Nombre') {
+            $query->orderBy('estudiantesifas.Nombre', $sortDir);
+        } elseif ($sortBy === 'Anio') {
+            $query->orderByRaw($anioSubquery . ' ' . $sortDir);
+        } else {
+            $query->orderBy('infoestudiantesifas.' . $sortBy, $sortDir);
+        }
+
+        // Orden secundario estable
+        if ($sortBy !== 'id') {
+            $query->orderByDesc('infoestudiantesifas.id');
+        }
+
+        $paginator = $query->paginate($perPage);
+
+        return response()->json([
+            'data' => $paginator->items(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+        ]);
     }
 
 

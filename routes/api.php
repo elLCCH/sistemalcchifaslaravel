@@ -67,6 +67,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('infoestudiantesifas/by-estudiante/{estudianteId}', [InfoEstudiantesIfasController::class, 'byEstudiante'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('inicios', IniciosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('materias', MateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::get('materias/by-info/{infoId}', [MateriasController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('plandeestudios', PlanDeEstudiosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('planteldocentes', PlantelDocentesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('planteldocentesmaterias', PlantelDocentesMateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
@@ -74,6 +75,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Asignación 1-click docente <-> materia (por llaves)
     Route::post('planteldocentesmaterias/assign', [PlanteldocentesmateriasController::class, 'assign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('planteldocentesmaterias/unassign', [PlanteldocentesmateriasController::class, 'unassign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    // Asignación 1-click estudiante(inscripción) <-> materia (usa calificaciones)
+    Route::get('calificaciones/by-info/{infoId}', [CalificacionesController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('calificaciones/assign', [CalificacionesController::class, 'assign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('calificaciones/unassign', [CalificacionesController::class, 'unassign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('calificaciones/assign-bulk-curso', [CalificacionesController::class, 'assignBulkCurso'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('calificaciones/unassign-all', [CalificacionesController::class, 'unassignAll'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 });
 
 
