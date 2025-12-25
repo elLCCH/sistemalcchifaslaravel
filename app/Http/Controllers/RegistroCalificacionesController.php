@@ -65,12 +65,37 @@ class RegistrocalificacionesController extends Controller
             'nombre' => 'Evaluación ' . $numeroEval,
             'limite_teorico' => 30,
             'limite_practico' => 70,
+            'modo_eval' => 3,
             'habilitada' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         return DB::table('evaluaciones_materia')->where('id', $id)->first();
+    }
+
+    private function ensureAsistenciaRubro(int $evaluacionId): void
+    {
+        $exists = DB::table('rubros_evaluacion')
+            ->where('evaluacion_id', $evaluacionId)
+            ->where('tipo', 'TEO')
+            ->where('es_asistencia', 1)
+            ->where('habilitado', 1)
+            ->exists();
+
+        if ($exists) return;
+
+        DB::table('rubros_evaluacion')->insert([
+            'evaluacion_id' => $evaluacionId,
+            'tipo' => 'TEO',
+            'nombre' => 'Asistencia',
+            'max_puntos' => 10,
+            'orden' => 9999,
+            'es_asistencia' => 1,
+            'habilitado' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function ensureRubroInInstitucion(Request $request, int $rubroId): object
@@ -112,11 +137,13 @@ class RegistrocalificacionesController extends Controller
         if ($perPage > 200) $perPage = 200;
 
         $eval = $this->ensureEvaluacion($materiaId, $numeroEval);
+        $this->ensureAsistenciaRubro($eval->id);
 
         $rubros = DB::table('rubros_evaluacion')
             ->where('evaluacion_id', $eval->id)
             ->where('habilitado', 1)
             ->orderBy('tipo')
+            ->orderByRaw("CASE WHEN tipo='TEO' THEN es_asistencia ELSE 0 END ASC")
             ->orderBy('orden')
             ->orderBy('id')
             ->get();
@@ -204,13 +231,26 @@ class RegistrocalificacionesController extends Controller
         $this->ensureMateriaInInstitucion($request, $materiaId);
 
         $eval = $this->ensureEvaluacion($materiaId, (int) $validated['numero_eval']);
+        $this->ensureAsistenciaRubro($eval->id);
+
+        $modo = (int) ($eval->modo_eval ?? 3);
+        $tipo = $validated['tipo'];
+
+        // En modos 1/2 se fuerza max_puntos
+        $max = (int) $validated['max_puntos'];
+        if ($modo === 1) {
+            $max = 100;
+        } elseif ($modo === 2) {
+            $max = $tipo === 'TEO' ? 30 : 70;
+        }
 
         $id = DB::table('rubros_evaluacion')->insertGetId([
             'evaluacion_id' => $eval->id,
-            'tipo' => $validated['tipo'],
+            'tipo' => $tipo,
             'nombre' => $validated['nombre'],
-            'max_puntos' => (int) $validated['max_puntos'],
+            'max_puntos' => $max,
             'orden' => (int) ($validated['orden'] ?? 1),
+            'es_asistencia' => 0,
             'habilitado' => 1,
             'created_at' => now(),
             'updated_at' => now(),
@@ -224,7 +264,7 @@ class RegistrocalificacionesController extends Controller
 
     public function updateRubro(Request $request, int $rubroId)
     {
-        $this->ensureRubroInInstitucion($request, $rubroId);
+        $rubro = $this->ensureRubroInInstitucion($request, $rubroId);
 
         $validated = $request->validate([
             'tipo' => ['required', 'in:TEO,PRA'],
@@ -233,13 +273,35 @@ class RegistrocalificacionesController extends Controller
             'orden' => ['required', 'integer', 'min:1', 'max:9999'],
         ]);
 
+        // si es asistencia, mantener tipo=TEO y max=10 y orden al final
+        $isAsistencia = (int) ($rubro->es_asistencia ?? 0) === 1;
+
+        $eval = DB::table('evaluaciones_materia')->where('id', $rubro->evaluacion_id)->first();
+        $modo = (int) ($eval->modo_eval ?? 3);
+
+        $tipo = $validated['tipo'];
+        $max = (int) $validated['max_puntos'];
+        $orden = (int) $validated['orden'];
+
+        if ($isAsistencia) {
+            $tipo = 'TEO';
+            $max = 10;
+            $orden = 9999;
+        } else {
+            if ($modo === 1) {
+                $max = 100;
+            } elseif ($modo === 2) {
+                $max = $tipo === 'TEO' ? 30 : 70;
+            }
+        }
+
         DB::table('rubros_evaluacion')
             ->where('id', $rubroId)
             ->update([
-                'tipo' => $validated['tipo'],
+                'tipo' => $tipo,
                 'nombre' => $validated['nombre'],
-                'max_puntos' => (int) $validated['max_puntos'],
-                'orden' => (int) $validated['orden'],
+                'max_puntos' => $max,
+                'orden' => $orden,
                 'updated_at' => now(),
             ]);
 
@@ -250,7 +312,11 @@ class RegistrocalificacionesController extends Controller
 
     public function deleteRubro(Request $request, int $rubroId)
     {
-        $this->ensureRubroInInstitucion($request, $rubroId);
+        $rubro = $this->ensureRubroInInstitucion($request, $rubroId);
+
+        if ((int) ($rubro->es_asistencia ?? 0) === 1) {
+            return response()->json(['message' => 'No se puede eliminar el rubro de asistencia'], 422);
+        }
 
         DB::table('rubros_evaluacion')
             ->where('id', $rubroId)
@@ -260,6 +326,71 @@ class RegistrocalificacionesController extends Controller
             ]);
 
         return response()->json(['ok' => true]);
+    }
+
+    public function updateEvaluacion(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || !$user->instituciones_id) {
+            return response()->json(['message' => 'Usuario sin institución'], 422);
+        }
+
+        $validated = $request->validate([
+            'materias_id' => ['required', 'integer'],
+            'numero_eval' => ['required', 'integer', 'min:1', 'max:4'],
+            'modo_eval' => ['required', 'integer', 'min:1', 'max:3'],
+        ]);
+
+        $materiaId = (int) $validated['materias_id'];
+        $this->ensureMateriaInInstitucion($request, $materiaId);
+
+        $eval = $this->ensureEvaluacion($materiaId, (int) $validated['numero_eval']);
+        $this->ensureAsistenciaRubro($eval->id);
+
+        $modo = (int) $validated['modo_eval'];
+
+        DB::table('evaluaciones_materia')
+            ->where('id', $eval->id)
+            ->update([
+                'modo_eval' => $modo,
+                'updated_at' => now(),
+            ]);
+
+        // Ajustar max_puntos automáticamente en modos 1/2
+        if ($modo === 1) {
+            DB::table('rubros_evaluacion')
+                ->where('evaluacion_id', $eval->id)
+                ->where('habilitado', 1)
+                ->where('es_asistencia', 0)
+                ->update([
+                    'max_puntos' => 100,
+                    'updated_at' => now(),
+                ]);
+        } elseif ($modo === 2) {
+            DB::table('rubros_evaluacion')
+                ->where('evaluacion_id', $eval->id)
+                ->where('habilitado', 1)
+                ->where('es_asistencia', 0)
+                ->where('tipo', 'TEO')
+                ->update([
+                    'max_puntos' => 30,
+                    'updated_at' => now(),
+                ]);
+
+            DB::table('rubros_evaluacion')
+                ->where('evaluacion_id', $eval->id)
+                ->where('habilitado', 1)
+                ->where('es_asistencia', 0)
+                ->where('tipo', 'PRA')
+                ->update([
+                    'max_puntos' => 70,
+                    'updated_at' => now(),
+                ]);
+        }
+
+        return response()->json([
+            'evaluacion' => DB::table('evaluaciones_materia')->where('id', $eval->id)->first(),
+        ]);
     }
 
     private function avg(array $values)
@@ -339,6 +470,7 @@ class RegistrocalificacionesController extends Controller
         if ($avgEvalCount < 1 || $avgEvalCount > 4) $avgEvalCount = $avgEvalCountFromMateria;
 
         $eval = $this->ensureEvaluacion($materiaId, $numeroEval);
+        $this->ensureAsistenciaRubro($eval->id);
 
         $rubros = DB::table('rubros_evaluacion')
             ->where('evaluacion_id', $eval->id)
@@ -374,6 +506,8 @@ class RegistrocalificacionesController extends Controller
             $colTeo = 'Teorico' . $numeroEval;
             $colPra = 'Practico' . $numeroEval;
 
+            $modo = (int) ($eval->modo_eval ?? 3);
+
             foreach ($infoIds as $infoId) {
                 $rows = DB::table('notas_rubro as n')
                     ->join('rubros_evaluacion as r', 'r.id', '=', 'n.rubro_id')
@@ -381,36 +515,92 @@ class RegistrocalificacionesController extends Controller
                     ->where('r.habilitado', 1)
                     ->where('n.infoestudiantesifas_id', $infoId)
                     ->whereNotNull('n.nota')
-                    ->select(['r.tipo', 'r.max_puntos', 'n.nota'])
+                    ->select(['r.tipo', 'r.max_puntos', 'r.es_asistencia', 'n.nota'])
                     ->get();
 
-                $sumNotasTeo = 0.0;
-                $sumMaxTeo = 0;
-                $sumNotasPra = 0.0;
-                $sumMaxPra = 0;
+                $limTeo = (int) $eval->limite_teorico;
+                $limPra = (int) $eval->limite_practico;
+
+                $teoNotas = [];
+                $praNotas = [];
+                $asistencia = null;
 
                 foreach ($rows as $r) {
+                    $max = (int) $r->max_puntos;
+                    $nota = (int) round($r->nota);
+                    if ($nota < 0) $nota = 0;
+                    if ($max > 0 && $nota > $max) $nota = $max;
+
                     if ($r->tipo === 'TEO') {
-                        $sumNotasTeo += (float) $r->nota;
-                        $sumMaxTeo += (int) $r->max_puntos;
+                        if ((int) ($r->es_asistencia ?? 0) === 1) {
+                            $asistencia = $nota;
+                        } else {
+                            $teoNotas[] = $nota;
+                        }
                     } else {
-                        $sumNotasPra += (float) $r->nota;
-                        $sumMaxPra += (int) $r->max_puntos;
+                        $praNotas[] = $nota;
                     }
                 }
 
                 $teo = null;
-                if ($sumMaxTeo > 0) {
-                    $teo = (int) round(($sumNotasTeo / $sumMaxTeo) * (int) $eval->limite_teorico);
-                    if ($teo < 0) $teo = 0;
-                    if ($teo > (int) $eval->limite_teorico) $teo = (int) $eval->limite_teorico;
-                }
-
                 $pra = null;
-                if ($sumMaxPra > 0) {
-                    $pra = (int) round(($sumNotasPra / $sumMaxPra) * (int) $eval->limite_practico);
-                    if ($pra < 0) $pra = 0;
-                    if ($pra > (int) $eval->limite_practico) $pra = (int) $eval->limite_practico;
+
+                if ($modo === 1) {
+                    // Promedio casilleros TEO sobre 100 -> escala a 20 + asistencia(10)
+                    $teoPart = null;
+                    if (count($teoNotas) > 0) {
+                        $avg = array_sum($teoNotas) / count($teoNotas);
+                        $teoPart = (int) round(($avg / 100.0) * 20.0);
+                    }
+                    if ($teoPart !== null || $asistencia !== null) {
+                        $teo = (int) round(($teoPart ?? 0) + ($asistencia ?? 0));
+                        if ($teo < 0) $teo = 0;
+                        if ($teo > $limTeo) $teo = $limTeo;
+                    }
+
+                    // Promedio casilleros PRA sobre 100 -> escala a 70
+                    if (count($praNotas) > 0) {
+                        $avg = array_sum($praNotas) / count($praNotas);
+                        $pra = (int) round(($avg / 100.0) * (float) $limPra);
+                        if ($pra < 0) $pra = 0;
+                        if ($pra > $limPra) $pra = $limPra;
+                    }
+                } elseif ($modo === 2) {
+                    // TEO: promedio sobre 30 -> escala a 20 + asistencia(10)
+                    $teoPart = null;
+                    if (count($teoNotas) > 0) {
+                        $avg = array_sum($teoNotas) / count($teoNotas);
+                        $teoPart = (int) round(($avg / 30.0) * 20.0);
+                    }
+                    if ($teoPart !== null || $asistencia !== null) {
+                        $teo = (int) round(($teoPart ?? 0) + ($asistencia ?? 0));
+                        if ($teo < 0) $teo = 0;
+                        if ($teo > $limTeo) $teo = $limTeo;
+                    }
+
+                    // PRA: promedio sobre 70 -> escala a 70 (limPra)
+                    if (count($praNotas) > 0) {
+                        $avg = array_sum($praNotas) / count($praNotas);
+                        $pra = (int) round(($avg / 70.0) * (float) $limPra);
+                        if ($pra < 0) $pra = 0;
+                        if ($pra > $limPra) $pra = $limPra;
+                    }
+                } else {
+                    // Sumatoria
+                    $sumTeo = array_sum($teoNotas) + ($asistencia ?? 0);
+                    $sumPra = array_sum($praNotas);
+
+                    if (count($teoNotas) > 0 || $asistencia !== null) {
+                        $teo = (int) round($sumTeo);
+                        if ($teo < 0) $teo = 0;
+                        if ($teo > $limTeo) $teo = $limTeo;
+                    }
+
+                    if (count($praNotas) > 0) {
+                        $pra = (int) round($sumPra);
+                        if ($pra < 0) $pra = 0;
+                        if ($pra > $limPra) $pra = $limPra;
+                    }
                 }
 
                 // Carga la fila actual de calificaciones y actualiza Teo/Prac de la evaluación

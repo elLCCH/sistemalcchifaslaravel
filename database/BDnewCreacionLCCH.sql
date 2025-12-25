@@ -365,6 +365,7 @@ CREATE TABLE evaluaciones_materia (
   nombre VARCHAR(120) NULL,              -- Ej: "Primera evaluación"
   limite_teorico INT NOT NULL DEFAULT 30,
   limite_practico INT NOT NULL DEFAULT 70,
+    modo_eval TINYINT NOT NULL DEFAULT 3,  -- 1=Prom 100->(Teo20 + Asist10)/Prac70 | 2=Prom 30/70 | 3=Sumatoria
   habilitada TINYINT(1) NOT NULL DEFAULT 1,
 
   created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
@@ -387,6 +388,7 @@ CREATE TABLE rubros_evaluacion (
   nombre VARCHAR(150) NOT NULL,           -- Ej: "Tarea exposición"
   max_puntos INT NOT NULL,                -- Ej: 10 (se valida contra limites al sumar)
   orden INT NOT NULL DEFAULT 1,
+    es_asistencia TINYINT(1) NOT NULL DEFAULT 0, -- 1 si es el rubro fijo de asistencia (siempre último en TEO)
   habilitado TINYINT(1) NOT NULL DEFAULT 1,
 
   created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
@@ -406,7 +408,7 @@ CREATE TABLE notas_rubro (
   id INT AUTO_INCREMENT PRIMARY KEY,
   rubro_id INT NOT NULL,
   infoestudiantesifas_id INT NOT NULL,
-  nota DECIMAL(6,2) NULL,                 -- permite decimales si quieres
+    nota INT NULL,                          -- TODO ES ENTERO (decimales se redondean en frontend/backend)
   observacion VARCHAR(250) NULL,
 
   created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,

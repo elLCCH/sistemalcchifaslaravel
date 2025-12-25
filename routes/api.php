@@ -93,6 +93,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Registro de calificaciones por rubros (docentes)
     Route::get('registrocalificaciones/materia/{materiaId}', [RegistrocalificacionesController::class, 'index'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::put('registrocalificaciones/evaluacion', [RegistrocalificacionesController::class, 'updateEvaluacion'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('registrocalificaciones/rubros', [RegistrocalificacionesController::class, 'storeRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::put('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'updateRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::delete('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'deleteRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
