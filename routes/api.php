@@ -22,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\TokenController;
+use App\Http\Controllers\RegistrocalificacionesController;
 Route::post('/verify-token', [TokenController::class, 'verify']);
 Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como el routing de angular: v1/auth/login
     Route::post('/login', [AuthController::class, "login"]); //EJECUTAR LA FUNCION login desde el authcontroller
@@ -89,6 +90,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('calificaciones/assign-bulk-categoria', [CalificacionesController::class, 'assignBulkCategoria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('calificaciones/unassign-bulk-categoria', [CalificacionesController::class, 'unassignBulkCategoria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('calificaciones/unassign-all', [CalificacionesController::class, 'unassignAll'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    // Registro de calificaciones por rubros (docentes)
+    Route::get('registrocalificaciones/materia/{materiaId}', [RegistrocalificacionesController::class, 'index'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('registrocalificaciones/rubros', [RegistrocalificacionesController::class, 'storeRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::put('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'updateRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::delete('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'deleteRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('registrocalificaciones/bulk-save', [RegistrocalificacionesController::class, 'bulkSave'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 });
 
 

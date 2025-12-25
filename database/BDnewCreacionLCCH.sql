@@ -355,3 +355,73 @@ CREATE OR REPLACE TABLE controles (
     FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE
 
 );
+
+-- PARA LOS RUBROS DE CALIFICACIONES registro de calificaciones
+-- 1) Evaluaciones por materia (Eval 1..4)
+CREATE TABLE evaluaciones_materia (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  materias_id INT NOT NULL,
+  numero_eval TINYINT NOT NULL,          -- 1..4 (mapea a Teorico1/Practico1, etc.)
+  nombre VARCHAR(120) NULL,              -- Ej: "Primera evaluación"
+  limite_teorico INT NOT NULL DEFAULT 30,
+  limite_practico INT NOT NULL DEFAULT 70,
+  habilitada TINYINT(1) NOT NULL DEFAULT 1,
+
+  created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  CONSTRAINT fk_eval_materia
+    FOREIGN KEY (materias_id) REFERENCES materias(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  CONSTRAINT uq_eval_materia_numero
+    UNIQUE (materias_id, numero_eval)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- 2) Rubros/columnas dentro de cada evaluación
+CREATE TABLE rubros_evaluacion (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  evaluacion_id INT NOT NULL,
+  tipo ENUM('TEO','PRA') NOT NULL,        -- Teórico o Práctico
+  nombre VARCHAR(150) NOT NULL,           -- Ej: "Tarea exposición"
+  max_puntos INT NOT NULL,                -- Ej: 10 (se valida contra limites al sumar)
+  orden INT NOT NULL DEFAULT 1,
+  habilitado TINYINT(1) NOT NULL DEFAULT 1,
+
+  created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  CONSTRAINT fk_rubro_eval
+    FOREIGN KEY (evaluacion_id) REFERENCES evaluaciones_materia(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  INDEX idx_rubro_eval (evaluacion_id),
+  INDEX idx_rubro_eval_tipo (evaluacion_id, tipo)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- 3) Notas por estudiante por rubro
+CREATE TABLE notas_rubro (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  rubro_id INT NOT NULL,
+  infoestudiantesifas_id INT NOT NULL,
+  nota DECIMAL(6,2) NULL,                 -- permite decimales si quieres
+  observacion VARCHAR(250) NULL,
+
+  created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  CONSTRAINT fk_nota_rubro
+    FOREIGN KEY (rubro_id) REFERENCES rubros_evaluacion(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  CONSTRAINT fk_nota_info
+    FOREIGN KEY (infoestudiantesifas_id) REFERENCES infoestudiantesifas(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  CONSTRAINT uq_nota_rubro_est
+    UNIQUE (rubro_id, infoestudiantesifas_id),
+
+  INDEX idx_nota_est (infoestudiantesifas_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
