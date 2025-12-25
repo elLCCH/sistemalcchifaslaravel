@@ -17,7 +17,7 @@ use App\Http\Controllers\MateriasController;
 use App\Http\Controllers\PlanDeEstudiosController;
 use App\Http\Controllers\PlantelAdministrativosController;
 use App\Http\Controllers\PlantelDocentesController;
-use App\Http\Controllers\PlanteldocentesmateriasController;
+use App\Http\Controllers\PlantelDocentesMateriasController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -73,11 +73,16 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::resource('planteldocentesmaterias', PlantelDocentesMateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
 
     // Asignación 1-click docente <-> materia (por llaves)
-    Route::post('planteldocentesmaterias/assign', [PlanteldocentesmateriasController::class, 'assign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('planteldocentesmaterias/unassign', [PlanteldocentesmateriasController::class, 'unassign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('planteldocentesmaterias/assign', [PlantelDocentesMateriasController::class, 'assign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('planteldocentesmaterias/unassign', [PlantelDocentesMateriasController::class, 'unassign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 
     // Asignación 1-click estudiante(inscripción) <-> materia (usa calificaciones)
     Route::get('calificaciones/by-info/{infoId}', [CalificacionesController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('calificaciones/bulk-update', [CalificacionesController::class, 'bulkUpdate'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    // Calificaciones por materia (para vista docentes)
+    Route::get('calificaciones/by-materia/{materiaId}', [CalificacionesController::class, 'byMateria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('calificaciones/bulk-update-materia', [CalificacionesController::class, 'bulkUpdateMateria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('calificaciones/assign', [CalificacionesController::class, 'assign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('calificaciones/unassign', [CalificacionesController::class, 'unassign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('calificaciones/assign-bulk-curso', [CalificacionesController::class, 'assignBulkCurso'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
