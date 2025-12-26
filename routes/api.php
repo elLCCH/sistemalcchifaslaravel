@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\TokenController;
 use App\Http\Controllers\RegistrocalificacionesController;
+use App\Http\Controllers\FileUploadController;
 Route::post('/verify-token', [TokenController::class, 'verify']);
 Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como el routing de angular: v1/auth/login
     Route::post('/login', [AuthController::class, "login"]); //EJECUTAR LA FUNCION login desde el authcontroller
@@ -98,6 +99,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'updateRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::delete('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'deleteRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('registrocalificaciones/bulk-save', [RegistrocalificacionesController::class, 'bulkSave'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    // Subida/borrado de archivos (para inicios, etc.)
+    Route::post('uploadFile', [FileUploadController::class, 'uploadFile'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('deleteFile', [FileUploadController::class, 'deleteFile'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 });
 
 

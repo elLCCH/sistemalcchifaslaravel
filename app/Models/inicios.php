@@ -26,6 +26,7 @@ class inicios extends Model
         'logo',
         'estado',
         'visibilidad',
+        'id_institucion',
     ];
     //
 }

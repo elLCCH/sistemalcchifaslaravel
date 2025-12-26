@@ -395,3 +395,197 @@ INSERT INTO estudiantesifas (
  'Colegio Alemán','Privado','5to','Secundaria',
  'vsalazar','123456','Activo','IFA-2024-010',
  'Violoncello','Piano','Excelente lectura musical');
+
+
+-- INICIOS
+
+/* BANNER */
+UPDATE inicios
+SET
+  etiqueta = 'ADMISIONES Y CONVOCATORIAS',
+  titulo = 'FORMACIÓN ARTÍSTICA PROFESIONAL',
+  descripcion = 'Información institucional para postulación e inscripción a carreras artísticas. Revisa requisitos, fechas, costos referenciales y canales de atención.',
+  link = 'https://instituciones-arte.example/admision',
+  icono = 'bi bi-mortarboard',
+  estado = 'ACTIVO',
+  visibilidad = 'VISIBLE',
+  id_institucion = NULL
+WHERE id = 1;
+
+/* SERVICIO => (en UI se mostrará como CARRERA) */
+UPDATE inicios
+SET
+  titulo = 'MÚSICO INSTRUMENTISTA',
+  subtitulo = 'M.I.',
+  descripcion = 'Carrera orientada a la interpretación instrumental: técnica, lectura musical, repertorio, ensamble y práctica escénica. Incluye teoría, armonía y entrenamiento auditivo.',
+  icono = 'bi bi-music-note-beamed',
+  estado = 'ACTIVO',
+  visibilidad = 'VISIBLE',
+  id_institucion = NULL
+WHERE id = 2;
+
+UPDATE inicios
+SET
+  titulo = 'ARTISTA BELLAS ARTES',
+  subtitulo = 'A.B.A.',
+  descripcion = 'Carrera de artes visuales con énfasis en dibujo, pintura, composición, color, técnicas mixtas y portafolio. Enfoque en producción, exposición y proyectos artísticos.',
+  icono = 'bi bi-palette',
+  estado = 'ACTIVO',
+  visibilidad = 'VISIBLE',
+  id_institucion = NULL
+WHERE id = 10;
+
+UPDATE inicios
+SET
+  titulo = 'MÚSICO',
+  subtitulo = 'MÚS.',
+  descripcion = 'Formación musical integral: interpretación, teoría, ensamble, práctica cultural y presentaciones. Orientado a desempeño en agrupaciones y proyectos artísticos.',
+  icono = 'bi bi-music-note',
+  estado = 'ACTIVO',
+  visibilidad = 'VISIBLE',
+  id_institucion = NULL
+WHERE id = 11;
+
+/* PRECIO (costos inventados: costo = INSCRIPCIÓN) */
+UPDATE inicios
+SET
+  titulo = 'MÚSICO INSTRUMENTISTA',
+  descripcion = 'INSCRIPCIÓN: 250 Bs.\nMENSUALIDAD: 380 Bs.\nIncluye: teoría musical, práctica instrumental, ensamble y recitales.',
+  costo = 250,
+  duracion = '3 AÑOS',
+  icono = 'bi bi-cash-coin',
+  estado = 'ACTIVO',
+  visibilidad = 'VISIBLE',
+  id_institucion = NULL
+WHERE id = 12;
+
+UPDATE inicios
+SET
+  titulo = 'ARTISTA BELLAS ARTES',
+  descripcion = 'INSCRIPCIÓN: 220 Bs.\nMENSUALIDAD: 320 Bs.\nMateriales: 180 Bs por semestre.\nIncluye: talleres, técnicas y asesoría de portafolio.',
+  costo = 220,
+  duracion = '3 AÑOS',
+  icono = 'bi bi-cash-coin',
+  estado = 'ACTIVO',
+  visibilidad = 'VISIBLE',
+  id_institucion = NULL
+WHERE id = 13;
+
+UPDATE inicios
+SET
+  titulo = 'MÚSICO',
+  descripcion = 'INSCRIPCIÓN: 200 Bs.\nMENSUALIDAD: 300 Bs.\nIncluye: teoría, práctica, ensamble y presentaciones.',
+  costo = 200,
+  duracion = '2 AÑOS',
+  icono = 'bi bi-cash-coin',
+  estado = 'ACTIVO',
+  visibilidad = 'VISIBLE',
+  id_institucion = NULL
+WHERE id = 14;
+
+/* RED SOCIAL: no toco link/subtitulo; solo completo campos nuevos */
+UPDATE inicios
+SET icono = 'bi bi-facebook', estado = 'ACTIVO', visibilidad = 'VISIBLE', id_institucion = NULL
+WHERE id = 15;
+
+UPDATE inicios
+SET icono = 'bi bi-whatsapp', estado = 'ACTIVO', visibilidad = 'VISIBLE', id_institucion = NULL
+WHERE id = 16;
+
+UPDATE inicios
+SET icono = 'bi bi-instagram', estado = 'ACTIVO', visibilidad = 'VISIBLE', id_institucion = NULL
+WHERE id = 28;
+
+UPDATE inicios
+SET icono = 'bi bi-tiktok', estado = 'ACTIVO', visibilidad = 'VISIBLE', id_institucion = NULL
+WHERE id = 29;
+
+/* CAROUSEL y GALERIA: no relleno otros NULLs, solo campos nuevos */
+UPDATE inicios
+SET icono = 'bi bi-images', estado = 'ACTIVO', visibilidad = 'VISIBLE', id_institucion = NULL
+WHERE id IN (7, 9, 31);
+
+UPDATE inicios
+SET icono = 'bi bi-image', estado = 'ACTIVO', visibilidad = 'VISIBLE', id_institucion = NULL
+WHERE id BETWEEN 17 AND 27;
+
+
+/* 2) Crear MÁS información (nuevos IDs) según categorías existentes
+      Nota: pongo archivo = NULL para que luego cargues imágenes reales sin romper rutas. */
+
+INSERT INTO inicios
+(id, archivo, etiqueta, titulo, subtitulo, descripcion, categoria, link, costo, duracion, cupos, fecha, icono, estado, visibilidad, id_institucion)
+VALUES
+/* BANNER extra */
+(32, NULL, 'INSCRIPCIONES ABIERTAS', 'CARRERAS ARTÍSTICAS 2026', NULL,
+ 'Postula a carreras de música y bellas artes. Fechas, requisitos, entrevistas y exámenes de admisión disponibles en esta sección.',
+ 'BANNER', 'https://instituciones-arte.example/convocatoria', NULL, NULL, NULL, NULL,
+ 'bi bi-megaphone', 'ACTIVO', 'VISIBLE', NULL),
+
+/* SERVICIO (CARRERA) extra: detalles por área */
+(33, 'ArchivosCrud/ServiciosFiles/carrera-mi.jpg', NULL, 'MÚSICO INSTRUMENTISTA', 'Especialidades',
+ 'Especialidades sugeridas: Piano, Guitarra, Violín, Vientos, Percusión. Incluye ensamble, repertorio, lectura a primera vista y práctica escénica.',
+ 'SERVICIO', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-music-note-beamed', 'ACTIVO', 'VISIBLE', NULL),
+
+(34, 'ArchivosCrud/ServiciosFiles/carrera-aba.jpg', NULL, 'ARTISTA BELLAS ARTES', 'Áreas de formación',
+ 'Áreas: Dibujo académico, pintura, composición, teoría del color, técnicas mixtas, gráfica y montaje de exposición. Desarrollo de portafolio profesional.',
+ 'SERVICIO', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-palette', 'ACTIVO', 'VISIBLE', NULL),
+
+(35, 'ArchivosCrud/ServiciosFiles/carrera-mus.jpg', NULL, 'MÚSICO', 'Formación integral',
+ 'Malla con teoría musical, entrenamiento auditivo, ensambles, gestión artística básica y prácticas culturales. Enfoque en interpretación y producción.',
+ 'SERVICIO', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-music-note', 'ACTIVO', 'VISIBLE', NULL),
+
+/* PRECIO extra: conceptos comunes */
+(36, NULL, 'ADM', 'EXAMEN DE ADMISIÓN', 'Pago único',
+ 'Pago por evaluación de admisión (teoría/práctica/entrevista). Revisa cronograma y modalidad de evaluación según carrera.',
+ 'PRECIO', 'https://wa.me/59170000010', 80, '1 DÍA', NULL, '2026-01-10',
+ 'bi bi-clipboard-check', 'ACTIVO', 'VISIBLE', NULL),
+
+(37, NULL, 'MAT', 'MATRÍCULA ANUAL', 'Pago anual',
+ 'Matrícula anual para registro académico y habilitación administrativa. No incluye mensualidades.',
+ 'PRECIO', 'https://wa.me/59170000011', 150, 'ANUAL', NULL, NULL,
+ 'bi bi-receipt', 'ACTIVO', 'VISIBLE', NULL),
+
+(38, NULL, 'CERT', 'CERTIFICACIÓN / TÍTULO', 'Trámite',
+ 'Costos referenciales por certificaciones, récord académico y trámites de egreso (varía según normativa institucional).',
+ 'PRECIO', 'https://instituciones-arte.example/tramites', 120, 'TRÁMITE', NULL, NULL,
+ 'bi bi-patch-check', 'ACTIVO', 'VISIBLE', NULL),
+
+/* CAROUSEL extra (archivo NULL por ahora) */
+(39, NULL, NULL, NULL, NULL, NULL, 'CAROUSEL', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-images', 'ACTIVO', 'VISIBLE', NULL),
+(40, NULL, NULL, NULL, NULL, NULL, 'CAROUSEL', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-images', 'ACTIVO', 'VISIBLE', NULL),
+
+/* GALERIA extra (archivo NULL por ahora) */
+(41, NULL, NULL, NULL, NULL, NULL, 'GALERIA', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-image', 'ACTIVO', 'VISIBLE', NULL),
+(42, NULL, NULL, NULL, NULL, NULL, 'GALERIA', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-image', 'ACTIVO', 'VISIBLE', NULL),
+
+/* RED SOCIAL extra (dejo link NULL como pediste; solo icono/estado/visibilidad) */
+(43, NULL, NULL, NULL, '<i class="bi bi-facebook"></i>', NULL, 'RED SOCIAL', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-facebook', 'ACTIVO', 'VISIBLE', NULL),
+(44, NULL, NULL, NULL, '<i class="bi bi-instagram"></i>', NULL, 'RED SOCIAL', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-instagram', 'ACTIVO', 'VISIBLE', NULL),
+(45, NULL, NULL, NULL, '<i class="bi bi-whatsapp"></i>', NULL, 'RED SOCIAL', NULL, NULL, NULL, NULL, NULL,
+ 'bi bi-whatsapp', 'ACTIVO', 'VISIBLE', NULL)
+
+
+ INSERT INTO inicios
+(archivo, etiqueta, titulo, subtitulo, descripcion, categoria, link, costo, duracion, cupos, fecha, icono, estado, visibilidad, id_institucion)
+VALUES
+(NULL, NULL, 'MÚSICO INSTRUMENTISTA', 'Plan Profesional',
+ 'Formación en interpretación instrumental: técnica, repertorio, ensambles y práctica escénica. Incluye teoría, armonía y entrenamiento auditivo.',
+ 'CARRERA', NULL, NULL, NULL, NULL, NULL, 'bi bi-music-note-beamed', 'ACTIVO', 'VISIBLE', NULL),
+
+(NULL, NULL, 'ARTISTA BELLAS ARTES', 'Artes Visuales',
+ 'Formación en dibujo, pintura, composición, teoría del color, técnicas mixtas y portafolio. Enfoque en producción y exposición artística.',
+ 'CARRERA', NULL, NULL, NULL, NULL, NULL, 'bi bi-palette', 'ACTIVO', 'VISIBLE', NULL),
+
+(NULL, NULL, 'MÚSICO', 'Formación Integral',
+ 'Formación musical integral: interpretación, teoría, ensamble y práctica cultural. Orientado a desempeño en proyectos artísticos.',
+ 'CARRERA', NULL, NULL, NULL, NULL, NULL, 'bi bi-music-note', 'ACTIVO', 'VISIBLE', NULL);

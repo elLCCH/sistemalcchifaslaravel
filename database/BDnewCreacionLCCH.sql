@@ -313,13 +313,14 @@ CREATE OR REPLACE TABLE inicios (
     link VARCHAR(150) NULL,
     costo INT NULL,
     duracion VARCHAR(20) NULL,
-    cupos INT NULL,
+    cupos VARCHAR(100) NULL,
     fecha DATE NULL,
     -- AHORA LO NUEVO
     icono VARCHAR(100) NULL,
-    logo TEXT NULL,
     estado VARCHAR(15) NULL,
     visibilidad VARCHAR(15) NULL,
+    id_institucion INT NULL,
+    FOREIGN KEY (id_institucion) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE,
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
