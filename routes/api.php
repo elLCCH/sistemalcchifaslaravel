@@ -24,6 +24,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TokenController;
 use App\Http\Controllers\RegistrocalificacionesController;
 use App\Http\Controllers\FileUploadController;
+use App\Http\Controllers\CaptureSessionController;
+use App\Http\Controllers\CapturePairingController;
 Route::post('/verify-token', [TokenController::class, 'verify']);
 Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como el routing de angular: v1/auth/login
     Route::post('/login', [AuthController::class, "login"]); //EJECUTAR LA FUNCION login desde el authcontroller
@@ -103,7 +105,25 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Subida/borrado de archivos (para inicios, etc.)
     Route::post('uploadFile', [FileUploadController::class, 'uploadFile'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('deleteFile', [FileUploadController::class, 'deleteFile'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    // Sesiones de captura de foto (PC inicia, móvil sube)
+    Route::post('capture-sessions', [CaptureSessionController::class, 'store'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::get('capture-sessions/{token}', [CaptureSessionController::class, 'show'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('capture-sessions/{token}/cancel', [CaptureSessionController::class, 'cancel'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    // Vinculación (pairing) PC <-> celular para no escanear QR cada vez
+    Route::post('capture-pairings', [CapturePairingController::class, 'store'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::get('capture-pairings/{token}', [CapturePairingController::class, 'show'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('capture-pairings/{token}/request-capture', [CapturePairingController::class, 'requestCapture'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('capture-pairings/{token}/cancel-capture', [CapturePairingController::class, 'cancelCapture'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 });
+
+// Upload público por token (para que el celular suba sin login)
+Route::post('capture-sessions/{token}/upload', [CaptureSessionController::class, 'upload']);
+
+// Vinculación pública (celular) por token
+Route::post('capture-pairings/{token}/link', [CapturePairingController::class, 'link']);
+Route::get('capture-pairings/{token}/pending-capture', [CapturePairingController::class, 'pendingCapture']);
 
 
 

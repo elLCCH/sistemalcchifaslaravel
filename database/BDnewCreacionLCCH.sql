@@ -428,3 +428,45 @@ CREATE TABLE notas_rubro (
 
   INDEX idx_nota_est (infoestudiantesifas_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- PARA SACAR FOTO CON CELULAR Y EMPAREJAR CELULAR
+CREATE TABLE `capture_sessions` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `token` VARCHAR(128) NOT NULL,
+  `institucion_id` BIGINT UNSIGNED NOT NULL,
+  `user_id` BIGINT UNSIGNED NULL,
+  `estudianteifas_id` BIGINT UNSIGNED NULL,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  `file_path` VARCHAR(255) NULL,
+  `expires_at` DATETIME NOT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT NULL,
+  `updated_at` TIMESTAMP NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `capture_sessions_token_unique` (`token`),
+  KEY `capture_sessions_institucion_status_index` (`institucion_id`, `status`),
+  KEY `capture_sessions_estudiante_index` (`estudianteifas_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE `capture_pairings` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `token` VARCHAR(128) NOT NULL,
+  `institucion_id` BIGINT UNSIGNED NOT NULL,
+  `user_id` BIGINT UNSIGNED NULL,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  `device_label` VARCHAR(100) NULL,
+  `pending_capture_token` VARCHAR(128) NULL,
+  `linked_at` DATETIME NULL,
+  `last_seen_at` DATETIME NULL,
+  `expires_at` DATETIME NULL,
+  `created_at` TIMESTAMP NULL DEFAULT NULL,
+  `updated_at` TIMESTAMP NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `capture_pairings_token_unique` (`token`),
+  KEY `capture_pairings_institucion_id_index` (`institucion_id`),
+  KEY `capture_pairings_status_index` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- FUNCIONA CON; EN LOCAL HAY Q REEMPLAZAR ENVIRONMENT localhost POR LA IP DE LA MAQUINA
+-- php artisan serve --host 0.0.0.0 --port 8000
+-- ng serve --host 0.0.0.0 --port 4200
