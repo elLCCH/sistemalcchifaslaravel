@@ -29,6 +29,7 @@ class InfoestudiantesifasController extends Controller
         $search = trim((string) $request->query('search', ''));
         $sortBy = (string) $request->query('sort_by', 'FechInsc');
         $sortDir = strtolower((string) $request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $anioId = $request->query('anio_id');
 
         // Campos permitidos para ordenar (alias "Anio" se maneja con orderByRaw)
         $allowedSort = [
@@ -39,6 +40,12 @@ class InfoestudiantesifasController extends Controller
             'Ap_Materno',
             'Nombre',
             'Anio',
+            'Categoria',
+            'Curso_Solicitado',
+            'Paralelo_Solicitado',
+            'CantidadMateriasAsignadas',
+            'Observacion',
+            'Verificacion',
         ];
         if (!in_array($sortBy, $allowedSort, true)) {
             $sortBy = 'FechInsc';
@@ -56,6 +63,30 @@ class InfoestudiantesifasController extends Controller
             WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
         ), 'SIN ASIGNAR')";
 
+        $carreraSubquery = "(
+            SELECT ca.NombreCarrera
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN carreras ca ON ca.id = p.carreras_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+            ORDER BY a.Anio DESC, p.id DESC
+            LIMIT 1
+        )";
+
+        $resolucionSubquery = "(
+            SELECT ca.Resolucion
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN carreras ca ON ca.id = p.carreras_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+            ORDER BY a.Anio DESC, p.id DESC
+            LIMIT 1
+        )";
+
         $query = infoestudiantesifas::query()
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
@@ -66,9 +97,22 @@ class InfoestudiantesifasController extends Controller
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre',
                 DB::raw($anioSubquery . " as Anio"),
+                DB::raw($carreraSubquery . " as NombreCarrera"),
+                DB::raw($resolucionSubquery . " as Resolucion"),
             ])
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            })
+            ->when($anioId !== null && $anioId !== '' && (int) $anioId > 0, function ($q) use ($anioId) {
+                $anioIdInt = (int) $anioId;
+                $q->whereExists(function ($qq) use ($anioIdInt) {
+                    $qq->select(DB::raw(1))
+                        ->from('calificaciones as c')
+                        ->join('materias as m', 'm.id', '=', 'c.materias_id')
+                        ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
+                        ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id')
+                        ->where('p.anio_id', $anioIdInt);
+                });
             })
             ->when($search !== '', function ($q) use ($search) {
                 $like = '%' . $search . '%';

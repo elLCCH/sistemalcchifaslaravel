@@ -328,28 +328,13 @@ CREATE OR REPLACE TABLE inicios (
 -- controles es usado para los select de categorias, en si seria como si fuera el antiguo api
 CREATE OR REPLACE TABLE controles (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    instituciones_id INT NOT NULL,
+    instituciones_id INT NULL,
     Estado VARCHAR(15) NULL,
     Visibilidad VARCHAR(15) NULL,
     Categoria VARCHAR(60) NULL, 
-    -- PARA LOS NivelCurso SELECT
-    NivelCurso VARCHAR(60) NULL, -- PARA PODER SELECCIONAR MAS FACIL
-    ParaI VARCHAR(60) NULL, -- PARA SABER A QUE TIPO DE ESTUDIANTE ANTIGUO O NUEVO
-    Edades VARCHAR(60) NULL, -- PARA SABER LAS EDADES A LAS QUE VA DIRIGIDO
-
-    -- PARA INSTRUMENTOS DE ESPECIALIDAD O ESPECIALIDADES
-    -- Especialidad VARCHAR(60) NULL, -- USANDOSE EN EL ParaI
-
-    -- PARA LOS NIVELES DE CURSO
-    -- Nivel VARCHAR(60) NULL, -- BASICO, INICIAL, ETC -- USANDOSE EN ParaI
-
-    -- PARA LAS ABREVIACIONES
-    -- Dpto VARCHAR(60) NULL, -- OR, LPZ, ETC -- USANDOSE EN ParaI
-
-    -- PARA TURNOS
-    -- Turno VARCHAR(60) NULL, -- MAÑANA, TARDE, NOCHE -- USANDOSE EN ParaI
-    -- Hora VARCHAR(60) NULL, -- (17:00hrs a 19:40hrs) -- USANDOSE EN Edades
-
+    NivelCurso VARCHAR(60) NULL, 
+    ParaI VARCHAR(60) NULL, 
+    Edades VARCHAR(60) NULL, 
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
