@@ -20,18 +20,24 @@ class IniciosController extends Controller
         $user = request()->user();
         $institucionId = $user ? ($user->instituciones_id ?? null) : null;
 
-        $query = inicios::query();
+        $query = inicios::query()
+            ->leftJoin('instituciones', 'inicios.id_institucion', '=', 'instituciones.id')
+            ->select(
+                'inicios.*',
+                'instituciones.Nombre as institucion_nombre',
+                'instituciones.Logo as institucion_logo'
+            );
         if ($institucionId) {
             $query->where(function ($q) use ($institucionId) {
-                $q->whereNull('id_institucion')
-                  ->orWhere('id_institucion', $institucionId);
+                $q->whereNull('inicios.id_institucion')
+                  ->orWhere('inicios.id_institucion', $institucionId);
             });
         }
 
-        $Inicio = $query->orderBy('categoria', 'asc')
-            ->orderBy('titulo', 'asc')
-            ->orderBy('id', 'desc')
-            ->orderBy('fecha', 'desc')
+        $Inicio = $query->orderBy('inicios.categoria', 'asc')
+            ->orderBy('inicios.titulo', 'asc')
+            ->orderBy('inicios.id', 'desc')
+            ->orderBy('inicios.fecha', 'desc')
             ->get();
         return response()->json(['data' => $Inicio]);
     }
@@ -46,7 +52,18 @@ class IniciosController extends Controller
         $data['id_institucion'] = $institucionId;
 
         $created = inicios::create($data);
-        return response()->json(['data' => $created]);
+
+        $createdWithInstitucion = inicios::query()
+            ->leftJoin('instituciones', 'inicios.id_institucion', '=', 'instituciones.id')
+            ->select(
+                'inicios.*',
+                'instituciones.Nombre as institucion_nombre',
+                'instituciones.Logo as institucion_logo'
+            )
+            ->where('inicios.id', '=', $created->id)
+            ->first();
+
+        return response()->json(['data' => $createdWithInstitucion ?? $created]);
     }
     
     public function show($id)
@@ -54,11 +71,18 @@ class IniciosController extends Controller
         $user = request()->user();
         $institucionId = $user ? ($user->instituciones_id ?? null) : null;
 
-        $query = inicios::where('id', '=', $id);
+        $query = inicios::query()
+            ->leftJoin('instituciones', 'inicios.id_institucion', '=', 'instituciones.id')
+            ->select(
+                'inicios.*',
+                'instituciones.Nombre as institucion_nombre',
+                'instituciones.Logo as institucion_logo'
+            )
+            ->where('inicios.id', '=', $id);
         if ($institucionId) {
             $query->where(function ($q) use ($institucionId) {
-                $q->whereNull('id_institucion')
-                  ->orWhere('id_institucion', $institucionId);
+                $q->whereNull('inicios.id_institucion')
+                  ->orWhere('inicios.id_institucion', $institucionId);
             });
         }
 
@@ -84,8 +108,18 @@ class IniciosController extends Controller
         }
 
         $query->update($data);
-        $updated = inicios::where('id', '=', $id)->first();
-        return response()->json(['data' => $updated]);
+        $updatedWithInstitucion = inicios::query()
+            ->leftJoin('instituciones', 'inicios.id_institucion', '=', 'instituciones.id')
+            ->select(
+                'inicios.*',
+                'instituciones.Nombre as institucion_nombre',
+                'instituciones.Logo as institucion_logo'
+            )
+            ->where('inicios.id', '=', $id)
+            ->first();
+
+        $fallbackUpdated = inicios::where('id', '=', $id)->first();
+        return response()->json(['data' => $updatedWithInstitucion ?? $fallbackUpdated]);
     }
     
     public function destroy($id)
