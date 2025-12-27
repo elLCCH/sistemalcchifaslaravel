@@ -1,0 +1,183 @@
+CONTEXTO DE USO DE LAS TABLAS DE BASE DE DATOS PARA EL PROYECTO SISTEMALCCHIFAS
+
+
+EN TODAS LAS TABLAS QUE TENGAN Estado[ACTIVO(tenerlo activado)/INACTIVO(quita la capacidad de hacerle click, o en algunos casos deshabilita el acceso)] y Visibilidad[VISIBLE(se muestra)/OCULTO(no se muestra)] es lo mismo.
+EN TODOS LOS ATRIBUTOS ESTOY TRATANDO DE PONER ENTRE '[]' LA INFORMACION QUE MAS O MENOS TENDRA ESE ATRIBUTO.
+EN AQUELLOS ATRIBUTOS QUE NO DOY CONTEXTO Y DICE 'NORMAL', SE ENTIENDE QUE SE PONE LA INFORMACION NOMAS
+
+
+- la tabla 'anios': permite crear las gestiones, tambien aca se decidirá si se bloqueará la modificacion de cierta informacion en otras tabla de esas gestiones
+Anio: aca se pondra el año [2022,2023,2024,2025,2025/1,2025/2]
+Estado: 
+Visibilidad:
+EdicionInscripciones: Se usara para permitir o no permitir la modificacion de la informacion de ese Anio (MODIFICAR INFORMACION DE INSCRIPCIONES ETC) [SE PERMITE, NO SE PERMITE]
+EdicionCalificaciones: Se usara para permitir o no permitir la modificacion de la informacion de ese Anio (MODIFICAR INFORMACION DE CALIFICACIONES ETC) [SE PERMITE, NO SE PERMITE]
+Predeterminado: es para hacer predeterminado ese Anio, seguramente en los demas componentes se tendra que cargar la informacion inicial y entonces por defecto tendra que cargarse esta gestion predeterminada, SOLO PUEDE EXISTIR un solo PREDETERMINADO y los demas seran SECUNDARIOS [PREDETERMINADO, SECUNDARIO]
+
+- la tabla 'instituciones': permite crear nuevas instituciones, debes saber que gracias a esta tabla podran inscluirse muchas mas instituciones.
+AnioIncorporacion: NORMAL
+NIT: NORMAL
+Nombre: NORMAL
+Logo: NORMAL
+BannerInicial: NORMAL
+ImagenVision: NORMAL
+ImagenMision: NORMAL
+Direccion: NORMAL
+UbicacionGps: NORMAL
+Telefono: NORMAL
+Celular: NORMAL
+Celular2: NORMAL
+Celular3: NORMAL
+Mision: NORMAL
+Vision: NORMAL
+Facebook: NORMAL
+Tiktok: NORMAL
+Instagram: NORMAL
+PlataformaEducativa: NORMAL
+Historia: NORMAL
+Funciones: NORMAL
+Caractisticas: NORMAL
+Estado: AL ESTAR INACTIVO NO PUEDE FUNCIONAR LA INSTITUCION
+Visibilidad: AL ESTAR OCULTO NO SE PODRA VISUALIZAR LA INFORMACION EN EL COMPONENTE inicios (que usa tambien la tabla inicios)
+
+- la tabla 'carreras': aca creamos las carreras, se puede crear una variedad de carreras, se guia mas que todo por su NombreCarrera y Resolucion
+instituciones_id: se relaciona con instituciones para que se sepa que la carrera es de esa institucion
+NombreCarrera: NORMAL
+Descripcion: NORMAL
+Area: NORMAL
+Mencion: NORMAL
+Resolucion: NORMAL
+Programa: NORMAL
+CantidadEvaluaciones: USADA PARA DETERMINAR CUANTAS EVALUACIONES SERAN ejemplo: si es por bimestres entonces sera 4 evaluaciones, si es trimestral entonces 3[3]. ESTE ATRIBUTO SE USARA PARA SABER CUANTAS EVALUACIONES SE USARAN AL MOMENTO DE CALIFICAR EN tabla calificaciones y sus registros de calificaciones de los docentes.
+Nivel: USADA PARA SABER SI LA CARRERA ES DE NIVEL [TÉCNICO SUPERIOR, CAPACITACIÓN]
+Capacitacion: NORMAL
+CarreraProfesional: NORMAL
+Modalidad: NORMAL
+Duracion: NORMAL
+HorasTotales: NORMAL
+TituloOficial: NORMAL, SE PONE EL TITULO QUE APARECERA CUANDO SALGA PROFESIONAL
+LimiteMaxTeorico: NORMAL
+LimiteMaxPractico: NORMAL
+NotaAprobacion: NORMAL
+NotaMinRevalida: NORMAL
+Estado: 
+Visibilidad: 
+
+-la tabla 'plandeestudios': aca creamos el plan de estudios de cada carrera 
+carreras_id: HACE REFERENCIA PARA SABER A QUE CARRERA PERTENECE EL DATO DE PLAN DE ESTUDIOS
+RangoLvlCurso: PARA PODER ORDENAR POR AÑOS DE ESTUDIO, EJEMPLO: primero superior seria de primer año entonces seria [1]
+Rango: SERIA PARA ORDENAR EL ORDEN DE LA MATERIA
+LvlCurso: PARA PONER LOS NIVELES [PRIMERO SUPERIOR, SEGUNDO SUPERIOR, TERCERO SUPERIOR]
+Horas: NORMAL
+anio_id: NORMAL
+ModoMateria: ES USADO PARA REGISTRAR EL MODO DE RELACION QUE TENDRÁ LA MATERIA CON LOS DOCENTES, SERA USADO PARA ASIGNACION DE DOCENTES [1 DOCENTE x MATERIA, MULTIPLES DOCENTES x MATERIA, MODO INSTRUMENTOS DE ESPECIALIDAD, MODO PRÁCTICA DE CONJUNTOS, MODO OTROS]
+NombreMateria: NORMAL
+SiglaMateria: NORMAL
+Prerrequisitos: NORMAL
+SiglasPrerrequisitos: NORMAL
+TipoMateria: NORMAL [PRÁCTICO, TEÓRICO]
+Periodo: ES UTILIZADO PARA HABILITAR LA EDICION DE CALIFICACIONES DE LAS EVALUACIONES QUE ESTEN ACÁ [PRIMERA EVALUACIÓN, SEGUNDA EVALUACIÓN, TERCERA EVALUACIÓN, CUARTA EVALUACIÓN, TODAS LAS EVALUACIONES, NINGUNA EVALUACIÓN]
+RelacionDocenteCursoAEstudiante: SERA PARA DETERMINAR COMO SE RELACIONARAN LOS DOCENTE ESTUDIANTE RESPECTO A LA MATERIA[1 DOCENTE ESPECIALIDAD x ESTUDIANTE,2 DOCENTES ESPECIALIDAD x ESTUDIANTE, 1 DOCENTE PC x ESTUDIANTE, 2 DOCENTES x ESTUDIANTE]
+
+-la tabla 'materias': aca creamos los paralelos, tambien ponemos su turno a cada materia
+plandeestudios_id: PARA QUE SE SEPA QUE ES PARTE DE ESE PLAN DE ESTUDIOS
+Paralelo: NORMAL
+EstadoHabilitacion: ACÁ TAMBIEN SE PUEDE [HABILITAR,DESHABILITAR, NULL] ES PARA QUE TAMBIEN DE MANERA INDIVIDUAL SE PUEDE PERMITIR LA EDICION DE CALIFICACIONES COMO EL 'periodo' solo que esto no es global
+EstadoEnvio: aca se registran aquellos docentes que enviaron su registro [ENVIADO POR <NAME>]
+
+-la tabla 'planteladministrativos' , 'planteldocentes', 'usuarioslcchs': no tienen misterio considero que todos los atributos son NORMAL
+PERO LOS ATRIBUTOS DE instituciones_id SERA PARA DETERMINAR QUE SON DOCENTES DE ESA INSTITUCION Y LOS ATRIBUTOS:
+Tipo: [DOCENTE COLABORADOR, DOCENTE, ...(DEPENDIENDO DE LA TABLA)] el colaborador podra ayudar seguramente a inscribir accediendo a algunas opciones en tiempos de inscripcion
+Cargo: [CATEDRATICO,...(DEPENDE DE LA TABLA)]
+Permisos: SERIAN LA DE PODER SOLO VISUALIZAR LA INFORMACION, MODIFICAR, TODOS LOS PERMISOS ETC. [VISUALIZACIÓN, EDICIÓN, ELIMINACIÓN,TODOS]
+
+-la tabla 'estudiantesifas': aca se registra la informacion personal de los estudiantes, solo se hace eso aca no se inscribe el estudiante solo se llena su informacion personal (seguramente haremos una pagina de inscripcion via web y su registro vendrá acá)
+Foto: NORMAL
+Ap_Paterno: NORMAL
+Ap_Materno: NORMAL
+Nombre: NORMAL
+Sexo: NORMAL [MASCULINO, FEMENINO]
+FechaNac: NORMAL FECHA DE NACIMIENTO
+Edad: NORMAL 
+CI: NORMAL [<NRO CARNET>]
+Expedido: NORMAL [OR,LP,SZ,...]
+Celular: NORMAL
+Direccion: NORMAL
+Correo: NORMAL
+Nombre_Padre: NORMAL
+Nombre_Madre: NORMAL
+OcupacionP: NORMAL 
+OcupacionM: NORMAL
+NumCelP: NORMAL
+NumCelM: NORMAL
+NColegio: NORMAL
+TipoColegio: NORMAL
+CGrado: NORMAL
+CNivel: NORMAL
+Usuario: NORMAL
+Contrasenia: NORMAL
+Estado: 
+Matricula: NORMAL
+InstrumentoMusical: NORMAL
+IntrumentoMusicalSecundario: NORMAL
+InformacionCompartidaIFAS: NORMAL
+
+- la tabla 'infoestudiantesifas': aca si se realiza su inscripcion de los estudiantes, esta acción solo pueden hacerlo los administrativos(seguramente haremos eso)
+estudiantesifas_id: SE RELACIONA PORQUE EL ESTUDIANTE TIENE SU INFORMACION PERSONAL
+planteldocadmins_id: ACA HACEMOS LA RELACION DEL DOCENTE DE ESPECIALIDAD CON EL QUE ESTARA INSCRITO EL ESTUDIANTE
+planteldocadmins_idPC: LO MISMO SI ES QUE DECIDEN USAR DOCENTE DE PRACTICA CONJUNTOS
+planteldocadmins_idOtros: LO MISMO SI NECESITAN OTRO PARA OTROS CASOS
+instituciones_id: PARA HACER SABER EN QUE INSTITUCION ESTA INSCRITO EL ESTUDIANTE
+FechInsc: NORMAL
+Verificacion: NORMAL
+Anotaciones: NORMAL
+Notas: NORMAL
+Observacion: NORMAL
+Categoria: ACA SE REGISTRA SI ES ESTUDIANTE [NUEVO, ANTIGUO]
+Turno: ACA SE REGISTRA A QUE TURNO QUIERE INSCRIBIRSE [MAÑANA, TARDE, NOCHE]
+Curso_Solicitado: ACA SE REGISTRA A QUE CURSO QUIERE INSCRIBIRSE [PRIMERO SUPERIOR, SEGUNDO SUPERIOR....]
+Paralelo_Solicitado: ACA SE REGISTRA A QUE PARALELO QUIERE INSCRIBIRSE [A,B,C---]
+CantidadMateriasAsignadas: ACA SE VEN LA CANTIDAD DE MATERIAS QUE TIENE ASIGNADO ACTUALMENTE (segun gestion y tabla calificaciones)
+InstrumentoMusical: NORMAL [PIANO,...]
+IntrumentoMusicalSecundario: [PIANO,...]
+
+- la tabla 'calificaciones': se usa para asignar materias a los estudiantes, como tambien poner sus calificaciones ya sea directamente o usando el registro de calificaciones (tablas: evaluaciones_materia, rubros_evaluacion, notas_rubro)
+infoestudiantesifas_id: PARA SABER QUE ESTUDIANTE
+materias_id: PARA SABER QUE MATERIA
+Teorico1: EVALUACIÓN TEÓRICA DE LA PRIMERA EVALUACIÓN
+Teorico2: EVALUACIÓN TEÓRICA DE LA SEGUNDA EVALUACIÓN
+Teorico3: EVALUACIÓN TEÓRICA DE LA TERCERA EVALUACIÓN
+Teorico4: EVALUACIÓN TEÓRICA DE LA CUARTA EVALUACIÓN
+Practico1: EVALUACIÓN PRÁCTICA DE LA PRIMERA EVALUACIÓN
+Practico2: EVALUACIÓN PRÁCTICA DE LA SEGUNDA EVALUACIÓN
+Practico3: EVALUACIÓN PRÁCTICA DE LA TERCERA EVALUACIÓN
+Practico4: EVALUACIÓN PRÁCTICA DE LA CUARTA EVALUACIÓN
+PromTeorico: PROMEDIO FINAL DE LA EVALUACIÓN TEÓRICA 
+PromPractico: PROMEDIO FINAL DE LA EVALUACIÓN PRÁCTICA
+Promedio: PROMEDIO FINAL
+PruebaRecuperacion: PRUEBA DE SEGUNDA INSTANCIA O REVALIDA DE LA MATERIA
+EstadoRegistroMateria: ACA SE PONE COMO SE ESTA REGISTRANDO EL ESTUDIANTE A ESTA MATERIA [REGULAR, CONVALIDADO,CORRELATIVO, ARRASTRE]
+
+- la tabla 'planteldocentesmaterias': se usa para asignar materias a los docentes
+planteldocentes_id: PARA SABER QUE DOCENTE
+materias_id: PARA SABER QUE MATERIA
+
+- la tabla 'pagoslcchs': se usa para registrar los pagos de mensualidades de los estudiantes, todo respecto a infoestudiantesifas, TODO ES NORMAL
+
+- la tabla 'controles': se usa para crear mas categorias en los formularios para los select , tambien tiene instituciones_id para que cada institucion pueda personalizar las categorias que le cargue en sus formularios, todos los atributos son NORMAL
+
+- la tabla 'inicios': se usa para personalizar la pagina principal del sistema web, ya sea banners, precios etc, depende de su categoria, todo es NORMAL
+
+- las tablas 'evaluaciones_materia', 'rubros_evaluacion' y 'notas_rubro' son parte del sistema de registro de calificaciones, aca todo es NORMAL excepto estos:
+limite_teorico y limite_practico seguramente no se usará porque esos parametros se recogera de tabla carreras
+
+ESTOS 2 SON PARTE DE LA VINCULACION DE CAMARA DEL CELULAR CON EL SISTEMA WEB
+- la tabla 'capture_pairings' se usa para emparejar el celular por qr
+- la tabla 'capture_sessions' se usa para recibir fotos del celular
+
+SISTEMA DE ARCHIVOS DEMO: ESTAS 4 TABLAS SON EL SISTEMA DE ARCHIVOS DEMO: artitles, attachments, sections y projects
+en si es parte del sistema de archivos demo, si funciona; pero nos basaremos en estos para crear nuestro propio seguramente luego.
+
+- la tabla 'historialinformacionestudiantes' esta tabla servirá para importar la informacion del anterior sistema a mi nuevo sistema, TODO ES NORMAL
+
+

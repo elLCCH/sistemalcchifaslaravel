@@ -13,9 +13,6 @@ class planteldocentesmaterias extends Model
     protected $fillable = [
         'planteldocentes_id',
         'materias_id',
-        'Paralelo',
-        'EstadoHabilitacion',
-        'EstadoEnvio',
     ];
     //
 }

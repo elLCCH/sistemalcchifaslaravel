@@ -26,6 +26,10 @@ class carreras extends Model
         'Duracion',
         'HorasTotales',
         'TituloOficial',
+        'LimiteMaxTeorico',
+        'LimiteMaxPractico',
+        'NotaAprobacion',
+        'NotaMinRevalida',
         'Estado',
         'Visibilidad',
     ];

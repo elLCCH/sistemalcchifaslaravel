@@ -19,8 +19,8 @@ class anios extends Model
         'Anio',
         'Estado',
         'Visibilidad',
-        'Rector',
-        'DirAcademico',
+        'EdicionInscripciones',
+        'EdicionCalificaciones',
         'Predeterminado',
     ];
 }
