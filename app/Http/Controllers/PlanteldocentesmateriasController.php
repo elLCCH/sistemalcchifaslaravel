@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use App\Models\planteldocentesmaterias;
@@ -9,7 +10,7 @@ use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\materias;
 use App\Models\planteldocentes;
 
-class PlantelDocentesMateriasController extends Controller
+class PlanteldocentesmateriasController extends Controller
 {
    public function __construct()
     {

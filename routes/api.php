@@ -17,7 +17,7 @@ use App\Http\Controllers\MateriasController;
 use App\Http\Controllers\PlanDeEstudiosController;
 use App\Http\Controllers\PlantelAdministrativosController;
 use App\Http\Controllers\PlantelDocentesController;
-use App\Http\Controllers\PlantelDocentesMateriasController;
+use App\Http\Controllers\PagoslcchController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -65,20 +65,36 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::resource('controles', ControlesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('estudiantesifas', EstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('historialinformacionestudiantes', HistorialInformacionEstudiantesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('infoestudiantesifas', InfoEstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
 
+    // IMPORTANTE: estas rutas deben ir ANTES del resource, para no ser capturadas por infoestudiantesifas/{id}
     // Obtener inscripciones/info por estudiante (para modal de Visualizar)
     Route::get('infoestudiantesifas/by-estudiante/{estudianteId}', [InfoEstudiantesIfasController::class, 'byEstudiante'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::get('infoestudiantesifas/pendientes-asignacion', [InfoEstudiantesIfasController::class, 'pendientesAsignacion'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    Route::resource('infoestudiantesifas', InfoEstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('inicios', IniciosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('materias', MateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::get('materias/by-info/{infoId}', [MateriasController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('plandeestudios', PlanDeEstudiosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('planteldocentes', PlantelDocentesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('planteldocentesmaterias', PlantelDocentesMateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::resource('planteldocentesmaterias', 'App\\Http\\Controllers\\PlanteldocentesmateriasController')->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    // ============================================================
+    // SISTEMA PAGOS LCCH (pagos mensuales por inscripción)
+    // ============================================================
+    Route::get('pagoslcch/gestiones-asignaciones', [PagoslcchController::class, 'gestionesAsignaciones'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
+    Route::get('pagoslcch', [PagoslcchController::class, 'index'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
+    Route::get('pagoslcch/by-info/{infoId}', [PagoslcchController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
+    Route::get('pagoslcch/deuda/by-info/{infoId}', [PagoslcchController::class, 'deudaByInfo'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
+    Route::get('pagoslcch/deudores', [PagoslcchController::class, 'deudores'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
+    Route::get('pagoslcch/{id}', [PagoslcchController::class, 'show'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
+    Route::post('pagoslcch', [PagoslcchController::class, 'store'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::put('pagoslcch/{id}', [PagoslcchController::class, 'update'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::delete('pagoslcch/{id}', [PagoslcchController::class, 'destroy'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 
     // Asignación 1-click docente <-> materia (por llaves)
-    Route::post('planteldocentesmaterias/assign', [PlantelDocentesMateriasController::class, 'assign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('planteldocentesmaterias/unassign', [PlantelDocentesMateriasController::class, 'unassign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('planteldocentesmaterias/assign', 'App\\Http\\Controllers\\PlanteldocentesmateriasController@assign')->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('planteldocentesmaterias/unassign', 'App\\Http\\Controllers\\PlanteldocentesmateriasController@unassign')->middleware([CheckAbilities::class . ':RECTOR(A)']);
 
     // Asignación 1-click estudiante(inscripción) <-> materia (usa calificaciones)
     Route::get('calificaciones/by-info/{infoId}', [CalificacionesController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
@@ -92,6 +108,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('calificaciones/assign-bulk-curso', [CalificacionesController::class, 'assignBulkCurso'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('calificaciones/assign-bulk-categoria', [CalificacionesController::class, 'assignBulkCategoria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('calificaciones/unassign-bulk-categoria', [CalificacionesController::class, 'unassignBulkCategoria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('calificaciones/assign-bulk-anio-resolucion', [CalificacionesController::class, 'assignBulkAnioResolucion'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('calificaciones/unassign-bulk-anio-resolucion', [CalificacionesController::class, 'unassignBulkAnioResolucion'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::post('calificaciones/unassign-all', [CalificacionesController::class, 'unassignAll'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 
     // Registro de calificaciones por rubros (docentes)

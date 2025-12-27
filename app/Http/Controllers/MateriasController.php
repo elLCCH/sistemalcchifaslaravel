@@ -16,8 +16,9 @@ class MateriasController extends Controller
     }
     //controllerPHPlcch materias, $
     //#region Inicio Controller de Crud PHP de materias
-    public function index()
+    public function index(Request $request)
     {
+        $user = $request->user();
         $query = materias::query()
             ->select([
             'materias.*',
@@ -34,8 +35,24 @@ class MateriasController extends Controller
             ->join('instituciones', 'carreras.instituciones_id', '=', 'instituciones.id')
             ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id');
 
-        if (request()->filled('instituciones_id')) {
-            $query->where('carreras.instituciones_id', request()->get('instituciones_id'));
+        // Por seguridad/volumen: si el usuario tiene institución, filtrar por esa institución
+        // a menos que se pida explícitamente otra (casos administrativos).
+        if ($request->filled('instituciones_id')) {
+            $query->where('carreras.instituciones_id', $request->get('instituciones_id'));
+        } elseif (!empty($user?->instituciones_id)) {
+            $query->where('carreras.instituciones_id', $user->instituciones_id);
+        }
+
+        // Filtros opcionales
+        $anioId = $request->query('anio_id');
+        $resolucion = trim((string) $request->query('resolucion', ''));
+
+        if ($anioId !== null && $anioId !== '' && (int) $anioId > 0) {
+            $query->where('plandeestudios.anio_id', (int) $anioId);
+        }
+
+        if ($resolucion !== '') {
+            $query->where('carreras.Resolucion', $resolucion);
         }
 
         $materias = $query->get();
@@ -74,6 +91,11 @@ class MateriasController extends Controller
             ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
             ->where('carreras.instituciones_id', $user->instituciones_id);
 
+        // NUEVO: filtros por Año (anios.id) y Resolución (carreras.Resolucion)
+        // Se priorizan estos filtros para evitar cargar demasiada información con el tiempo.
+        $anioId = $request->query('anio_id');
+        $resolucion = trim((string) $request->query('resolucion', ''));
+
         $all = (string) $request->query('all', '0');
         $modoAll = in_array(strtolower($all), ['1', 'true', 'si', 'yes'], true);
 
@@ -87,12 +109,26 @@ class MateriasController extends Controller
             return response()->json(['data' => $materias]);
         }
 
-        if (!empty($info->Curso_Solicitado)) {
-            $query->where('plandeestudios.LvlCurso', $info->Curso_Solicitado);
+        // Si se mandan filtros por anio/resolucion, se usan en lugar de Curso/Paralelo.
+        if ($anioId !== null && $anioId !== '' && (int) $anioId > 0) {
+            $query->where('plandeestudios.anio_id', (int) $anioId);
         }
 
-        if (!empty($info->Paralelo_Solicitado)) {
-            $query->where('materias.Paralelo', $info->Paralelo_Solicitado);
+        if ($resolucion !== '') {
+            $query->where('carreras.Resolucion', $resolucion);
+        }
+
+        $usaFiltrosAnioResolucion = ($anioId !== null && $anioId !== '' && (int) $anioId > 0) || ($resolucion !== '');
+
+        if (!$usaFiltrosAnioResolucion) {
+            // Comportamiento anterior: filtrar por curso/paralelo de la inscripción.
+            if (!empty($info->Curso_Solicitado)) {
+                $query->where('plandeestudios.LvlCurso', $info->Curso_Solicitado);
+            }
+
+            if (!empty($info->Paralelo_Solicitado)) {
+                $query->where('materias.Paralelo', $info->Paralelo_Solicitado);
+            }
         }
 
         $materias = $query

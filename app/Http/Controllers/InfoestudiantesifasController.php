@@ -192,6 +192,84 @@ class InfoestudiantesifasController extends Controller
         $infoestudiantesifas = $query->get();
         return response()->json(['data' => $infoestudiantesifas]);
     }
+
+    public function pendientesAsignacion(Request $request)
+    {
+        $perPage = (int) $request->query('per_page', 10);
+        if ($perPage < 1) {
+            $perPage = 10;
+        }
+        if ($perPage > 50) {
+            $perPage = 50;
+        }
+
+        $search = trim((string) $request->query('search', ''));
+
+        $user = request()->user();
+
+        // Subquery para mostrar gestión por asignaciones (si no hay asignaciones => SIN ASIGNAR)
+        $anioSubquery = "COALESCE((
+            SELECT MAX(a.Anio)
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+        ), 'SIN ASIGNAR')";
+
+        $query = infoestudiantesifas::query()
+            ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
+            ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
+            ->select([
+                'infoestudiantesifas.*',
+                'instituciones.Nombre as NombreInstitucion',
+                'estudiantesifas.Ap_Paterno',
+                'estudiantesifas.Ap_Materno',
+                'estudiantesifas.Nombre',
+                'estudiantesifas.CI',
+                'estudiantesifas.Matricula',
+                DB::raw($anioSubquery . " as Anio"),
+            ])
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            })
+            // Pendientes = sin ninguna asignación en calificaciones
+            ->whereNotExists(function ($qq) {
+                $qq->select(DB::raw(1))
+                    ->from('calificaciones as c')
+                    ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id');
+            })
+            ->when($search !== '', function ($q) use ($search) {
+                $like = '%' . $search . '%';
+                $q->where(function ($qq) use ($like) {
+                    $qq->where('estudiantesifas.Ap_Paterno', 'like', $like)
+                        ->orWhere('estudiantesifas.Ap_Materno', 'like', $like)
+                        ->orWhere('estudiantesifas.Nombre', 'like', $like)
+                        ->orWhere('estudiantesifas.CI', 'like', $like)
+                        ->orWhere('estudiantesifas.Matricula', 'like', $like)
+                        ->orWhere('instituciones.Nombre', 'like', $like)
+                        ->orWhere('infoestudiantesifas.Curso_Solicitado', 'like', $like)
+                        ->orWhere('infoestudiantesifas.Paralelo_Solicitado', 'like', $like)
+                        ->orWhere('infoestudiantesifas.Turno', 'like', $like);
+                });
+            })
+            ->orderByDesc('infoestudiantesifas.FechInsc')
+            ->orderByDesc('infoestudiantesifas.id');
+
+        $paginator = $query->paginate($perPage);
+
+        return response()->json([
+            'data' => $paginator->items(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+        ]);
+    }
     
     
     public function store(Request $request)

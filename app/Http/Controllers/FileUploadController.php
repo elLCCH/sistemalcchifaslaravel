@@ -48,6 +48,9 @@ class FileUploadController extends Controller
             case 'inicioscarouseles':
                 $path = $base . '/inicios/carouseles';
                 break;
+            case 'pagoslcchcomprobantes':
+                $path = $base . '/pagoslcch/comprobantes';
+                break;
             default:
                 return response()->json(['error' => 'Tipo de archivo no válido'], 400);
         }
