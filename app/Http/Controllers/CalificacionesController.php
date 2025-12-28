@@ -17,26 +17,75 @@ class CalificacionesController extends Controller
     {
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
-    //#region Inicio Controller de Crud PHP de calificaciones
-    public function index()
+
+    private function isSuperAdmin($user): bool
     {
-        $calificaciones = calificaciones::all();
-        return response()->json(['data' => $calificaciones]);
+        return !empty($user) && empty($user->instituciones_id);
+    }
+
+    private function getInstitucionIdFromInfo(int $infoId): ?int
+    {
+        $inst = infoestudiantesifas::query()
+            ->where('id', $infoId)
+            ->value('instituciones_id');
+
+        return $inst === null ? null : (int) $inst;
+    }
+
+    private function getInstitucionIdFromMateria(int $materiaId): ?int
+    {
+        $inst = DB::table('materias')
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('materias.id', $materiaId)
+            ->value('carreras.instituciones_id');
+
+        return $inst === null ? null : (int) $inst;
+    }
+    //#region Inicio Controller de Crud PHP de calificaciones
+    public function index(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            abort(404);
+        }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
+
+        $query = calificaciones::query();
+        if (!$isSuperAdmin) {
+            $query
+                ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
+                ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+                ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+                ->where('carreras.instituciones_id', $user->instituciones_id)
+                ->select(['calificaciones.*']);
+        } else {
+            $query->select(['calificaciones.*']);
+        }
+
+        return response()->json(['data' => $query->get()]);
     }
 
     public function byInfo(Request $request, $infoId)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
+        if (!$user) {
             abort(404);
         }
 
-        $exists = infoestudiantesifas::query()
-            ->where('id', $infoId)
-            ->where('instituciones_id', $user->instituciones_id)
-            ->exists();
+        $isSuperAdmin = $this->isSuperAdmin($user);
+        $infoId = (int) $infoId;
+        if ($infoId <= 0) {
+            abort(404);
+        }
 
-        if (!$exists) {
+        $infoInstitucionId = $this->getInstitucionIdFromInfo($infoId);
+        if (!$infoInstitucionId) {
+            abort(404);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             abort(404);
         }
 
@@ -46,7 +95,7 @@ class CalificacionesController extends Controller
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
             ->where('calificaciones.infoestudiantesifas_id', $infoId)
-            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $infoInstitucionId)
             ->select([
                 'calificaciones.*',
                 'materias.Paralelo as MateriaParalelo',
@@ -86,9 +135,11 @@ class CalificacionesController extends Controller
     public function bulkUpdate(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
@@ -114,10 +165,18 @@ class CalificacionesController extends Controller
 
         $info = infoestudiantesifas::query()
             ->where('id', $infoId)
-            ->where('instituciones_id', $user->instituciones_id)
             ->first();
 
         if (!$info) {
+            return response()->json(['message' => 'Inscripción no encontrada'], 404);
+        }
+
+        $infoInstitucionId = (int) ($info->instituciones_id ?? 0);
+        if ($infoInstitucionId <= 0) {
+            return response()->json(['message' => 'Inscripción inválida'], 422);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
         }
 
@@ -130,7 +189,7 @@ class CalificacionesController extends Controller
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('calificaciones.infoestudiantesifas_id', $infoId)
-            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $infoInstitucionId)
             ->whereIn('calificaciones.id', $ids)
             ->select(['calificaciones.*'])
             ->get()
@@ -218,9 +277,11 @@ class CalificacionesController extends Controller
     public function byMateria(Request $request, $materiaId)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
+        if (!$user) {
             abort(404);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $materiaId = (int) $materiaId;
         if ($materiaId <= 0) {
@@ -232,7 +293,6 @@ class CalificacionesController extends Controller
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
             ->where('materias.id', $materiaId)
-            ->where('carreras.instituciones_id', $user->instituciones_id)
             ->select([
                 'materias.id',
                 'materias.Paralelo as MateriaParalelo',
@@ -241,6 +301,7 @@ class CalificacionesController extends Controller
                 'plandeestudios.LvlCurso',
                 'anios.Anio',
                 'carreras.CantidadEvaluaciones',
+                'carreras.instituciones_id as instituciones_id',
             ])
             ->first();
 
@@ -248,10 +309,19 @@ class CalificacionesController extends Controller
             abort(404);
         }
 
+        $materiaInstitucionId = (int) ($materia->instituciones_id ?? 0);
+        if ($materiaInstitucionId <= 0) {
+            abort(404);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $materiaInstitucionId) {
+            abort(404);
+        }
+
         $docentes = DB::table('planteldocentesmaterias')
             ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
             ->where('planteldocentesmaterias.materias_id', $materiaId)
-            ->where('planteldocentes.instituciones_id', $user->instituciones_id)
+            ->where('planteldocentes.instituciones_id', $materiaInstitucionId)
             ->select([
                 'planteldocentes.id',
                 'planteldocentes.Nombres',
@@ -270,8 +340,8 @@ class CalificacionesController extends Controller
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
             ->where('calificaciones.materias_id', $materiaId)
-            ->where('carreras.instituciones_id', $user->instituciones_id)
-            ->where('infoestudiantesifas.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $materiaInstitucionId)
+            ->where('infoestudiantesifas.instituciones_id', $materiaInstitucionId)
             ->select([
                 'calificaciones.*',
                 'estudiantesifas.Ap_Paterno',
@@ -321,9 +391,11 @@ class CalificacionesController extends Controller
     public function bulkUpdateMateria(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'materias_id' => ['required', 'integer'],
@@ -347,14 +419,11 @@ class CalificacionesController extends Controller
             $avgEvalCount = 4;
         }
 
-        // Validar materia pertenece a institución
-        $materiaOk = materias::query()
-            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
-            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('materias.id', $materiaId)
-            ->where('carreras.instituciones_id', $user->instituciones_id)
-            ->exists();
-        if (!$materiaOk) {
+        $materiaInstitucionId = $this->getInstitucionIdFromMateria($materiaId);
+        if (!$materiaInstitucionId) {
+            return response()->json(['message' => 'Materia no encontrada'], 404);
+        }
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $materiaInstitucionId) {
             return response()->json(['message' => 'Materia no pertenece a la institución'], 403);
         }
 
@@ -366,7 +435,7 @@ class CalificacionesController extends Controller
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('calificaciones.materias_id', $materiaId)
-            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $materiaInstitucionId)
             ->whereIn('calificaciones.id', $ids)
             ->select(['calificaciones.*'])
             ->get()
@@ -448,31 +517,159 @@ class CalificacionesController extends Controller
     
     public function store(Request $request)
     {
-        $calificaciones = $request->all();
-        calificaciones::insert($calificaciones);
-        return response()->json(['data' => $calificaciones]);
+        $user = $request->user();
+        if (!$user) {
+            abort(404);
+        }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
+
+        $validated = $request->validate([
+            'infoestudiantesifas_id' => ['required', 'integer'],
+            'materias_id' => ['required', 'integer'],
+            'EstadoRegistroMateria' => ['nullable', 'string', 'max:50'],
+            'Teorico1' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Teorico2' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Teorico3' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Teorico4' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Practico1' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Practico2' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Practico3' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Practico4' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'PruebaRecuperacion' => ['nullable', 'integer', 'min:0', 'max:100'],
+        ]);
+
+        $infoId = (int) $validated['infoestudiantesifas_id'];
+        $materiaId = (int) $validated['materias_id'];
+
+        $infoInstitucionId = $this->getInstitucionIdFromInfo($infoId);
+        $materiaInstitucionId = $this->getInstitucionIdFromMateria($materiaId);
+
+        if (!$infoInstitucionId || !$materiaInstitucionId) {
+            return response()->json(['message' => 'Inscripción o materia no encontrada'], 404);
+        }
+
+        if ($infoInstitucionId !== $materiaInstitucionId) {
+            return response()->json(['message' => 'La inscripción y la materia pertenecen a instituciones distintas'], 403);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
+            return response()->json(['message' => 'Acceso no permitido'], 403);
+        }
+
+        $created = calificaciones::create($validated);
+        return response()->json(['data' => $created], 201);
     }
     
     public function show($id)
     {
-        $calificaciones = calificaciones::where('id','=',$id)->firstOrFail();
-        return response()->json(['data' => $calificaciones]);
+        $user = request()->user();
+        if (!$user) {
+            abort(404);
+        }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
+
+        $row = calificaciones::query()
+            ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
+            ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('calificaciones.id', (int) $id)
+            ->select([
+                'calificaciones.*',
+                'infoestudiantesifas.instituciones_id as info_instituciones_id',
+                'carreras.instituciones_id as materia_instituciones_id',
+            ])
+            ->first();
+
+        if (!$row) {
+            abort(404);
+        }
+
+        $infoInst = (int) ($row->info_instituciones_id ?? 0);
+        $matInst = (int) ($row->materia_instituciones_id ?? 0);
+        if ($infoInst <= 0 || $matInst <= 0 || $infoInst !== $matInst) {
+            abort(404);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== $infoInst) {
+            abort(404);
+        }
+
+        unset($row->info_instituciones_id, $row->materia_instituciones_id);
+        return response()->json(['data' => $row]);
     }
     
     
     public function update(Request $request)
     {
-        $calificaciones = $request->all();
-        calificaciones::where('id','=',$request->id)->update($calificaciones);
-        return response()->json(['data' => $calificaciones]);
+        $user = $request->user();
+        if (!$user) {
+            abort(404);
+        }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
+
+        $validated = $request->validate([
+            'id' => ['required', 'integer'],
+            'EstadoRegistroMateria' => ['nullable', 'string', 'max:50'],
+            'Teorico1' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Teorico2' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Teorico3' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Teorico4' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Practico1' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Practico2' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Practico3' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'Practico4' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'PruebaRecuperacion' => ['nullable', 'integer', 'min:0', 'max:100'],
+        ]);
+
+        $id = (int) $validated['id'];
+
+        $row = calificaciones::query()
+            ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
+            ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('calificaciones.id', $id)
+            ->select([
+                'calificaciones.id',
+                'infoestudiantesifas.instituciones_id as info_instituciones_id',
+                'carreras.instituciones_id as materia_instituciones_id',
+            ])
+            ->first();
+
+        if (!$row) {
+            abort(404);
+        }
+
+        $infoInst = (int) ($row->info_instituciones_id ?? 0);
+        $matInst = (int) ($row->materia_instituciones_id ?? 0);
+        if ($infoInst <= 0 || $matInst <= 0 || $infoInst !== $matInst) {
+            abort(404);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== $infoInst) {
+            abort(404);
+        }
+
+        $payload = $validated;
+        unset($payload['id']);
+
+        calificaciones::query()->where('id', $id)->update($payload);
+
+        return response()->json(['data' => ['updated' => true]]);
     }
 
     public function assign(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
@@ -485,10 +682,18 @@ class CalificacionesController extends Controller
 
         $info = infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
-            ->where('instituciones_id', $user->instituciones_id)
             ->first();
 
         if (!$info) {
+            return response()->json(['message' => 'Inscripción no encontrada'], 404);
+        }
+
+        $infoInstitucionId = (int) ($info->instituciones_id ?? 0);
+        if ($infoInstitucionId <= 0) {
+            return response()->json(['message' => 'Inscripción inválida'], 422);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
         }
 
@@ -496,16 +701,25 @@ class CalificacionesController extends Controller
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('materias.id', $validated['materias_id'])
-            ->where('carreras.instituciones_id', $user->instituciones_id)
             ->select([
                 'materias.id',
                 'materias.Paralelo',
                 'plandeestudios.LvlCurso',
+                'carreras.instituciones_id as instituciones_id',
             ])
             ->first();
 
         if (!$materiaRow) {
-            return response()->json(['message' => 'Materia no pertenece a la institución'], 403);
+            return response()->json(['message' => 'Materia no encontrada'], 404);
+        }
+
+        $materiaInstitucionId = (int) ($materiaRow->instituciones_id ?? 0);
+        if ($materiaInstitucionId <= 0) {
+            return response()->json(['message' => 'Materia inválida'], 422);
+        }
+
+        if ($materiaInstitucionId !== $infoInstitucionId) {
+            return response()->json(['message' => 'La materia no pertenece a la institución de la inscripción'], 403);
         }
 
         if (!$forzar) {
@@ -548,9 +762,11 @@ class CalificacionesController extends Controller
     public function unassign(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
@@ -559,11 +775,27 @@ class CalificacionesController extends Controller
 
         $info = infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
-            ->where('instituciones_id', $user->instituciones_id)
             ->first();
 
         if (!$info) {
+            return response()->json(['message' => 'Inscripción no encontrada'], 404);
+        }
+
+        $infoInstitucionId = (int) ($info->instituciones_id ?? 0);
+        if ($infoInstitucionId <= 0) {
+            return response()->json(['message' => 'Inscripción inválida'], 422);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
+        }
+
+        $materiaInstitucionId = $this->getInstitucionIdFromMateria((int) $validated['materias_id']);
+        if (!$materiaInstitucionId) {
+            return response()->json(['message' => 'Materia no encontrada'], 404);
+        }
+        if ((int) $materiaInstitucionId !== (int) $infoInstitucionId) {
+            return response()->json(['message' => 'La materia no pertenece a la institución de la inscripción'], 403);
         }
 
         DB::beginTransaction();
@@ -592,9 +824,11 @@ class CalificacionesController extends Controller
     public function assignBulkCurso(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
@@ -606,10 +840,17 @@ class CalificacionesController extends Controller
 
         $info = infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
-            ->where('instituciones_id', $user->instituciones_id)
             ->first();
 
         if (!$info) {
+            return response()->json(['message' => 'Inscripción no encontrada'], 404);
+        }
+
+        $infoInstitucionId = (int) ($info->instituciones_id ?? 0);
+        if ($infoInstitucionId <= 0) {
+            return response()->json(['message' => 'Inscripción inválida'], 422);
+        }
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
         }
 
@@ -623,7 +864,7 @@ class CalificacionesController extends Controller
         $materiasQuery = materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $infoInstitucionId)
             ->where('plandeestudios.LvlCurso', $curso)
             ->select(['materias.id', 'materias.Paralelo']);
 
@@ -681,9 +922,11 @@ class CalificacionesController extends Controller
     public function assignBulkCategoria(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
@@ -697,10 +940,17 @@ class CalificacionesController extends Controller
 
         $info = infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
-            ->where('instituciones_id', $user->instituciones_id)
             ->first();
 
         if (!$info) {
+            return response()->json(['message' => 'Inscripción no encontrada'], 404);
+        }
+
+        $infoInstitucionId = (int) ($info->instituciones_id ?? 0);
+        if ($infoInstitucionId <= 0) {
+            return response()->json(['message' => 'Inscripción inválida'], 422);
+        }
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
         }
 
@@ -714,7 +964,7 @@ class CalificacionesController extends Controller
         $materiasQuery = materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $infoInstitucionId)
             ->where('plandeestudios.LvlCurso', $curso)
             ->select(['materias.id', 'materias.Paralelo']);
 
@@ -784,9 +1034,11 @@ class CalificacionesController extends Controller
     public function unassignBulkCategoria(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
@@ -799,10 +1051,17 @@ class CalificacionesController extends Controller
 
         $info = infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
-            ->where('instituciones_id', $user->instituciones_id)
             ->first();
 
         if (!$info) {
+            return response()->json(['message' => 'Inscripción no encontrada'], 404);
+        }
+
+        $infoInstitucionId = (int) ($info->instituciones_id ?? 0);
+        if ($infoInstitucionId <= 0) {
+            return response()->json(['message' => 'Inscripción inválida'], 422);
+        }
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
         }
 
@@ -816,7 +1075,7 @@ class CalificacionesController extends Controller
         $materiasQuery = materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $infoInstitucionId)
             ->where('plandeestudios.LvlCurso', $curso)
             ->select(['materias.id', 'materias.Paralelo']);
 
@@ -863,9 +1122,11 @@ class CalificacionesController extends Controller
     public function assignBulkAnioResolucion(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
@@ -876,10 +1137,17 @@ class CalificacionesController extends Controller
 
         $info = infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
-            ->where('instituciones_id', $user->instituciones_id)
             ->first();
 
         if (!$info) {
+            return response()->json(['message' => 'Inscripción no encontrada'], 404);
+        }
+
+        $infoInstitucionId = (int) ($info->instituciones_id ?? 0);
+        if ($infoInstitucionId <= 0) {
+            return response()->json(['message' => 'Inscripción inválida'], 422);
+        }
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
         }
 
@@ -892,7 +1160,7 @@ class CalificacionesController extends Controller
         $materiasIds = materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $infoInstitucionId)
             ->where('plandeestudios.anio_id', $anioId)
             ->where('carreras.Resolucion', $resolucion)
             ->pluck('materias.id')
@@ -955,9 +1223,11 @@ class CalificacionesController extends Controller
     public function unassignBulkAnioResolucion(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
@@ -967,10 +1237,17 @@ class CalificacionesController extends Controller
 
         $info = infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
-            ->where('instituciones_id', $user->instituciones_id)
             ->first();
 
         if (!$info) {
+            return response()->json(['message' => 'Inscripción no encontrada'], 404);
+        }
+
+        $infoInstitucionId = (int) ($info->instituciones_id ?? 0);
+        if ($infoInstitucionId <= 0) {
+            return response()->json(['message' => 'Inscripción inválida'], 422);
+        }
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
         }
 
@@ -983,7 +1260,7 @@ class CalificacionesController extends Controller
         $materiasIds = materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('carreras.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $infoInstitucionId)
             ->where('plandeestudios.anio_id', $anioId)
             ->where('carreras.Resolucion', $resolucion)
             ->pluck('materias.id')
@@ -1024,9 +1301,11 @@ class CalificacionesController extends Controller
     public function unassignAll(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
 
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
@@ -1034,10 +1313,17 @@ class CalificacionesController extends Controller
 
         $info = infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
-            ->where('instituciones_id', $user->instituciones_id)
             ->first();
 
         if (!$info) {
+            return response()->json(['message' => 'Inscripción no encontrada'], 404);
+        }
+
+        $infoInstitucionId = (int) ($info->instituciones_id ?? 0);
+        if ($infoInstitucionId <= 0) {
+            return response()->json(['message' => 'Inscripción inválida'], 422);
+        }
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $infoInstitucionId) {
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
         }
 
@@ -1060,7 +1346,41 @@ class CalificacionesController extends Controller
     
     public function destroy($id)
     {
-        calificaciones::destroy($id);
+        $user = request()->user();
+        if (!$user) {
+            abort(404);
+        }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
+
+        $row = calificaciones::query()
+            ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
+            ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('calificaciones.id', (int) $id)
+            ->select([
+                'calificaciones.id',
+                'infoestudiantesifas.instituciones_id as info_instituciones_id',
+                'carreras.instituciones_id as materia_instituciones_id',
+            ])
+            ->first();
+
+        if (!$row) {
+            abort(404);
+        }
+
+        $infoInst = (int) ($row->info_instituciones_id ?? 0);
+        $matInst = (int) ($row->materia_instituciones_id ?? 0);
+        if ($infoInst <= 0 || $matInst <= 0 || $infoInst !== $matInst) {
+            abort(404);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== $infoInst) {
+            abort(404);
+        }
+
+        calificaciones::query()->where('id', (int) $id)->delete();
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de calificaciones

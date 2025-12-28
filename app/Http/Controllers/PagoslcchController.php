@@ -18,6 +18,7 @@ class PagoslcchController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $infoId = $request->query('infoestudiantesifas_id');
         $gestion = $request->query('gestion');
@@ -29,7 +30,7 @@ class PagoslcchController extends Controller
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
             ->addSelect(
                 'pagoslcch.*',
-                'instituciones.Nombre as NombreInstitucion',
+                $isSuperAdmin ? 'instituciones.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion'),
                 'estudiantesifas.Ap_Paterno',
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre'
@@ -81,6 +82,7 @@ class PagoslcchController extends Controller
     public function byInfo(int $infoId, Request $request)
     {
         $user = $request->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $query = Pagoslcch::query()
             ->join('infoestudiantesifas', 'pagoslcch.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
@@ -88,7 +90,7 @@ class PagoslcchController extends Controller
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
             ->addSelect(
                 'pagoslcch.*',
-                'instituciones.Nombre as NombreInstitucion',
+                $isSuperAdmin ? 'instituciones.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion'),
                 'estudiantesifas.Ap_Paterno',
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre'
@@ -306,7 +308,7 @@ class PagoslcchController extends Controller
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->select([
                 'infoestudiantesifas.*',
-                'instituciones.Nombre as NombreInstitucion',
+                DB::raw('NULL as NombreInstitucion'),
                 'estudiantesifas.Ap_Paterno',
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre',
@@ -410,7 +412,15 @@ class PagoslcchController extends Controller
 
     public function show($id)
     {
-        $pago = Pagoslcch::where('id', '=', $id)->firstOrFail();
+        $user = request()->user();
+        $pago = Pagoslcch::query()
+            ->join('infoestudiantesifas', 'pagoslcch.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
+            ->where('pagoslcch.id', '=', $id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            })
+            ->select('pagoslcch.*')
+            ->firstOrFail();
         return response()->json(['data' => $pago]);
     }
 
@@ -429,6 +439,19 @@ class PagoslcchController extends Controller
         ]);
 
         $user = $request->user();
+
+        // Verifica que el registro a actualizar pertenezca a la institución del usuario (si aplica)
+        if (!empty($user?->instituciones_id)) {
+            $belongs = DB::table('pagoslcch')
+                ->join('infoestudiantesifas', 'pagoslcch.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
+                ->where('pagoslcch.id', '=', $id)
+                ->where('infoestudiantesifas.instituciones_id', '=', $user->instituciones_id)
+                ->exists();
+            if (!$belongs) {
+                abort(404);
+            }
+        }
+
         if (!empty($user?->instituciones_id)) {
             $ok = DB::table('infoestudiantesifas')
                 ->where('id', $validated['infoestudiantesifas_id'])
@@ -445,7 +468,17 @@ class PagoslcchController extends Controller
 
     public function destroy($id)
     {
-        Pagoslcch::destroy($id);
+        $user = request()->user();
+        $pago = Pagoslcch::query()
+            ->join('infoestudiantesifas', 'pagoslcch.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
+            ->where('pagoslcch.id', '=', $id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            })
+            ->select('pagoslcch.id')
+            ->firstOrFail();
+
+        Pagoslcch::destroy($pago->id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
 }

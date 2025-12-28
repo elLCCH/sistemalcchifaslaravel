@@ -20,10 +20,23 @@ class PlanteldocentesController extends Controller
     {
         // $planteldocentes = planteldocentes::all();
         $user = request()->user();
-        $planteldocentes = \App\Models\planteldocentes::where('instituciones_id', $user->instituciones_id)->get();
-        foreach ($planteldocentes as $planteldocente) {
-            $institucion = \App\Models\instituciones::find($planteldocente->instituciones_id);
-            $planteldocente->NombreInstitucion = $institucion ? $institucion->Nombre : null;
+
+        $query = \App\Models\planteldocentes::query();
+        if (!empty($user?->instituciones_id)) {
+            $query->where('instituciones_id', $user->instituciones_id);
+        }
+
+        $planteldocentes = $query->get();
+
+        if (empty($user?->instituciones_id)) {
+            foreach ($planteldocentes as $planteldocente) {
+                $institucion = \App\Models\instituciones::find($planteldocente->instituciones_id);
+                $planteldocente->NombreInstitucion = $institucion ? $institucion->Nombre : null;
+            }
+        } else {
+            foreach ($planteldocentes as $planteldocente) {
+                $planteldocente->NombreInstitucion = null;
+            }
         }
         return response()->json(['data' => $planteldocentes]);
     }
@@ -43,7 +56,17 @@ class PlanteldocentesController extends Controller
     
     public function show($id)
     {
-        $planteldocentes = planteldocentes::where('id','=',$id)->firstOrFail();
+        $user = request()->user();
+        $planteldocentes = planteldocentes::query()
+            ->where('id', '=', $id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
+            ->firstOrFail();
+
+        if (!empty($user?->instituciones_id)) {
+            $planteldocentes->NombreInstitucion = null;
+        }
         return response()->json(['data' => $planteldocentes]);
     }
     
@@ -54,7 +77,13 @@ class PlanteldocentesController extends Controller
         // planteldocentes::where('id','=',$request->id)->update($planteldocentes);
         // return response()->json(['data' => $planteldocentes]);
 
-        $planteldocentes = planteldocentes::findOrFail($request->id);
+        $user = $request->user();
+        $planteldocentes = planteldocentes::query()
+            ->where('id', '=', $request->id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
+            ->firstOrFail();
         $requestData = $request->all();
 
         if ($request->has('Contrasenia')) {
@@ -70,12 +99,23 @@ class PlanteldocentesController extends Controller
         }
 
         $planteldocentes->update($requestData);
+
+        if (!empty($user?->instituciones_id)) {
+            $planteldocentes->NombreInstitucion = null;
+        }
         return response()->json(['data' => $planteldocentes]);
     }
     
     public function destroy($id)
     {
-        planteldocentes::destroy($id);
+        $user = request()->user();
+        $row = planteldocentes::query()
+            ->where('id', '=', $id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
+            ->firstOrFail();
+        $row->delete();
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de planteldocentes

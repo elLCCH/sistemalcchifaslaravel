@@ -52,6 +52,7 @@ class InfoestudiantesifasController extends Controller
         }
 
         $user = request()->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         // Subquery (mismo que en el select) para ordenar por Anio si se requiere
         $anioSubquery = "COALESCE((
@@ -92,7 +93,7 @@ class InfoestudiantesifasController extends Controller
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->select([
                 'infoestudiantesifas.*',
-                'instituciones.Nombre as NombreInstitucion',
+                $isSuperAdmin ? 'instituciones.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion'),
                 'estudiantesifas.Ap_Paterno',
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre',
@@ -163,13 +164,14 @@ class InfoestudiantesifasController extends Controller
     public function byEstudiante($estudianteId)
     {
         $user = request()->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $query = infoestudiantesifas::query()
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->select([
                 'infoestudiantesifas.*',
-                'instituciones.Nombre as NombreInstitucion',
+                $isSuperAdmin ? 'instituciones.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion'),
                 'estudiantesifas.Ap_Paterno',
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre',
@@ -206,6 +208,7 @@ class InfoestudiantesifasController extends Controller
         $search = trim((string) $request->query('search', ''));
 
         $user = request()->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         // Subquery para mostrar gestión por asignaciones (si no hay asignaciones => SIN ASIGNAR)
         $anioSubquery = "COALESCE((
@@ -222,7 +225,7 @@ class InfoestudiantesifasController extends Controller
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->select([
                 'infoestudiantesifas.*',
-                'instituciones.Nombre as NombreInstitucion',
+                $isSuperAdmin ? 'instituciones.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion'),
                 'estudiantesifas.Ap_Paterno',
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre',
@@ -285,21 +288,48 @@ class InfoestudiantesifasController extends Controller
     
     public function show($id)
     {
-        $infoestudiantesifas = infoestudiantesifas::where('id','=',$id)->firstOrFail();
+        $user = request()->user();
+        $infoestudiantesifas = infoestudiantesifas::query()
+            ->where('id', '=', $id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
+            ->firstOrFail();
         return response()->json(['data' => $infoestudiantesifas]);
     }
     
     
     public function update(Request $request)
     {
-        $infoestudiantesifas = $request->all();
-        infoestudiantesifas::where('id','=',$request->id)->update($infoestudiantesifas);
-        return response()->json(['data' => $infoestudiantesifas]);
+        $user = $request->user();
+
+        $row = infoestudiantesifas::query()
+            ->where('id', '=', $request->id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
+            ->firstOrFail();
+
+        $payload = $request->all();
+        if (!empty($user?->instituciones_id)) {
+            $payload['instituciones_id'] = $user->instituciones_id;
+        }
+
+        $row->update($payload);
+        return response()->json(['data' => $row]);
     }
     
     public function destroy($id)
     {
-        infoestudiantesifas::destroy($id);
+        $user = request()->user();
+        $row = infoestudiantesifas::query()
+            ->where('id', '=', $id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
+            ->firstOrFail();
+
+        $row->delete();
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de infoestudiantesifas

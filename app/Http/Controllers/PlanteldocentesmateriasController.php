@@ -20,14 +20,19 @@ class PlanteldocentesmateriasController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['data' => []]);
+        if (!$user) {
+            abort(401);
         }
+
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $query = planteldocentesmaterias::query()
             ->select('planteldocentesmaterias.*')
-            ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
-            ->where('planteldocentes.instituciones_id', $user->instituciones_id);
+            ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id');
+
+        if (!$isSuperAdmin) {
+            $query->where('planteldocentes.instituciones_id', $user->instituciones_id);
+        }
 
         if ($request->filled('planteldocentes_id')) {
             $query->where('planteldocentesmaterias.planteldocentes_id', $request->get('planteldocentes_id'));
@@ -44,14 +49,18 @@ class PlanteldocentesmateriasController extends Controller
     public function show(Request $request, $id)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            abort(404);
+        if (!$user) {
+            abort(401);
         }
+
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $row = planteldocentesmaterias::query()
             ->select('planteldocentesmaterias.*')
             ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
-            ->where('planteldocentes.instituciones_id', $user->instituciones_id)
+            ->when(!$isSuperAdmin, function ($q) use ($user) {
+                $q->where('planteldocentes.instituciones_id', $user->instituciones_id);
+            })
             ->where('planteldocentesmaterias.id', $id)
             ->firstOrFail();
 
@@ -61,13 +70,17 @@ class PlanteldocentesmateriasController extends Controller
     public function update(Request $request, $id)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            abort(404);
+        if (!$user) {
+            abort(401);
         }
+
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $assignment = planteldocentesmaterias::query()
             ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
-            ->where('planteldocentes.instituciones_id', $user->instituciones_id)
+            ->when(!$isSuperAdmin, function ($q) use ($user) {
+                $q->where('planteldocentes.instituciones_id', $user->instituciones_id);
+            })
             ->where('planteldocentesmaterias.id', $id)
             ->select('planteldocentesmaterias.*')
             ->firstOrFail();
@@ -81,13 +94,17 @@ class PlanteldocentesmateriasController extends Controller
     public function destroy(Request $request, $id)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            abort(404);
+        if (!$user) {
+            abort(401);
         }
+
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $deleted = planteldocentesmaterias::query()
             ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
-            ->where('planteldocentes.instituciones_id', $user->instituciones_id)
+            ->when(!$isSuperAdmin, function ($q) use ($user) {
+                $q->where('planteldocentes.instituciones_id', $user->instituciones_id);
+            })
             ->where('planteldocentesmaterias.id', $id)
             ->delete();
 
@@ -97,9 +114,11 @@ class PlanteldocentesmateriasController extends Controller
     public function assign(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            abort(401);
         }
+
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $validated = $request->validate([
             'planteldocentes_id' => ['required', 'integer'],
@@ -107,24 +126,36 @@ class PlanteldocentesmateriasController extends Controller
             'Paralelo' => ['nullable', 'string', 'max:50'],
         ]);
 
-        $docenteOk = planteldocentes::query()
+        $docenteInstitucionId = planteldocentes::query()
             ->where('id', $validated['planteldocentes_id'])
-            ->where('instituciones_id', $user->instituciones_id)
-            ->exists();
+            ->value('instituciones_id');
 
-        if (!$docenteOk) {
-            return response()->json(['message' => 'Docente no pertenece a la institución'], 403);
+        if (!$docenteInstitucionId) {
+            return response()->json(['message' => 'Docente no encontrado'], 404);
         }
 
-        $materiaOk = materias::query()
+        $materiaInstitucionId = materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('materias.id', $validated['materias_id'])
-            ->where('carreras.instituciones_id', $user->instituciones_id)
-            ->exists();
+            ->value('carreras.instituciones_id');
 
-        if (!$materiaOk) {
-            return response()->json(['message' => 'Materia no pertenece a la institución'], 403);
+        if (!$materiaInstitucionId) {
+            return response()->json(['message' => 'Materia no encontrada'], 404);
+        }
+
+        if (!$isSuperAdmin) {
+            if ((int) $docenteInstitucionId !== (int) $user->instituciones_id) {
+                return response()->json(['message' => 'Docente no pertenece a la institución'], 403);
+            }
+            if ((int) $materiaInstitucionId !== (int) $user->instituciones_id) {
+                return response()->json(['message' => 'Materia no pertenece a la institución'], 403);
+            }
+        } else {
+            // Superadmin: evitar asignaciones cruzadas entre instituciones
+            if ((int) $docenteInstitucionId !== (int) $materiaInstitucionId) {
+                return response()->json(['message' => 'Docente y materia pertenecen a instituciones distintas'], 422);
+            }
         }
 
         $assignment = planteldocentesmaterias::query()->firstOrCreate(
@@ -150,21 +181,26 @@ class PlanteldocentesmateriasController extends Controller
     public function unassign(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            abort(401);
         }
+
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $validated = $request->validate([
             'planteldocentes_id' => ['required', 'integer'],
             'materias_id' => ['required', 'integer'],
         ]);
 
-        $docenteOk = planteldocentes::query()
+        $docenteInstitucionId = planteldocentes::query()
             ->where('id', $validated['planteldocentes_id'])
-            ->where('instituciones_id', $user->instituciones_id)
-            ->exists();
+            ->value('instituciones_id');
 
-        if (!$docenteOk) {
+        if (!$docenteInstitucionId) {
+            return response()->json(['message' => 'Docente no encontrado'], 404);
+        }
+
+        if (!$isSuperAdmin && (int) $docenteInstitucionId !== (int) $user->instituciones_id) {
             return response()->json(['message' => 'Docente no pertenece a la institución'], 403);
         }
 

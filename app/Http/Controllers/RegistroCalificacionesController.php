@@ -17,16 +17,17 @@ class RegistrocalificacionesController extends Controller
     private function ensureMateriaInInstitucion(Request $request, int $materiaId): array
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
+        if (!$user) {
             abort(404);
         }
+
+        $isSuperAdmin = empty($user->instituciones_id);
 
         $materia = DB::table('materias')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
             ->where('materias.id', $materiaId)
-            ->where('carreras.instituciones_id', $user->instituciones_id)
             ->select([
                 'materias.id',
                 'materias.Paralelo as MateriaParalelo',
@@ -35,6 +36,7 @@ class RegistrocalificacionesController extends Controller
                 'plandeestudios.LvlCurso',
                 'anios.Anio',
                 'carreras.CantidadEvaluaciones',
+                'carreras.instituciones_id as instituciones_id',
             ])
             ->first();
 
@@ -42,10 +44,19 @@ class RegistrocalificacionesController extends Controller
             abort(404);
         }
 
+        $institucionId = (int) ($materia->instituciones_id ?? 0);
+        if ($institucionId <= 0) {
+            abort(404);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== $institucionId) {
+            abort(404);
+        }
+
         $avgEvalCount = (int) ($materia->CantidadEvaluaciones ?? 4);
         if ($avgEvalCount < 1 || $avgEvalCount > 4) $avgEvalCount = 4;
 
-        return [$user, $materia, $avgEvalCount];
+        return [$user, $materia, $avgEvalCount, $institucionId];
     }
 
     private function ensureEvaluacion(int $materiaId, int $numeroEval): object
@@ -101,9 +112,11 @@ class RegistrocalificacionesController extends Controller
     private function ensureRubroInInstitucion(Request $request, int $rubroId): object
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
+        if (!$user) {
             abort(404);
         }
+
+        $isSuperAdmin = empty($user->instituciones_id);
 
         $rubro = DB::table('rubros_evaluacion as r')
             ->join('evaluaciones_materia as e', 'e.id', '=', 'r.evaluacion_id')
@@ -111,23 +124,31 @@ class RegistrocalificacionesController extends Controller
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('r.id', $rubroId)
-            ->where('carreras.instituciones_id', $user->instituciones_id)
             ->select([
                 'r.*',
                 'e.materias_id',
                 'e.numero_eval',
                 'e.limite_teorico',
                 'e.limite_practico',
+                'carreras.instituciones_id as instituciones_id',
             ])
             ->first();
 
         if (!$rubro) abort(404);
+
+        $institucionId = (int) ($rubro->instituciones_id ?? 0);
+        if ($institucionId <= 0) abort(404);
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== $institucionId) {
+            abort(404);
+        }
+
         return $rubro;
     }
 
     public function index(Request $request, int $materiaId)
     {
-        [$user, $materia, $avgEvalCountFromMateria] = $this->ensureMateriaInInstitucion($request, $materiaId);
+        [$user, $materia, $avgEvalCountFromMateria, $institucionId] = $this->ensureMateriaInInstitucion($request, $materiaId);
 
         $numeroEval = (int) $request->query('eval', 1);
         if ($numeroEval < 1 || $numeroEval > 4) $numeroEval = 1;
@@ -156,8 +177,8 @@ class RegistrocalificacionesController extends Controller
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
             ->where('calificaciones.materias_id', $materiaId)
-            ->where('carreras.instituciones_id', $user->instituciones_id)
-            ->where('infoestudiantesifas.instituciones_id', $user->instituciones_id)
+            ->where('carreras.instituciones_id', $institucionId)
+            ->where('infoestudiantesifas.instituciones_id', $institucionId)
             ->select([
                 'calificaciones.*',
                 'estudiantesifas.Ap_Paterno',
@@ -213,8 +234,8 @@ class RegistrocalificacionesController extends Controller
     public function storeRubro(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
 
         $validated = $request->validate([
@@ -331,8 +352,8 @@ class RegistrocalificacionesController extends Controller
     public function updateEvaluacion(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
 
         $validated = $request->validate([
@@ -448,8 +469,8 @@ class RegistrocalificacionesController extends Controller
     public function bulkSave(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            return response()->json(['message' => 'Usuario sin institución'], 422);
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
         }
 
         $validated = $request->validate([
@@ -465,7 +486,7 @@ class RegistrocalificacionesController extends Controller
         $materiaId = (int) $validated['materias_id'];
         $numeroEval = (int) $validated['numero_eval'];
 
-        [, $materia, $avgEvalCountFromMateria] = $this->ensureMateriaInInstitucion($request, $materiaId);
+        [, $materia, $avgEvalCountFromMateria, $institucionId] = $this->ensureMateriaInInstitucion($request, $materiaId);
         $avgEvalCount = (int) ($validated['avg_eval_count'] ?? $avgEvalCountFromMateria);
         if ($avgEvalCount < 1 || $avgEvalCount > 4) $avgEvalCount = $avgEvalCountFromMateria;
 
@@ -479,6 +500,24 @@ class RegistrocalificacionesController extends Controller
             ->keyBy('id');
 
         $items = $validated['items'];
+
+        // Validar que todos los infoestudiantesifas_id pertenecen a la misma institución y a esta materia
+        $infoIds = collect($items)->pluck('infoestudiantesifas_id')->unique()->map(fn ($v) => (int) $v)->values();
+        if ($infoIds->count() === 0) {
+            return response()->json(['message' => 'items vacío'], 422);
+        }
+
+        $allowedInfoCount = DB::table('calificaciones')
+            ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
+            ->where('calificaciones.materias_id', $materiaId)
+            ->where('infoestudiantesifas.instituciones_id', $institucionId)
+            ->whereIn('infoestudiantesifas.id', $infoIds)
+            ->distinct('infoestudiantesifas.id')
+            ->count('infoestudiantesifas.id');
+
+        if ($allowedInfoCount !== $infoIds->count()) {
+            return response()->json(['message' => 'Uno o más estudiantes no pertenecen a la institución/materia'], 403);
+        }
 
         DB::beginTransaction();
         try {
@@ -501,7 +540,7 @@ class RegistrocalificacionesController extends Controller
                 );
             }
 
-            $infoIds = collect($items)->pluck('infoestudiantesifas_id')->unique()->values();
+            $infoIds = $infoIds;
 
             $colTeo = 'Teorico' . $numeroEval;
             $colPra = 'Practico' . $numeroEval;

@@ -27,11 +27,23 @@ class PlanteladministrativosController extends Controller
     {
         // $planteladministrativos = planteladministrativos::all();
         $user = request()->user();
-        $planteladministrativos = \App\Models\planteladministrativos::where('instituciones_id', $user->instituciones_id)->get();
+        $query = \App\Models\planteladministrativos::query();
+        if (!empty($user?->instituciones_id)) {
+            $query->where('instituciones_id', $user->instituciones_id);
+        }
 
-        foreach ($planteladministrativos as $planteladministrativo) {
-            $institucion = \App\Models\instituciones::find($planteladministrativo->instituciones_id);
-            $planteladministrativo->NombreInstitucion = $institucion ? $institucion->Nombre : null;
+        $planteladministrativos = $query->get();
+
+        // NombreInstitucion solo para superadmin (usuarioslcchs)
+        if (empty($user?->instituciones_id)) {
+            foreach ($planteladministrativos as $planteladministrativo) {
+                $institucion = \App\Models\instituciones::find($planteladministrativo->instituciones_id);
+                $planteladministrativo->NombreInstitucion = $institucion ? $institucion->Nombre : null;
+            }
+        } else {
+            foreach ($planteladministrativos as $planteladministrativo) {
+                $planteladministrativo->NombreInstitucion = null;
+            }
         }
         return response()->json(['data' => $planteladministrativos]);
     }
@@ -53,7 +65,17 @@ class PlanteladministrativosController extends Controller
     
     public function show($id)
     {
-        $planteladministrativos = planteladministrativos::where('id','=',$id)->firstOrFail();
+        $user = request()->user();
+        $planteladministrativos = planteladministrativos::query()
+            ->where('id', '=', $id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
+            ->firstOrFail();
+
+        if (!empty($user?->instituciones_id)) {
+            $planteladministrativos->NombreInstitucion = null;
+        }
         return response()->json(['data' => $planteladministrativos]);
     }
     
@@ -63,7 +85,13 @@ class PlanteladministrativosController extends Controller
         // $planteladministrativos = $request->all();
         // planteladministrativos::where('id','=',$request->id)->update($planteladministrativos);
         // return response()->json(['data' => $planteladministrativos]);
-        $administrativo = planteladministrativos::findOrFail($request->id);
+        $user = $request->user();
+        $administrativo = planteladministrativos::query()
+            ->where('id', '=', $request->id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
+            ->firstOrFail();
         $requestData = $request->all();
 
         if ($request->has('Contrasenia')) {
@@ -79,12 +107,23 @@ class PlanteladministrativosController extends Controller
         }
 
         $administrativo->update($requestData);
+
+        if (!empty($user?->instituciones_id)) {
+            $administrativo->NombreInstitucion = null;
+        }
         return response()->json(['data' => $administrativo]);
     }
     
     public function destroy($id)
     {
-        planteladministrativos::destroy($id);
+        $user = request()->user();
+        $row = planteladministrativos::query()
+            ->where('id', '=', $id)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
+            ->firstOrFail();
+        $row->delete();
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de planteladministrativos

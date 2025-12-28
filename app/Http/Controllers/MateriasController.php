@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\materias;
 use App\Models\infoestudiantesifas;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
@@ -19,6 +20,7 @@ class MateriasController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
         $query = materias::query()
             ->select([
             'materias.*',
@@ -27,7 +29,7 @@ class MateriasController extends Controller
             'plandeestudios.LvlCurso',
             'carreras.Resolucion',
             'carreras.NombreCarrera',
-            'instituciones.Nombre as NombreInstitucion',
+            $isSuperAdmin ? 'instituciones.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion'),
             'anios.Anio',
             ])
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
@@ -63,14 +65,23 @@ class MateriasController extends Controller
     public function byInfo(Request $request, $infoId)
     {
         $user = $request->user();
-        if (!$user || !$user->instituciones_id) {
-            abort(404);
+        if (!$user) {
+            abort(401);
         }
+
+        $isSuperAdmin = empty($user?->instituciones_id);
 
         $info = infoestudiantesifas::query()
             ->where('id', $infoId)
-            ->where('instituciones_id', $user->instituciones_id)
+            ->when(!$isSuperAdmin, function ($q) use ($user) {
+                $q->where('instituciones_id', $user->instituciones_id);
+            })
             ->firstOrFail();
+
+        $institucionId = (int) ($info->instituciones_id ?? 0);
+        if ($institucionId <= 0) {
+            abort(404);
+        }
 
         $query = materias::query()
             ->select([
@@ -82,14 +93,14 @@ class MateriasController extends Controller
                 'plandeestudios.Rango',
                 'carreras.Resolucion',
                 'carreras.NombreCarrera',
-                'instituciones.Nombre as NombreInstitucion',
+                DB::raw('NULL as NombreInstitucion'),
                 'anios.Anio',
             ])
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->join('instituciones', 'carreras.instituciones_id', '=', 'instituciones.id')
             ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
-            ->where('carreras.instituciones_id', $user->instituciones_id);
+            ->where('carreras.instituciones_id', $institucionId);
 
         // NUEVO: filtros por Año (anios.id) y Resolución (carreras.Resolucion)
         // Se priorizan estos filtros para evitar cargar demasiada información con el tiempo.
