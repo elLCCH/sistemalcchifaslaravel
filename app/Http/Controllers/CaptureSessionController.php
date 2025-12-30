@@ -57,7 +57,7 @@ class CaptureSessionController extends Controller
         }
 
         // Si expiró y sigue pendiente, marcarla como EXPIRED
-        if ($session->status === 'PENDING' && now()->greaterThan($session->expires_at)) {
+        if (str_starts_with($session->status, 'PENDING') && now()->greaterThan($session->expires_at)) {
             $session->status = 'EXPIRED';
             $session->save();
         }
@@ -87,6 +87,21 @@ class CaptureSessionController extends Controller
             return response()->json(['data' => ['status' => $session->status]]);
         }
 
+        // Si ya se subió la foto, NO la borres: la PC todavía puede necesitarla para guardar.
+        if ($session->status === 'UPLOADED') {
+            return response()->json([
+                'data' => [
+                    'status' => $session->status,
+                    'file_path' => $session->file_path,
+                ]
+            ], 200);
+        }
+
+        // Solo permitir cancelar/borrar si sigue pendiente
+        if (!str_starts_with($session->status, 'PENDING')) {
+            return response()->json(['data' => ['status' => $session->status]]);
+        }
+
         // Si ya se subió algo, borrarlo para no dejar basura
         if ($session->file_path && is_string($session->file_path)) {
             $filePath = str_replace('\\', '/', $session->file_path);
@@ -110,7 +125,7 @@ class CaptureSessionController extends Controller
             return response()->json(['error' => 'Sesión no encontrada'], 404);
         }
 
-        if ($session->status !== 'PENDING') {
+        if (!str_starts_with($session->status, 'PENDING')) {
             return response()->json(['error' => 'Sesión no disponible'], 409);
         }
 
@@ -132,7 +147,9 @@ class CaptureSessionController extends Controller
         }
 
         $base = 'archivos/institucion' . $session->institucion_id;
-        $path = $base . '/FotosPerfiles';
+        $path = $session->status === 'PENDING_PAGOS'
+            ? ($base . '/pagoslcch/pagosunicosgestiones')
+            : ($base . '/FotosPerfiles');
 
         if (!File::exists(public_path($path))) {
             File::makeDirectory(public_path($path), 0755, true, true);

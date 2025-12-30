@@ -116,9 +116,6 @@ CNivel: NORMAL
 Usuario: NORMAL
 Contrasenia: NORMAL
 Estado: 
-Matricula: NORMAL
-InstrumentoMusical: NORMAL
-IntrumentoMusicalSecundario: NORMAL
 InformacionCompartidaIFAS: NORMAL
 
 - la tabla 'infoestudiantesifas': aca si se realiza su inscripcion de los estudiantes, esta acción solo pueden hacerlo los administrativos(seguramente haremos eso)
@@ -132,6 +129,7 @@ Verificacion: NORMAL
 Anotaciones: NORMAL
 Notas: NORMAL
 Observacion: NORMAL
+Matricula: NORMAL
 Categoria: ACA SE REGISTRA SI ES ESTUDIANTE [NUEVO, ANTIGUO]
 Turno: ACA SE REGISTRA A QUE TURNO QUIERE INSCRIBIRSE [MAÑANA, TARDE, NOCHE]
 Curso_Solicitado: ACA SE REGISTRA A QUE CURSO QUIERE INSCRIBIRSE [PRIMERO SUPERIOR, SEGUNDO SUPERIOR....]
@@ -139,6 +137,7 @@ Paralelo_Solicitado: ACA SE REGISTRA A QUE PARALELO QUIERE INSCRIBIRSE [A,B,C---
 CantidadMateriasAsignadas: ACA SE VEN LA CANTIDAD DE MATERIAS QUE TIENE ASIGNADO ACTUALMENTE (segun gestion y tabla calificaciones)
 InstrumentoMusical: NORMAL [PIANO,...]
 IntrumentoMusicalSecundario: [PIANO,...]
+FotoPago: NORMAL
 
 - la tabla 'calificaciones': se usa para asignar materias a los estudiantes, como tambien poner sus calificaciones ya sea directamente o usando el registro de calificaciones (tablas: evaluaciones_materia, rubros_evaluacion, notas_rubro)
 infoestudiantesifas_id: PARA SABER QUE ESTUDIANTE

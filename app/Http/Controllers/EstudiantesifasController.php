@@ -27,6 +27,10 @@ class EstudiantesifasController extends Controller
         }
 
         $search = trim((string) $request->query('search', ''));
+        $searchMode = strtolower(trim((string) $request->query('search_mode', 'all')));
+        if (!in_array($searchMode, ['any', 'all'], true)) {
+            $searchMode = 'all';
+        }
         $sortBy = (string) $request->query('sort_by', 'id');
         $sortDir = strtolower((string) $request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
 
@@ -37,7 +41,6 @@ class EstudiantesifasController extends Controller
             'Nombre',
             'CI',
             'Expedido',
-            'Matricula',
             'Sexo',
             'Edad',
             'Estado',
@@ -47,15 +50,57 @@ class EstudiantesifasController extends Controller
         }
 
         $query = estudiantesifas::query()
-            ->when($search !== '', function ($q) use ($search) {
-                $q->where(function ($qq) use ($search) {
-                    $like = '%' . $search . '%';
+            ->when($search !== '', function ($q) use ($search, $searchMode) {
+                $tokens = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                $tokens = array_values(array_filter(array_unique(array_map('trim', $tokens))));
+                if (count($tokens) === 0) return;
+
+                $applyToken = function ($qq, string $like) {
                     $qq->where('Ap_Paterno', 'like', $like)
                         ->orWhere('Ap_Materno', 'like', $like)
                         ->orWhere('Nombre', 'like', $like)
                         ->orWhere('CI', 'like', $like)
-                        ->orWhere('Matricula', 'like', $like);
-                });
+                        ->orWhere('Expedido', 'like', $like)
+                        ->orWhere('Sexo', 'like', $like)
+                        ->orWhere('Estado', 'like', $like)
+                        ->orWhere('Celular', 'like', $like)
+                        ->orWhere('Direccion', 'like', $like)
+                        ->orWhere('Correo', 'like', $like)
+                        ->orWhere('Nombre_Padre', 'like', $like)
+                        ->orWhere('Nombre_Madre', 'like', $like)
+                        ->orWhere('OcupacionP', 'like', $like)
+                        ->orWhere('OcupacionM', 'like', $like)
+                        ->orWhere('NumCelP', 'like', $like)
+                        ->orWhere('NumCelM', 'like', $like)
+                        ->orWhere('NColegio', 'like', $like)
+                        ->orWhere('TipoColegio', 'like', $like)
+                        ->orWhere('CGrado', 'like', $like)
+                        ->orWhere('CNivel', 'like', $like)
+                        ->orWhere('Usuario', 'like', $like)
+                        ->orWhere('InformacionCompartidaIFAS', 'like', $like);
+                };
+
+                if ($searchMode === 'any') {
+                    // OR por tokens: si coincide cualquier token en cualquier campo, entra.
+                    $q->where(function ($outer) use ($tokens, $applyToken) {
+                        foreach ($tokens as $tok) {
+                            if ($tok === '') continue;
+                            $like = '%' . $tok . '%';
+                            $outer->orWhere(function ($qq) use ($like, $applyToken) {
+                                $applyToken($qq, $like);
+                            });
+                        }
+                    });
+                } else {
+                    // AND por tokens: cada token debe aparecer en algún campo.
+                    foreach ($tokens as $tok) {
+                        if ($tok === '') continue;
+                        $like = '%' . $tok . '%';
+                        $q->where(function ($qq) use ($like, $applyToken) {
+                            $applyToken($qq, $like);
+                        });
+                    }
+                }
             })
             ->orderBy($sortBy, $sortDir);
 

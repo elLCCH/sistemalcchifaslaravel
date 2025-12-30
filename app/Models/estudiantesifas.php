@@ -38,8 +38,6 @@ class estudiantesifas extends Authenticatable
         'Contrasenia',
         'Estado',
         'Matricula',
-        'InstrumentoMusical',
-        'IntrumentoMusicalSecundario',
         'InformacionCompartidaIFAS',
     ];
     //

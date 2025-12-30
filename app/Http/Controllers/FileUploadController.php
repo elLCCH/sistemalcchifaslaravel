@@ -30,6 +30,9 @@ class FileUploadController extends Controller
             case 'Foto':
                 $path = $base . '/FotosPerfiles';
                 break;
+            case 'pagosAnualesUnicos':
+                $path = $base . '/pagoslcch/pagosunicosgestiones';
+                break;
             case 'Logo':
                 $path = $base . '/logo';
                 break;

@@ -26,6 +26,8 @@ class infoestudiantesifas extends Model
         'Curso_Solicitado',
         'Paralelo_Solicitado',
         'CantidadMateriasAsignadas',
+        'InstrumentoMusical',
+        'InstrumentoMusicalSecundario',
     ];
     //
 }

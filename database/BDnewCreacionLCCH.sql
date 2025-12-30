@@ -68,7 +68,7 @@ CREATE OR REPLACE TABLE carreras (
     Mencion VARCHAR(50) NULL,
     Resolucion VARCHAR(50) NULL,
     Programa VARCHAR(50) NULL,
-    CantidadEvaluaciones INT NULL, -- PARA DETERMINAR CUANTAS EVALUACIONES SE TENDRA DURANTE EL AÑO DEPENDIENDO SI ES ANUAL O SEMESTRAL
+    CantidadEvaluaciones VARCHAR(50) NULL, -- PARA DETERMINAR CUANTAS EVALUACIONES SE TENDRA DURANTE EL AÑO DEPENDIENDO SI ES ANUAL O SEMESTRAL
     Nivel VARCHAR(50) NULL, -- TECNICO SUPERIOR, CAPACITACION
     Capacitacion VARCHAR(50) NULL, -- PARA AQUELLAS INSTITUCIONES Q MANEJAN MUY APARTE SUS ESTUDIANTES PEQUEÑOS
     CarreraProfesional VARCHAR(50) NULL, -- PARA AQUELLAS INSTITUCIONES Q MANEJAN MUY APARTE SUS ESTUDIANTES GRANDES
@@ -76,10 +76,10 @@ CREATE OR REPLACE TABLE carreras (
     Duracion VARCHAR(50) NULL,
     HorasTotales VARCHAR(50) NULL,
     TituloOficial VARCHAR(100) NULL,
-    LimiteMaxTeorico INT NULL,
-    LimiteMaxPractico INT NULL,
-    NotaAprobacion INT NULL,
-    NotaMinRevalida INT NULL,
+    LimiteMaxTeorico INT, NULL,
+    LimiteMaxPractico INT, NULL,
+    NotaAprobacion INT, NULL,
+    NotaMinRevalida INT, NULL,
     Estado VARCHAR(10) NULL,
     Visibilidad VARCHAR(10) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
@@ -202,9 +202,6 @@ CREATE OR REPLACE TABLE estudiantesifas (
     Usuario VARCHAR(50) NULL, -- INFORMACION DE IFA
     Contrasenia VARCHAR(500) NULL,
     Estado VARCHAR(10) NULL,
-    Matricula VARCHAR(25) NULL,
-    InstrumentoMusical VARCHAR(100) NULL,
-    IntrumentoMusicalSecundario VARCHAR(100) NULL,
     InformacionCompartidaIFAS TEXT NULL,
 
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
@@ -223,13 +220,15 @@ CREATE OR REPLACE TABLE infoestudiantesifas (
     Anotaciones TEXT NULL,
     Notas TEXT NULL,
     Observacion TEXT NULL,
+    Matricula VARCHAR(30) NULL,
     Categoria VARCHAR(50) NULL, -- ANTIGUO, NUEVO, TRANSFERIDO
     Turno VARCHAR(20) NULL, -- MAÑANA, TARDE, NOCHE
     Curso_Solicitado VARCHAR(60) NULL, -- PRIMERO SUPERIOR, SEGUNDO SUPERIOR, TERCERO SUPERIOR
     Paralelo_Solicitado VARCHAR(5) NULL, -- A, B, C
     CantidadMateriasAsignadas INT NULL,
     InstrumentoMusical VARCHAR(100) NULL,
-    IntrumentoMusicalSecundario VARCHAR(100) NULL,
+    InstrumentoMusicalSecundario VARCHAR(100) NULL,
+    FotoPago VARCHAR(250) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (estudiantesifas_id) REFERENCES estudiantesifas(id) ON UPDATE CASCADE ON DELETE CASCADE,

@@ -34,6 +34,82 @@ class ControlesController extends Controller
     }
     //controllerPHPlcch controles, $
     //#region Inicio Controller de Crud PHP de controles
+
+    /**
+     * Devuelve opciones de select para múltiples categorías en una sola petición.
+     * GET /api/controles/options-bulk?categorias=SEXO,EXPEDIDO,ESTADO
+     * o /api/controles/options-bulk?categorias[]=SEXO&categorias[]=ESTADO
+     */
+    public function optionsBulk(Request $request)
+    {
+        $user = request()->user();
+
+        $raw = $request->query('categorias', []);
+        $categorias = [];
+
+        if (is_array($raw)) {
+            $categorias = $raw;
+        } else {
+            $rawStr = (string) $raw;
+            $categorias = preg_split('/\s*,\s*/', $rawStr, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        }
+
+        $categorias = array_values(array_unique(array_filter(array_map(function ($c) {
+            $v = $this->upperTrim((string) $c);
+            return ($v === '') ? null : $v;
+        }, $categorias))));
+
+        if (count($categorias) === 0) {
+            return response()->json(['data' => []]);
+        }
+
+        $query = controles::query();
+
+        // mismo scope que index(): global (NULL) + institucional (si aplica)
+        if (!empty($user?->instituciones_id)) {
+            $query->where(function ($q) use ($user) {
+                $q->whereNull('instituciones_id')
+                    ->orWhere('instituciones_id', $user->instituciones_id);
+            });
+        } else {
+            $query->whereNull('instituciones_id');
+        }
+
+        $rows = $query
+            ->whereIn('Categoria', $categorias)
+            ->orderBy('Categoria')
+            ->orderBy('ParaI')
+            ->get();
+
+        $data = [];
+        foreach ($categorias as $cat) {
+            $data[$cat] = [];
+        }
+
+        foreach ($rows as $row) {
+            $cat = (string) ($row->Categoria ?? '');
+            if (!array_key_exists($cat, $data)) {
+                $data[$cat] = [];
+            }
+
+            $vis = $this->upperTrim((string) ($row->Visibilidad ?? ''));
+            if ($vis !== 'VISIBLE') {
+                continue;
+            }
+
+            $estado = $this->upperTrim((string) ($row->Estado ?? ''));
+            $paraI = (string) ($row->ParaI ?? '');
+
+            $data[$cat][] = [
+                'value' => $paraI,
+                'label' => $paraI,
+                'disabled' => ($estado !== 'ACTIVO'),
+            ];
+        }
+
+        return response()->json(['data' => $data]);
+    }
+
     public function index(Request $request)
     {
         $user = request()->user();

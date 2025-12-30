@@ -11,6 +11,52 @@ use Illuminate\Support\Str;
 
 class CapturePairingController extends Controller
 {
+    private const INACTIVITY_SECONDS = 15 * 60; // 15 minutos
+
+    private function expireIfInactive(CapturePairing $pairing): void
+    {
+        if (in_array($pairing->status, ['REVOKED', 'EXPIRED'], true)) {
+            return;
+        }
+
+        if ($pairing->status !== 'LINKED') {
+            return;
+        }
+
+        $reference = $pairing->last_seen_at ?: $pairing->linked_at;
+        if (!$reference) {
+            return;
+        }
+
+        if ($reference->lessThan(now()->subSeconds(self::INACTIVITY_SECONDS))) {
+            $pairing->status = 'EXPIRED';
+            $pairing->pending_capture_token = null;
+            $pairing->save();
+        }
+    }
+
+    private function isLinkActive(CapturePairing $pairing): bool
+    {
+        if ($pairing->status !== 'LINKED') {
+            return false;
+        }
+
+        if (!$pairing->last_seen_at) {
+            return false;
+        }
+
+        return $pairing->last_seen_at->greaterThanOrEqualTo(now()->subSeconds(self::INACTIVITY_SECONDS));
+    }
+
+    private function effectiveStatus(CapturePairing $pairing): string
+    {
+        if ($pairing->status === 'LINKED' && !$this->isLinkActive($pairing)) {
+            return 'PENDING';
+        }
+
+        return $pairing->status;
+    }
+
     public function store(Request $request)
     {
         $user = $request->user();
@@ -60,10 +106,15 @@ class CapturePairingController extends Controller
             $pairing->save();
         }
 
+        $this->expireIfInactive($pairing);
+        $pairing->refresh();
+
+        $status = $this->effectiveStatus($pairing);
+
         return response()->json([
             'data' => [
                 'token' => $pairing->token,
-                'status' => $pairing->status,
+                'status' => $status,
                 'device_label' => $pairing->device_label,
                 'linked_at' => $pairing->linked_at,
                 'last_seen_at' => $pairing->last_seen_at,
@@ -125,6 +176,15 @@ class CapturePairingController extends Controller
             return response()->json(['error' => 'Vinculación no encontrada'], 404);
         }
 
+        $this->expireIfInactive($pairing);
+        $pairing->refresh();
+
+        if ($pairing->status === 'EXPIRED') {
+            $pairing->pending_capture_token = null;
+            $pairing->save();
+            return response()->json(['error' => 'Vinculación expirada'], 410);
+        }
+
         if ($pairing->status !== 'LINKED') {
             return response()->json([
                 'data' => [
@@ -166,8 +226,8 @@ class CapturePairingController extends Controller
             ]);
         }
 
-        if ($session->status !== 'PENDING' || now()->greaterThan($session->expires_at)) {
-            if ($session->status === 'PENDING' && now()->greaterThan($session->expires_at)) {
+        if (!str_starts_with($session->status, 'PENDING') || now()->greaterThan($session->expires_at)) {
+            if (str_starts_with($session->status, 'PENDING') && now()->greaterThan($session->expires_at)) {
                 $session->status = 'EXPIRED';
                 $session->save();
             }
@@ -206,10 +266,6 @@ class CapturePairingController extends Controller
             return response()->json(['error' => 'No autorizado'], 403);
         }
 
-        if ($pairing->status !== 'LINKED') {
-            return response()->json(['error' => 'Celular no vinculado'], 409);
-        }
-
         if ($pairing->expires_at && now()->greaterThan($pairing->expires_at)) {
             $pairing->status = 'EXPIRED';
             $pairing->pending_capture_token = null;
@@ -217,14 +273,29 @@ class CapturePairingController extends Controller
             return response()->json(['error' => 'Vinculación expirada'], 410);
         }
 
+        $this->expireIfInactive($pairing);
+        $pairing->refresh();
+
+        if ($pairing->status === 'EXPIRED') {
+            $pairing->pending_capture_token = null;
+            $pairing->save();
+            return response()->json(['error' => 'Vinculación expirada'], 410);
+        }
+
+        if ($pairing->status !== 'LINKED' || !$this->isLinkActive($pairing)) {
+            return response()->json(['error' => 'Celular no vinculado'], 409);
+        }
+
         $validated = $request->validate([
             'estudianteifas_id' => ['nullable', 'integer'],
+            // Para decidir en qué carpeta se guardará el archivo (sin migraciones)
+            'capture_kind' => ['nullable', 'string', 'in:Foto,pagosAnualesUnicos'],
         ]);
 
         // Si ya existe una captura pendiente válida, devolverla
         if ($pairing->pending_capture_token) {
             $existing = CaptureSession::where('token', '=', $pairing->pending_capture_token)->first();
-            if ($existing && $existing->status === 'PENDING' && now()->lessThanOrEqualTo($existing->expires_at)) {
+            if ($existing && str_starts_with($existing->status, 'PENDING') && now()->lessThanOrEqualTo($existing->expires_at)) {
                 return response()->json([
                     'data' => [
                         'token' => $existing->token,
@@ -240,12 +311,15 @@ class CapturePairingController extends Controller
         $captureToken = Str::random(64);
         $expiresAt = now()->addMinutes(10);
 
+        $kind = $validated['capture_kind'] ?? null;
+        $initialStatus = $kind === 'pagosAnualesUnicos' ? 'PENDING_PAGOS' : 'PENDING';
+
         $session = CaptureSession::create([
             'token' => $captureToken,
             'institucion_id' => $institucionId,
             'user_id' => $user?->id,
             'estudianteifas_id' => $validated['estudianteifas_id'] ?? null,
-            'status' => 'PENDING',
+            'status' => $initialStatus,
             'file_path' => null,
             'expires_at' => $expiresAt,
         ]);
@@ -287,7 +361,9 @@ class CapturePairingController extends Controller
             return response()->json(['data' => ['status' => 'OK']]);
         }
 
-        if (!in_array($session->status, ['CANCELLED', 'EXPIRED'], true)) {
+        // Solo cancelar/borrar si la sesión sigue pendiente.
+        // Si ya está UPLOADED, NO tocar el archivo (la PC lo usará al guardar).
+        if ($session->status === 'PENDING') {
             if ($session->file_path && is_string($session->file_path)) {
                 $filePath = str_replace('\\', '/', $session->file_path);
                 if (str_starts_with($filePath, 'archivos/') && File::exists(public_path($filePath))) {
@@ -301,5 +377,49 @@ class CapturePairingController extends Controller
         }
 
         return response()->json(['data' => ['status' => 'OK']]);
+    }
+
+    // Público: el celular (best-effort) revoca la vinculación al cerrar.
+    public function revoke(string $token, Request $request)
+    {
+        $pairing = CapturePairing::where('token', '=', $token)->first();
+        if (!$pairing) {
+            return response()->json(['error' => 'Vinculación no encontrada'], 404);
+        }
+
+        if (in_array($pairing->status, ['EXPIRED'], true)) {
+            return response()->json(['data' => ['status' => $pairing->status]]);
+        }
+
+        // Limpiar captura pendiente si existiera
+        $pending = $pairing->pending_capture_token;
+        $pairing->pending_capture_token = null;
+        $pairing->status = 'PENDING';
+        $pairing->device_label = null;
+        $pairing->linked_at = null;
+        $pairing->last_seen_at = null;
+        $pairing->save();
+
+        if ($pending) {
+            $session = CaptureSession::where('token', '=', $pending)->first();
+            // Solo cancelar/borrar si la sesión sigue pendiente.
+            if ($session && $session->status === 'PENDING') {
+                if ($session->file_path && is_string($session->file_path)) {
+                    $filePath = str_replace('\\', '/', $session->file_path);
+                    if (str_starts_with($filePath, 'archivos/') && File::exists(public_path($filePath))) {
+                        File::delete(public_path($filePath));
+                    }
+                }
+                $session->status = 'CANCELLED';
+                $session->file_path = null;
+                $session->save();
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'status' => $pairing->status,
+            ]
+        ]);
     }
 }

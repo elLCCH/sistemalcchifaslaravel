@@ -62,6 +62,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::resource('calificaciones', CalificacionesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
 
     Route::resource('carreras', CarrerasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // opciones bulk (debe ir ANTES del resource para no ser capturado por controles/{id})
+    Route::get('controles/options-bulk', [ControlesController::class, 'optionsBulk'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('controles', ControlesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('estudiantesifas', EstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('historialinformacionestudiantes', HistorialInformacionEstudiantesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
@@ -70,9 +72,16 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Obtener inscripciones/info por estudiante (para modal de Visualizar)
     Route::get('infoestudiantesifas/by-estudiante/{estudianteId}', [InfoEstudiantesIfasController::class, 'byEstudiante'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::get('infoestudiantesifas/pendientes-asignacion', [InfoEstudiantesIfasController::class, 'pendientesAsignacion'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::get('infoestudiantesifas/estadisticas', [InfoEstudiantesIfasController::class, 'estadisticas'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 
     Route::resource('infoestudiantesifas', InfoEstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('inicios', IniciosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
+    // modificar materias de forma grupal
+    Route::put('materias/bulk/paralelo', [MateriasController::class, 'bulkUpdateParalelo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('materias/bulk/agregar', [MateriasController::class, 'bulkAddCursoParalelo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    Route::post('materias/bulk/eliminar', [MateriasController::class, 'bulkDeleteCursoParalelo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+
     Route::resource('materias', MateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::get('materias/by-info/{infoId}', [MateriasController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
     Route::resource('plandeestudios', PlanDeEstudiosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
@@ -142,6 +151,7 @@ Route::post('capture-sessions/{token}/upload', [CaptureSessionController::class,
 // Vinculación pública (celular) por token
 Route::post('capture-pairings/{token}/link', [CapturePairingController::class, 'link']);
 Route::get('capture-pairings/{token}/pending-capture', [CapturePairingController::class, 'pendingCapture']);
+Route::post('capture-pairings/{token}/revoke', [CapturePairingController::class, 'revoke']);
 
 
 

@@ -38,6 +38,42 @@ class PlanteldocentesmateriasController extends Controller
             $query->where('planteldocentesmaterias.planteldocentes_id', $request->get('planteldocentes_id'));
         }
 
+        // Filtros opcionales: Año/Resolución (global para el asignador)
+        $anioId = $request->query('anio_id');
+        $resolucion = trim((string) $request->query('resolucion', ''));
+
+        $filtraPorAnio = ($anioId !== null && $anioId !== '' && (int) $anioId > 0);
+        $filtraPorResolucion = ($resolucion !== '');
+        $filtraPorInstitucion = $request->filled('instituciones_id') || !$isSuperAdmin;
+
+        if ($filtraPorAnio || $filtraPorResolucion || $filtraPorInstitucion) {
+            $query
+                ->join('materias', 'planteldocentesmaterias.materias_id', '=', 'materias.id')
+                ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+                ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id');
+
+            if ($filtraPorAnio) {
+                $query->where('plandeestudios.anio_id', (int) $anioId);
+            }
+
+            if ($filtraPorResolucion) {
+                $query->where('carreras.Resolucion', $resolucion);
+            }
+
+            $institucionId = null;
+            if (!$isSuperAdmin) {
+                $institucionId = (int) $user->instituciones_id;
+            } elseif ($request->filled('instituciones_id')) {
+                $institucionId = (int) $request->get('instituciones_id');
+            }
+
+            if (!empty($institucionId)) {
+                // Restringir por institución para que el conteo sea coherente
+                $query->where('carreras.instituciones_id', $institucionId);
+                $query->where('planteldocentes.instituciones_id', $institucionId);
+            }
+        }
+
         return response()->json(['data' => $query->get()]);
     }
 
@@ -155,6 +191,60 @@ class PlanteldocentesmateriasController extends Controller
             // Superadmin: evitar asignaciones cruzadas entre instituciones
             if ((int) $docenteInstitucionId !== (int) $materiaInstitucionId) {
                 return response()->json(['message' => 'Docente y materia pertenecen a instituciones distintas'], 422);
+            }
+        }
+
+        // Validaciones por ModoMateria (reglas de asignación)
+        $modoMateria = materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->where('materias.id', $validated['materias_id'])
+            ->value('plandeestudios.ModoMateria');
+
+        $modoNorm = mb_strtoupper(trim((string) $modoMateria), 'UTF-8');
+
+        $esInstrumentoEspecialidad = (str_contains($modoNorm, 'INSTRUMENT') && str_contains($modoNorm, 'ESPECIAL'));
+        if ($esInstrumentoEspecialidad) {
+            return response()->json([
+                'message' => 'NO ES NECESARIO ASIGNAR MATERIAS DE INSTRUMENTO DE ESPECIALIDAD PORQUE LA DETECCION DE ESTUDIANTES SE HACE AUTOMATICO DESDE INSCRIPCIONES DE ESTUDIANTES.'
+            ], 422);
+        }
+
+        $esPracticaConjuntos = (
+            (str_contains($modoNorm, 'PRACTICA') || str_contains($modoNorm, 'PRÁCTICA'))
+            && str_contains($modoNorm, 'CONJUNTO')
+        );
+        if ($esPracticaConjuntos) {
+            return response()->json([
+                'message' => 'NO ES NECESARIO ASIGNAR MATERIAS DE PRÁCTICA DE CONJUNTOS PORQUE LA DETECCION DE ESTUDIANTES SE HACE AUTOMATICO DESDE INSCRIPCIONES DE ESTUDIANTES.'
+            ], 422);
+        }
+
+        $esUnDocentePorMateria = (str_contains($modoNorm, '1') && str_contains($modoNorm, 'DOCENTE'));
+        if ($esUnDocentePorMateria) {
+            $otrosAsignados = planteldocentesmaterias::query()
+                ->where('materias_id', $validated['materias_id'])
+                ->where('planteldocentes_id', '!=', $validated['planteldocentes_id'])
+                ->exists();
+
+            if ($otrosAsignados) {
+                $nombres = planteldocentesmaterias::query()
+                    ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
+                    ->where('planteldocentesmaterias.materias_id', $validated['materias_id'])
+                    ->select(['planteldocentes.id', 'planteldocentes.Nombres', 'planteldocentes.Apellidos'])
+                    ->get()
+                    ->map(function ($d) {
+                        $nombre = trim(((string) ($d->Nombres ?? '') . ' ' . (string) ($d->Apellidos ?? '')));
+                        return $nombre !== '' ? $nombre : ('#' . (string) $d->id);
+                    })
+                    ->filter()
+                    ->values()
+                    ->implode(', ');
+
+                $msg = 'No se puede asignar: esta materia es "1 DOCENTE x MATERIA" y ya tiene docente asignado.';
+                if (!empty($nombres)) {
+                    $msg .= ' Docente(s): ' . $nombres;
+                }
+                return response()->json(['message' => $msg], 422);
             }
         }
 
