@@ -68,6 +68,7 @@ class MateriasController extends Controller
 
     public function byInfo(Request $request, $infoId)
     {
+        //OBTENER MATERIAS SEGUN INFOESTUDIANTESIFAS
         $user = $request->user();
         if (!$user) {
             abort(401);

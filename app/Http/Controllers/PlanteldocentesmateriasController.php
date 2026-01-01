@@ -9,7 +9,6 @@ use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\materias;
 use App\Models\planteldocentes;
-
 class PlanteldocentesmateriasController extends Controller
 {
    public function __construct()

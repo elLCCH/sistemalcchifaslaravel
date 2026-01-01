@@ -52,7 +52,7 @@ CREATE OR REPLACE TABLE instituciones (
     PlataformaEducativa VARCHAR(100) NULL,
     Historia TEXT NULL,
     Funciones VARCHAR(250) NULL,
-    Caractisticas VARCHAR(250) NULL,
+    Caractisticas VARCHAR(50) NULL,
     Estado VARCHAR(10) NULL,
     Visibilidad VARCHAR(10) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,

@@ -17,6 +17,7 @@ use App\Http\Controllers\MateriasController;
 use App\Http\Controllers\PlanDeEstudiosController;
 use App\Http\Controllers\PlantelAdministrativosController;
 use App\Http\Controllers\PlantelDocentesController;
+use App\Http\Controllers\PlanteldocentesmateriasController;
 use App\Http\Controllers\PagoslcchController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -47,104 +48,222 @@ Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como e
 
 
 Route::middleware(['auth:sanctum'])->group(function () {
-    //planteladministrativos
-    Route::get('/planteladministrativos', [PlantelAdministrativosController::class, 'index'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
-    Route::get('/planteladministrativos/{id}', [PlantelAdministrativosController::class, 'show'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
-    Route::post('/planteladministrativos', [PlantelAdministrativosController::class, 'store'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::put('/planteladministrativos/{id}', [PlantelAdministrativosController::class, 'update'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::delete('/planteladministrativos/{id}', [PlantelAdministrativosController::class, 'destroy'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // =========================
+    // AniosController
+    // =========================
+    Route::get('/anios', [AniosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
+    Route::get('/anios/{id}', [AniosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
+    Route::post('/anios', [AniosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR']);
+    Route::put('/anios/{id}', [AniosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
+    Route::delete('/anios/{id}', [AniosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR']);
+    
+    // =========================
+    // usuarioslcchsController
+    // =========================
+    Route::get('/usuarioslcchs', [usuarioslcchsController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
+    Route::get('/usuarioslcchs/{id}', [usuarioslcchsController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
+    Route::post('/usuarioslcchs', [usuarioslcchsController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR']);
+    Route::put('/usuarioslcchs/{id}', [usuarioslcchsController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR']);
+    Route::delete('/usuarioslcchs/{id}', [usuarioslcchsController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR']);
+    
+    // =========================
+    // InstitucionesController
+    // =========================
+    Route::get('/instituciones', [InstitucionesController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
+    Route::get('/instituciones/{id}', [InstitucionesController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
+    Route::post('/instituciones', [InstitucionesController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR']);
+    Route::put('/instituciones/{id}', [InstitucionesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR']);
+    Route::delete('/instituciones/{id}', [InstitucionesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR']);
 
 
+    // =========================
+    // AuthController
+    // =========================
+    // (No routes in this block)
 
-    Route::resource('usuarioslcchs', usuarioslcchsController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('anios', AniosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('instituciones', InstitucionesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('calificaciones', CalificacionesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // =========================
+    // CalificacionesController
+    // =========================
+    Route::get('/calificaciones', [CalificacionesController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::get('/calificaciones/{id}', [CalificacionesController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::post('/calificaciones', [CalificacionesController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::put('/calificaciones/{id}', [CalificacionesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+    Route::delete('/calificaciones/{id}', [CalificacionesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::get('calificaciones/by-info/{infoId}', [CalificacionesController::class, 'byInfo'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::post('calificaciones/bulk-update', [CalificacionesController::class, 'bulkUpdate'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+    Route::get('calificaciones/by-materia/{materiaId}', [CalificacionesController::class, 'byMateria'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::post('calificaciones/bulk-update-materia', [CalificacionesController::class, 'bulkUpdateMateria'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+    Route::post('calificaciones/assign', [CalificacionesController::class, 'assign'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::post('calificaciones/unassign', [CalificacionesController::class, 'unassign'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::post('calificaciones/assign-bulk-curso', [CalificacionesController::class, 'assignBulkCurso'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::post('calificaciones/assign-bulk-categoria', [CalificacionesController::class, 'assignBulkCategoria'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::post('calificaciones/unassign-bulk-categoria', [CalificacionesController::class, 'unassignBulkCategoria'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::post('calificaciones/assign-bulk-anio-resolucion', [CalificacionesController::class, 'assignBulkAnioResolucion'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::post('calificaciones/unassign-bulk-anio-resolucion', [CalificacionesController::class, 'unassignBulkAnioResolucion'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::post('calificaciones/unassign-all', [CalificacionesController::class, 'unassignAll'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
 
-    Route::resource('carreras', CarrerasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    // opciones bulk (debe ir ANTES del resource para no ser capturado por controles/{id})
-    Route::get('controles/options-bulk', [ControlesController::class, 'optionsBulk'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('controles', ControlesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('estudiantesifas', EstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('historialinformacionestudiantes', HistorialInformacionEstudiantesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // =========================
+    // CarrerasController
+    // =========================
+    Route::get('/carreras', [CarrerasController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A)']);
+    Route::get('/carreras/{id}', [CarrerasController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::post('/carreras', [CarrerasController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::put('/carreras/{id}', [CarrerasController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::delete('/carreras/{id}', [CarrerasController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
 
-    // IMPORTANTE: estas rutas deben ir ANTES del resource, para no ser capturadas por infoestudiantesifas/{id}
-    // Obtener inscripciones/info por estudiante (para modal de Visualizar)
-    Route::get('infoestudiantesifas/by-estudiante/{estudianteId}', [InfoEstudiantesIfasController::class, 'byEstudiante'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::get('infoestudiantesifas/pendientes-asignacion', [InfoEstudiantesIfasController::class, 'pendientesAsignacion'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::get('infoestudiantesifas/estadisticas', [InfoEstudiantesIfasController::class, 'estadisticas'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // =========================
+    // ControlesController
+    // =========================
+    Route::get('controles/options-bulk', [ControlesController::class, 'optionsBulk'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE']);
+    Route::get('/controles', [ControlesController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::get('/controles/{id}', [ControlesController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::post('/controles', [ControlesController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::put('/controles/{id}', [ControlesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::delete('/controles/{id}', [ControlesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
 
-    Route::resource('infoestudiantesifas', InfoEstudiantesIfasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('inicios', IniciosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // =========================
+    // EstudiantesIfasController
+    // =========================
+    Route::get('/estudiantesifas', [EstudiantesIfasController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE']);
+    Route::get('/estudiantesifas/{id}', [EstudiantesIfasController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE']);
+    Route::post('/estudiantesifas', [EstudiantesIfasController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES']);
+    Route::put('/estudiantesifas/{id}', [EstudiantesIfasController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_DE_TALLERES']);
+    Route::delete('/estudiantesifas/{id}', [EstudiantesIfasController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES']);
 
-    // modificar materias de forma grupal
-    Route::put('materias/bulk/paralelo', [MateriasController::class, 'bulkUpdateParalelo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('materias/bulk/agregar', [MateriasController::class, 'bulkAddCursoParalelo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('materias/bulk/eliminar', [MateriasController::class, 'bulkDeleteCursoParalelo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // =========================
+    // HistorialInformacionEstudiantesController
+    // =========================
+    Route::get('/historialinformacionestudiantes', [HistorialInformacionEstudiantesController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::get('/historialinformacionestudiantes/{id}', [HistorialInformacionEstudiantesController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::post('/historialinformacionestudiantes', [HistorialInformacionEstudiantesController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR']);
+    Route::put('/historialinformacionestudiantes/{id}', [HistorialInformacionEstudiantesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR']);
+    Route::delete('/historialinformacionestudiantes/{id}', [HistorialInformacionEstudiantesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR']);
 
-    Route::resource('materias', MateriasController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::get('materias/by-info/{infoId}', [MateriasController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('plandeestudios', PlanDeEstudiosController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('planteldocentes', PlantelDocentesController::class)->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::resource('planteldocentesmaterias', 'App\\Http\\Controllers\\PlanteldocentesmateriasController')->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // =========================
+    // InfoEstudiantesIfasController
+    // =========================
+    Route::get('infoestudiantesifas/by-estudiante/{estudianteId}', [InfoEstudiantesIfasController::class, 'byEstudiante'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::get('infoestudiantesifas/pendientes-asignacion', [InfoEstudiantesIfasController::class, 'pendientesAsignacion'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::get('infoestudiantesifas/estadisticas', [InfoEstudiantesIfasController::class, 'estadisticas'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::get('/infoestudiantesifas', [InfoEstudiantesIfasController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::get('/infoestudiantesifas/{id}', [InfoEstudiantesIfasController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::post('/infoestudiantesifas', [InfoEstudiantesIfasController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA']);
+    Route::put('/infoestudiantesifas/{id}', [InfoEstudiantesIfasController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,']);
+    Route::delete('/infoestudiantesifas/{id}', [InfoEstudiantesIfasController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+
+    // =========================
+    // IniciosController
+    // =========================
+    // Route::get('/inicios', [IniciosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::get('/inicios/{id}', [IniciosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::post('/inicios', [IniciosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::put('/inicios/{id}', [IniciosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::delete('/inicios/{id}', [IniciosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+
+    // =========================
+    // MateriasController
+    // =========================
+    Route::put('materias/bulk/paralelo', [MateriasController::class, 'bulkUpdateParalelo'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::post('materias/bulk/agregar', [MateriasController::class, 'bulkAddCursoParalelo'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::post('materias/bulk/eliminar', [MateriasController::class, 'bulkDeleteCursoParalelo'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::get('/materias', [MateriasController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A)']);
+    Route::get('/materias/{id}', [MateriasController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A)']);
+    Route::post('/materias', [MateriasController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::put('/materias/{id}', [MateriasController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::delete('/materias/{id}', [MateriasController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::get('materias/by-info/{infoId}', [MateriasController::class, 'byInfo'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE']);
+
+    // =========================
+    // PagoslcchController
+    // =========================
+    Route::get('pagoslcch/gestiones-asignaciones', [PagoslcchController::class, 'gestionesAsignaciones'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+    Route::get('pagoslcch', [PagoslcchController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+    Route::get('pagoslcch/by-info/{infoId}', [PagoslcchController::class, 'byInfo'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+    Route::get('pagoslcch/deuda/by-info/{infoId}', [PagoslcchController::class, 'deudaByInfo'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+    Route::get('pagoslcch/deudores', [PagoslcchController::class, 'deudores'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+    Route::get('pagoslcch/{id}', [PagoslcchController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+    Route::post('pagoslcch', [PagoslcchController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+    Route::put('pagoslcch/{id}', [PagoslcchController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+    Route::delete('pagoslcch/{id}', [PagoslcchController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+
+    // =========================
+    // PlanDeEstudiosController
+    // =========================
+    Route::get('/plandeestudios', [PlanDeEstudiosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::get('/plandeestudios/{id}', [PlanDeEstudiosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::post('/plandeestudios', [PlanDeEstudiosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::put('/plandeestudios/{id}', [PlanDeEstudiosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::delete('/plandeestudios/{id}', [PlanDeEstudiosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+
+    // =========================
+    // PlantelAdministrativosController
+    // =========================
+    Route::get('/planteladministrativos', [PlantelAdministrativosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::get('/planteladministrativos/{id}', [PlantelAdministrativosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::post('/planteladministrativos', [PlantelAdministrativosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A)']);
+    Route::put('/planteladministrativos/{id}', [PlantelAdministrativosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::delete('/planteladministrativos/{id}', [PlantelAdministrativosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A)']);
+
+    // =========================
+    // PlantelDocentesController
+    // =========================
+    Route::get('/planteldocentes', [PlantelDocentesController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A)']);
+    Route::get('/planteldocentes/{id}', [PlantelDocentesController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A)']);
+    Route::post('/planteldocentes', [PlantelDocentesController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::put('/planteldocentes/{id}', [PlantelDocentesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::delete('/planteldocentes/{id}', [PlantelDocentesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+
+    // =========================
+    // PlanteldocentesmateriasController
+    // =========================
+    Route::get('/planteldocentesmaterias', [PlanteldocentesmateriasController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A)']);
+    Route::get('/planteldocentesmaterias/{id}', [PlanteldocentesmateriasController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A)']);
+    Route::post('/planteldocentesmaterias', [PlanteldocentesmateriasController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::put('/planteldocentesmaterias/{id}', [PlanteldocentesmateriasController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::delete('/planteldocentesmaterias/{id}', [PlanteldocentesmateriasController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::post('/planteldocentesmaterias/assign', [PlanteldocentesmateriasController::class, 'assign'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::post('/planteldocentesmaterias/unassign', [PlanteldocentesmateriasController::class, 'unassign'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+
+    // =========================
+    // RegistrocalificacionesController
+    // =========================
+    Route::get('registrocalificaciones/materia/{materiaId}', [RegistrocalificacionesController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::put('registrocalificaciones/evaluacion', [RegistrocalificacionesController::class, 'updateEvaluacion'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+    Route::post('registrocalificaciones/rubros', [RegistrocalificacionesController::class, 'storeRubro'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+    Route::put('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'updateRubro'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+    Route::delete('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'deleteRubro'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+    Route::post('registrocalificaciones/bulk-save', [RegistrocalificacionesController::class, 'bulkSave'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+
+    // =========================
+    // FileUploadController (TODOS LOS ROLES QUE PUEDEN SUBIR ARCHIVOS)
+    // =========================
+    Route::post('uploadFile', [FileUploadController::class, 'uploadFile'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    Route::post('deleteFile', [FileUploadController::class, 'deleteFile'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
 
     // ============================================================
-    // SISTEMA PAGOS LCCH (pagos mensuales por inscripción)
-    // ============================================================
-    Route::get('pagoslcch/gestiones-asignaciones', [PagoslcchController::class, 'gestionesAsignaciones'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
-    Route::get('pagoslcch', [PagoslcchController::class, 'index'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
-    Route::get('pagoslcch/by-info/{infoId}', [PagoslcchController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
-    Route::get('pagoslcch/deuda/by-info/{infoId}', [PagoslcchController::class, 'deudaByInfo'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
-    Route::get('pagoslcch/deudores', [PagoslcchController::class, 'deudores'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
-    Route::get('pagoslcch/{id}', [PagoslcchController::class, 'show'])->middleware([CheckAbilities::class . ':RECTOR(A),SECRETARIO(A)']);
-    Route::post('pagoslcch', [PagoslcchController::class, 'store'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::put('pagoslcch/{id}', [PagoslcchController::class, 'update'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::delete('pagoslcch/{id}', [PagoslcchController::class, 'destroy'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // RUTAS API PARA EL SISTEMA DE CAPTURA DE ASISTENCIA
+    // =========================
+    // CaptureSessionController
+    // =========================
+    Route::post('capture-sessions', [CaptureSessionController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),NINGUNA,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    Route::get('capture-sessions/{token}', [CaptureSessionController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),NINGUNA,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    Route::post('capture-sessions/{token}/cancel', [CaptureSessionController::class, 'cancel'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),NINGUNA,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
 
-    // Asignación 1-click docente <-> materia (por llaves)
-    Route::post('planteldocentesmaterias/assign', 'App\\Http\\Controllers\\PlanteldocentesmateriasController@assign')->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('planteldocentesmaterias/unassign', 'App\\Http\\Controllers\\PlanteldocentesmateriasController@unassign')->middleware([CheckAbilities::class . ':RECTOR(A)']);
+    // =========================
+    // CapturePairingController
+    // =========================
+    Route::post('capture-pairings', [CapturePairingController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),NINGUNA,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    Route::get('capture-pairings/{token}', [CapturePairingController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),NINGUNA,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    Route::post('capture-pairings/{token}/request-capture', [CapturePairingController::class, 'requestCapture'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),NINGUNA,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    Route::post('capture-pairings/{token}/cancel-capture', [CapturePairingController::class, 'cancelCapture'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),NINGUNA,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
 
-    // Asignación 1-click estudiante(inscripción) <-> materia (usa calificaciones)
-    Route::get('calificaciones/by-info/{infoId}', [CalificacionesController::class, 'byInfo'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/bulk-update', [CalificacionesController::class, 'bulkUpdate'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-
-    // Calificaciones por materia (para vista docentes)
-    Route::get('calificaciones/by-materia/{materiaId}', [CalificacionesController::class, 'byMateria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/bulk-update-materia', [CalificacionesController::class, 'bulkUpdateMateria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/assign', [CalificacionesController::class, 'assign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/unassign', [CalificacionesController::class, 'unassign'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/assign-bulk-curso', [CalificacionesController::class, 'assignBulkCurso'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/assign-bulk-categoria', [CalificacionesController::class, 'assignBulkCategoria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/unassign-bulk-categoria', [CalificacionesController::class, 'unassignBulkCategoria'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/assign-bulk-anio-resolucion', [CalificacionesController::class, 'assignBulkAnioResolucion'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/unassign-bulk-anio-resolucion', [CalificacionesController::class, 'unassignBulkAnioResolucion'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('calificaciones/unassign-all', [CalificacionesController::class, 'unassignAll'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-
-    // Registro de calificaciones por rubros (docentes)
-    Route::get('registrocalificaciones/materia/{materiaId}', [RegistrocalificacionesController::class, 'index'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::put('registrocalificaciones/evaluacion', [RegistrocalificacionesController::class, 'updateEvaluacion'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('registrocalificaciones/rubros', [RegistrocalificacionesController::class, 'storeRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::put('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'updateRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::delete('registrocalificaciones/rubros/{rubroId}', [RegistrocalificacionesController::class, 'deleteRubro'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('registrocalificaciones/bulk-save', [RegistrocalificacionesController::class, 'bulkSave'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-
-    // Subida/borrado de archivos (para inicios, etc.)
-    Route::post('uploadFile', [FileUploadController::class, 'uploadFile'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('deleteFile', [FileUploadController::class, 'deleteFile'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-
-    // Sesiones de captura de foto (PC inicia, móvil sube)
-    Route::post('capture-sessions', [CaptureSessionController::class, 'store'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::get('capture-sessions/{token}', [CaptureSessionController::class, 'show'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('capture-sessions/{token}/cancel', [CaptureSessionController::class, 'cancel'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-
-    // Vinculación (pairing) PC <-> celular para no escanear QR cada vez
-    Route::post('capture-pairings', [CapturePairingController::class, 'store'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::get('capture-pairings/{token}', [CapturePairingController::class, 'show'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('capture-pairings/{token}/request-capture', [CapturePairingController::class, 'requestCapture'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
-    Route::post('capture-pairings/{token}/cancel-capture', [CapturePairingController::class, 'cancelCapture'])->middleware([CheckAbilities::class . ':RECTOR(A)']);
 });
+// RUTAS API PUBLICAS DE CARGA SIN INICIAR SESION
+Route::get('/inicios', [IniciosController::class, 'index']);
 
+// ============================================================
+// RUTAS API PUBLICAS PARA RECOGER FOTOS DESDE EL CELULAR
+// ============================================================
 // Upload público por token (para que el celular suba sin login)
 Route::post('capture-sessions/{token}/upload', [CaptureSessionController::class, 'upload']);
 
@@ -156,7 +275,7 @@ Route::post('capture-pairings/{token}/revoke', [CapturePairingController::class,
 
 
 // ============================================================
-// RUTAS API PARA EL SISTEMA DOCS LCCH
+// RUTAS API PARA EL SISTEMADOCS
 // Agregar esto en: routes/api.php
 // ============================================================
 
@@ -357,3 +476,10 @@ Route::prefix('articles')->group(function () {
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
+
+// ============================================================
+// LChaula - Rutas API (Classroom)
+// ============================================================
+require __DIR__ . '/lchaula_api_routes.php';
+
+require __DIR__ . '/asistencias_api_routes.php';
