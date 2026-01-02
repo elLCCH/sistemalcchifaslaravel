@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
 
-class RegistrocalificacionesController extends Controller
+class RegistroCalificacionesController extends Controller
 {
     public function __construct()
     {
