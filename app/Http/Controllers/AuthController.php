@@ -207,7 +207,10 @@ class AuthController extends Controller
                             $tokenResult = $sesion->createPersonalizedToken($nameInstitucion, ['SECRETARIO(A)'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'administrativos', 'permisos' => $Permisos]);
                             $token = $tokenResult->plainTextToken;
                             break;
-                        
+                        case 'DIRECTOR(A) ACADÉMICO(A)':
+                            $tokenResult = $sesion->createPersonalizedToken($nameInstitucion, ['DIRECTOR(A) ACADÉMICO(A)'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'administrativos', 'permisos' => $Permisos]);
+                            $token = $tokenResult->plainTextToken;
+                            break;
                         default:
                             $tokenResult = $sesion->createPersonalizedToken($nameInstitucion, ['NO_TIENE_TIPO'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'administrativos', 'permisos' => $Permisos]);
                             $token = $tokenResult->plainTextToken;
