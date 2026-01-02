@@ -3,15 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Http\Middleware\UpdateTokenExpiration;
-use App\Models\AulaParticipante;
-use App\Models\calificaciones;
+use App\Models\Calificaciones;
 use App\Models\EntregaTarea;
-use App\Models\infoestudiantesifas;
-use App\Models\planteladministrativos;
-use App\Models\planteldocentes;
+use App\Models\Infoestudiantesifas;
+use App\Models\Planteladministrativos;
+use App\Models\Planteldocentes;
 use App\Models\Tarea;
-use App\Models\usuarioslcchs;
-use App\Models\estudiantesifas;
+use App\Models\Usuarioslcchs;
+use App\Models\Estudiantesifas;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -41,7 +40,7 @@ class EntregaTareaController extends Controller
         }
 
         // docentes/admins pueden ver todas las entregas dentro de su institución
-        if ($user instanceof planteldocentes || $user instanceof planteladministrativos) {
+        if ($user instanceof Planteldocentes || $user instanceof Planteladministrativos) {
             if ((int) $user->instituciones_id !== (int) $aula->instituciones_id) {
                 return response()->json(['success' => false, 'message' => 'No permitido'], 403);
             }
@@ -50,14 +49,14 @@ class EntregaTareaController extends Controller
         }
 
         // superadmin: todo
-        if ($user instanceof usuarioslcchs) {
+        if ($user instanceof Usuarioslcchs) {
             $data = EntregaTarea::query()->where('tareas_id', (int) $tarea->id)->orderByDesc('id')->get();
             return response()->json(['success' => true, 'data' => $data]);
         }
 
         // estudiante: solo su propia entrega
-        if ($user instanceof estudiantesifas) {
-            $infoId = infoestudiantesifas::query()
+        if ($user instanceof Estudiantesifas) {
+            $infoId = Infoestudiantesifas::query()
                 ->where('estudiantesifas_id', (int) $user->id)
                 ->where('instituciones_id', (int) $aula->instituciones_id)
                 ->orderByDesc('id')
@@ -85,7 +84,7 @@ class EntregaTareaController extends Controller
             return response()->json(['success' => false, 'message' => 'No autenticado'], 401);
         }
 
-        if (!($user instanceof estudiantesifas)) {
+        if (!($user instanceof Estudiantesifas)) {
             return response()->json(['success' => false, 'message' => 'Solo estudiantes pueden entregar'], 403);
         }
 
@@ -118,7 +117,7 @@ class EntregaTareaController extends Controller
 
         $infoId = (int) ($validated['infoestudiantesifas_id'] ?? 0);
         if ($infoId <= 0) {
-            $infoId = (int) infoestudiantesifas::query()
+            $infoId = (int) Infoestudiantesifas::query()
                 ->where('estudiantesifas_id', (int) $user->id)
                 ->where('instituciones_id', (int) $aula->instituciones_id)
                 ->orderByDesc('id')
@@ -130,7 +129,7 @@ class EntregaTareaController extends Controller
         }
 
         // validar que el estudiante esté vinculado a la materia (vía calificaciones)
-        $estaEnMateria = calificaciones::query()
+        $estaEnMateria = Calificaciones::query()
             ->where('infoestudiantesifas_id', (int) $infoId)
             ->where('materias_id', (int) $aula->materias_id)
             ->exists();

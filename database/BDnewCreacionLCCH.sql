@@ -334,7 +334,7 @@ CREATE OR REPLACE TABLE controles (
     Estado VARCHAR(15) NULL,
     Visibilidad VARCHAR(15) NULL,
     Categoria VARCHAR(60) NULL, 
-    NivelCurso VARCHAR(60) NULL, 
+    NivelCurso VARCHAR(100) NULL, 
     ParaI VARCHAR(60) NULL, 
     Edades VARCHAR(60) NULL, 
 

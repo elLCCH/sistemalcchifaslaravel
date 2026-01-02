@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\infoestudiantesifas;
+use App\Models\Infoestudiantesifas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -104,7 +104,7 @@ class InfoestudiantesifasController extends Controller
         $user = request()->user();
         $isSuperAdmin = empty($user?->instituciones_id);
 
-        $base = infoestudiantesifas::query()
+        $base = Infoestudiantesifas::query()
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->when(!$isSuperAdmin && !empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
@@ -381,7 +381,7 @@ class InfoestudiantesifasController extends Controller
             LIMIT 1
         )";
 
-        $query = infoestudiantesifas::query()
+        $query = Infoestudiantesifas::query()
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->select([
@@ -546,7 +546,7 @@ class InfoestudiantesifasController extends Controller
             LIMIT 1
         )";
 
-        $query = infoestudiantesifas::query()
+        $query = Infoestudiantesifas::query()
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->select([
@@ -603,7 +603,7 @@ class InfoestudiantesifasController extends Controller
             WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
         ), 'SIN ASIGNAR')";
 
-        $query = infoestudiantesifas::query()
+        $query = Infoestudiantesifas::query()
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->select([
@@ -666,14 +666,14 @@ class InfoestudiantesifasController extends Controller
         if ($user->instituciones_id) {
             $infoestudiantesifas['instituciones_id'] = $user->instituciones_id;
         }
-        infoestudiantesifas::insert($infoestudiantesifas);
+        Infoestudiantesifas::insert($infoestudiantesifas);
         return response()->json(['data' => $infoestudiantesifas]);
     }
     
     public function show($id)
     {
         $user = request()->user();
-        $infoestudiantesifas = infoestudiantesifas::query()
+        $infoestudiantesifas = Infoestudiantesifas::query()
             ->where('id', '=', $id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);
@@ -687,7 +687,7 @@ class InfoestudiantesifasController extends Controller
     {
         $user = $request->user();
 
-        $row = infoestudiantesifas::query()
+        $row = Infoestudiantesifas::query()
             ->where('id', '=', $request->id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);
@@ -706,7 +706,7 @@ class InfoestudiantesifasController extends Controller
     public function destroy($id)
     {
         $user = request()->user();
-        $row = infoestudiantesifas::query()
+        $row = Infoestudiantesifas::query()
             ->where('id', '=', $id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);

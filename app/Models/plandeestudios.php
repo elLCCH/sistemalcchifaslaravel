@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Laravel\Sanctum\HasApiTokens;
 
-class plandeestudios extends Model
+class Plandeestudios extends Model
 {
     use HasApiTokens;
     protected $table = 'plandeestudios';

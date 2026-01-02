@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory; //PODRIA SER
 use Laravel\Sanctum\HasApiTokens;
-class anios extends Model
+class Anios extends Model
 {
     // use HasFactory;
 

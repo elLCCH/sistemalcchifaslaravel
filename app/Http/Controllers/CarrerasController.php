@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\carreras;
+use App\Models\Carreras;
 use Illuminate\Http\Request;
 
 use Illuminate\Routing\Controller;
@@ -21,7 +21,7 @@ class CarrerasController extends Controller
 
         // Si el usuario tiene instituciones_id => SOLO su institución.
         // Si NO tiene instituciones_id (superadmin usuarioslcchs) => ver todo.
-        $query = \App\Models\carreras::query();
+        $query = \App\Models\Carreras::query();
         if (!empty($user?->instituciones_id)) {
             $query->where('instituciones_id', $user->instituciones_id);
         }
@@ -31,7 +31,7 @@ class CarrerasController extends Controller
         // NombreInstitucion SOLO para superadmins (para gestión multi-institución)
         if (empty($user?->instituciones_id)) {
             foreach ($carreras as $carrera) {
-                $institucion = \App\Models\instituciones::find($carrera->instituciones_id);
+                $institucion = \App\Models\Instituciones::find($carrera->instituciones_id);
                 $carrera->NombreInstitucion = $institucion ? $institucion->Nombre : null;
             }
         } else {
@@ -51,14 +51,14 @@ class CarrerasController extends Controller
         if ($user->instituciones_id) {
             $carreras['instituciones_id'] = $user->instituciones_id;
         }
-        carreras::insert($carreras);
+        Carreras::insert($carreras);
         return response()->json(['data' => $carreras]);
     }
     
     public function show($id)
     {
         $user = request()->user();
-        $carreras = carreras::query()
+        $carreras = Carreras::query()
             ->where('id', '=', $id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);
@@ -77,7 +77,7 @@ class CarrerasController extends Controller
         $user = $request->user();
         $carreras = $request->all();
 
-        $q = carreras::query()->where('id', '=', $request->id);
+        $q = Carreras::query()->where('id', '=', $request->id);
         if (!empty($user?->instituciones_id)) {
             $q->where('instituciones_id', $user->instituciones_id);
         }
@@ -95,7 +95,7 @@ class CarrerasController extends Controller
     public function destroy($id)
     {
         $user = request()->user();
-        $q = carreras::query()->where('id', '=', $id);
+        $q = Carreras::query()->where('id', '=', $id);
         if (!empty($user?->instituciones_id)) {
             $q->where('instituciones_id', $user->instituciones_id);
         }

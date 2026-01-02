@@ -2,14 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\planteladministrativos;
+use App\Models\Planteladministrativos;
 use Illuminate\Http\Request;
 
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Laravel\Sanctum\PersonalAccessToken;
 
 class PlanteladministrativosController extends Controller
 {
@@ -27,7 +25,7 @@ class PlanteladministrativosController extends Controller
     {
         // $planteladministrativos = planteladministrativos::all();
         $user = request()->user();
-        $query = \App\Models\planteladministrativos::query();
+        $query = \App\Models\Planteladministrativos::query();
         if (!empty($user?->instituciones_id)) {
             $query->where('instituciones_id', $user->instituciones_id);
         }
@@ -37,7 +35,7 @@ class PlanteladministrativosController extends Controller
         // NombreInstitucion solo para superadmin (usuarioslcchs)
         if (empty($user?->instituciones_id)) {
             foreach ($planteladministrativos as $planteladministrativo) {
-                $institucion = \App\Models\instituciones::find($planteladministrativo->instituciones_id);
+                $institucion = \App\Models\Instituciones::find($planteladministrativo->instituciones_id);
                 $planteladministrativo->NombreInstitucion = $institucion ? $institucion->Nombre : null;
             }
         } else {
@@ -59,14 +57,14 @@ class PlanteladministrativosController extends Controller
         }
         
         $planteladministrativos['Contrasenia'] = Hash::make($request->input('Contrasenia'));
-        planteladministrativos::insert($planteladministrativos);
+        Planteladministrativos::insert($planteladministrativos);
         return response()->json(['data' => $planteladministrativos]);
     }
     
     public function show($id)
     {
         $user = request()->user();
-        $planteladministrativos = planteladministrativos::query()
+        $planteladministrativos = Planteladministrativos::query()
             ->where('id', '=', $id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);
@@ -86,7 +84,7 @@ class PlanteladministrativosController extends Controller
         // planteladministrativos::where('id','=',$request->id)->update($planteladministrativos);
         // return response()->json(['data' => $planteladministrativos]);
         $user = $request->user();
-        $administrativo = planteladministrativos::query()
+        $administrativo = Planteladministrativos::query()
             ->where('id', '=', $request->id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);
@@ -117,7 +115,7 @@ class PlanteladministrativosController extends Controller
     public function destroy($id)
     {
         $user = request()->user();
-        $row = planteladministrativos::query()
+        $row = Planteladministrativos::query()
             ->where('id', '=', $id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);

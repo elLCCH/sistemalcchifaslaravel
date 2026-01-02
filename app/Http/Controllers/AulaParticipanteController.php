@@ -5,11 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\AulaParticipante;
 use App\Models\AulaVirtual;
-use App\Models\infoestudiantesifas;
-use App\Models\planteladministrativos;
-use App\Models\planteldocentes;
-use App\Models\planteldocentesmaterias;
-use App\Models\usuarioslcchs;
+use App\Models\Infoestudiantesifas;
+use App\Models\Planteladministrativos;
+use App\Models\Planteldocentes;
+use App\Models\Planteldocentesmaterias;
+use App\Models\Usuarioslcchs;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
@@ -22,21 +22,21 @@ class AulaParticipanteController extends Controller
 
     private function canAdministrarAula($user, AulaVirtual $aula): bool
     {
-        if ($user instanceof usuarioslcchs) {
+        if ($user instanceof Usuarioslcchs) {
             return true;
         }
 
-        if (($user instanceof planteladministrativos || $user instanceof planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
+        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
             return false;
         }
 
         // administrativos: permitido por defecto dentro de su institución
-        if ($user instanceof planteladministrativos) {
+        if ($user instanceof Planteladministrativos) {
             return true;
         }
 
         // docentes: si es participante con puede_administrar o si está asignado a la materia
-        if ($user instanceof planteldocentes) {
+        if ($user instanceof Planteldocentes) {
             $esAdminEnAula = AulaParticipante::query()
                 ->where('aulas_virtuales_id', (int) $aula->id)
                 ->where('tipo', 'DOCENTE')
@@ -48,7 +48,7 @@ class AulaParticipanteController extends Controller
                 return true;
             }
 
-            return planteldocentesmaterias::query()
+            return Planteldocentesmaterias::query()
                 ->where('planteldocentes_id', (int) $user->id)
                 ->where('materias_id', (int) $aula->materias_id)
                 ->exists();
@@ -69,7 +69,7 @@ class AulaParticipanteController extends Controller
             return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
         }
 
-        if (($user instanceof planteladministrativos || $user instanceof planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
+        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 
@@ -123,7 +123,7 @@ class AulaParticipanteController extends Controller
                 return response()->json(['success' => false, 'message' => 'infoestudiantesifas_id requerido'], 422);
             }
 
-            $inst = infoestudiantesifas::query()->where('id', (int) $infoId)->value('instituciones_id');
+            $inst = Infoestudiantesifas::query()->where('id', (int) $infoId)->value('instituciones_id');
             if (!$inst || (int) $inst !== (int) $aula->instituciones_id) {
                 return response()->json(['success' => false, 'message' => 'El estudiante inscrito no pertenece a la institución del aula'], 422);
             }

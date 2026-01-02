@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\plandeestudios;
+use App\Models\Plandeestudios;
 use Illuminate\Http\Request;
 
 use Illuminate\Routing\Controller;
@@ -66,7 +66,7 @@ class PlandeestudiosController extends Controller
     public function store(Request $request)
     {
         $plandeestudios = $request->all();
-        plandeestudios::insert($plandeestudios);
+        Plandeestudios::insert($plandeestudios);
         return response()->json(['data' => $plandeestudios]);
     }
     
@@ -87,7 +87,7 @@ class PlandeestudiosController extends Controller
             }
         }
 
-        $plandeestudios = plandeestudios::where('id', '=', $id)->firstOrFail();
+        $plandeestudios = Plandeestudios::where('id', '=', $id)->firstOrFail();
         return response()->json(['data' => $plandeestudios]);
     }
     
@@ -110,7 +110,7 @@ class PlandeestudiosController extends Controller
         }
 
         $payload = $request->all();
-        plandeestudios::where('id', '=', $request->id)->update($payload);
+        Plandeestudios::where('id', '=', $request->id)->update($payload);
         return response()->json(['data' => $payload]);
     }
     
@@ -131,7 +131,7 @@ class PlandeestudiosController extends Controller
             }
         }
 
-        plandeestudios::destroy($id);
+        Plandeestudios::destroy($id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de plandeestudios

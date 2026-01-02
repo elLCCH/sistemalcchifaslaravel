@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\estudiantesifas;
+use App\Models\Estudiantesifas;
 use Illuminate\Http\Request;
 
 use Illuminate\Support\Facades\Hash;
@@ -49,7 +49,7 @@ class EstudiantesifasController extends Controller
             $sortBy = 'id';
         }
 
-        $query = estudiantesifas::query()
+        $query = Estudiantesifas::query()
             ->when($search !== '', function ($q) use ($search, $searchMode) {
                 $tokens = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
                 $tokens = array_values(array_filter(array_unique(array_map('trim', $tokens))));
@@ -128,13 +128,13 @@ class EstudiantesifasController extends Controller
     {
         $estudiantesifas = $request->all();
         $usuarioslcchs['Contrasenia'] = Hash::make($request->input('Contrasenia'));
-        estudiantesifas::insert($estudiantesifas);
+        Estudiantesifas::insert($estudiantesifas);
         return response()->json(['data' => $estudiantesifas]);
     }
     
     public function show($id)
     {
-        $estudiantesifas = estudiantesifas::where('id','=',$id)->firstOrFail();
+        $estudiantesifas = Estudiantesifas::where('id','=',$id)->firstOrFail();
         return response()->json(['data' => $estudiantesifas]);
     }
     
@@ -145,7 +145,7 @@ class EstudiantesifasController extends Controller
         // estudiantesifas::where('id','=',$request->id)->update($estudiantesifas);
         // return response()->json(['data' => $estudiantesifas]);
 
-        $estudiantesifas = estudiantesifas::findOrFail($request->id);
+        $estudiantesifas = Estudiantesifas::findOrFail($request->id);
         $requestData = $request->all();
 
         if ($request->has('Contrasenia')) {
@@ -166,7 +166,7 @@ class EstudiantesifasController extends Controller
     
     public function destroy($id)
     {
-        estudiantesifas::destroy($id);
+        Estudiantesifas::destroy($id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de estudiantesifas

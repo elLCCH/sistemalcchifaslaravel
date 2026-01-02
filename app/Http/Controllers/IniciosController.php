@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\inicios;
+use App\Models\Inicios;
 use Illuminate\Http\Request;
 
 use Illuminate\Routing\Controller;
@@ -20,7 +20,7 @@ class IniciosController extends Controller
         $user = request()->user();
         $institucionId = $user ? ($user->instituciones_id ?? null) : null;
 
-        $query = inicios::query()
+        $query = Inicios::query()
             ->leftJoin('instituciones', 'inicios.id_institucion', '=', 'instituciones.id')
             ->select(
                 'inicios.*',
@@ -51,9 +51,9 @@ class IniciosController extends Controller
         $data = $request->all();
         $data['id_institucion'] = $institucionId;
 
-        $created = inicios::create($data);
+        $created = Inicios::create($data);
 
-        $createdWithInstitucion = inicios::query()
+        $createdWithInstitucion = Inicios::query()
             ->leftJoin('instituciones', 'inicios.id_institucion', '=', 'instituciones.id')
             ->select(
                 'inicios.*',
@@ -71,7 +71,7 @@ class IniciosController extends Controller
         $user = request()->user();
         $institucionId = $user ? ($user->instituciones_id ?? null) : null;
 
-        $query = inicios::query()
+        $query = Inicios::query()
             ->leftJoin('instituciones', 'inicios.id_institucion', '=', 'instituciones.id')
             ->select(
                 'inicios.*',
@@ -99,7 +99,7 @@ class IniciosController extends Controller
         $data = $request->all();
         $data['id_institucion'] = $institucionId;
 
-        $query = inicios::where('id', '=', $id);
+        $query = Inicios::where('id', '=', $id);
         if ($institucionId) {
             $query->where(function ($q) use ($institucionId) {
                 $q->whereNull('id_institucion')
@@ -108,7 +108,7 @@ class IniciosController extends Controller
         }
 
         $query->update($data);
-        $updatedWithInstitucion = inicios::query()
+        $updatedWithInstitucion = Inicios::query()
             ->leftJoin('instituciones', 'inicios.id_institucion', '=', 'instituciones.id')
             ->select(
                 'inicios.*',
@@ -118,7 +118,7 @@ class IniciosController extends Controller
             ->where('inicios.id', '=', $id)
             ->first();
 
-        $fallbackUpdated = inicios::where('id', '=', $id)->first();
+        $fallbackUpdated = Inicios::where('id', '=', $id)->first();
         return response()->json(['data' => $updatedWithInstitucion ?? $fallbackUpdated]);
     }
     
@@ -127,7 +127,7 @@ class IniciosController extends Controller
         $user = request()->user();
         $institucionId = $user ? ($user->instituciones_id ?? null) : null;
 
-        $query = inicios::where('id', '=', $id);
+        $query = Inicios::where('id', '=', $id);
         if ($institucionId) {
             $query->where(function ($q) use ($institucionId) {
                 $q->whereNull('id_institucion')

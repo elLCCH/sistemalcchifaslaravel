@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\materias;
-use App\Models\infoestudiantesifas;
+use App\Models\Materias;
+use App\Models\Infoestudiantesifas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -21,7 +21,7 @@ class MateriasController extends Controller
     {
         $user = $request->user();
         $isSuperAdmin = empty($user?->instituciones_id);
-        $query = materias::query()
+        $query = Materias::query()
             ->select([
             'materias.*',
             'plandeestudios.NombreMateria',
@@ -76,7 +76,7 @@ class MateriasController extends Controller
 
         $isSuperAdmin = empty($user?->instituciones_id);
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $infoId)
             ->when(!$isSuperAdmin, function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);
@@ -88,7 +88,7 @@ class MateriasController extends Controller
             abort(404);
         }
 
-        $query = materias::query()
+        $query = Materias::query()
             ->select([
                 'materias.*',
                 'plandeestudios.NombreMateria',
@@ -205,7 +205,7 @@ class MateriasController extends Controller
         $institucionId = $this->resolveInstitucionId($request, $user);
 
         // IDs del grupo (curso+paralelo actual) dentro del filtro Año+Resolución (+ institución)
-        $idsQuery = materias::query()
+        $idsQuery = Materias::query()
             ->select(['materias.id'])
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
@@ -224,7 +224,7 @@ class MateriasController extends Controller
         }
 
         // Validación global del filtro: no permitir que el paralelo nuevo ya exista en el mismo Año+Resolución (+ institución)
-        $existsQuery = materias::query()
+        $existsQuery = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('plandeestudios.anio_id', $anioId)
@@ -240,7 +240,7 @@ class MateriasController extends Controller
             return response()->json(['message' => 'Ese paralelo ya existe para el mismo Año y Resolución'], 422);
         }
 
-        $updated = materias::query()
+        $updated = Materias::query()
             ->whereIn('id', $ids->all())
             ->update(['Paralelo' => $paraleloNuevo]);
 
@@ -276,7 +276,7 @@ class MateriasController extends Controller
         $institucionId = $this->resolveInstitucionId($request, $user);
 
         // Validación global: paralelo no debe existir en el mismo Año+Resolución (+ institución)
-        $existsQuery = materias::query()
+        $existsQuery = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('plandeestudios.anio_id', $anioId)
@@ -321,7 +321,7 @@ class MateriasController extends Controller
             ];
         }
 
-        materias::insert($rows);
+        Materias::insert($rows);
 
         return response()->json(['inserted' => count($rows)]);
     }
@@ -352,7 +352,7 @@ class MateriasController extends Controller
 
         $institucionId = $this->resolveInstitucionId($request, $user);
 
-        $idsQuery = materias::query()
+        $idsQuery = Materias::query()
             ->select(['materias.id'])
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
@@ -370,7 +370,7 @@ class MateriasController extends Controller
             return response()->json(['message' => 'No hay materias para ese curso y paralelo'], 404);
         }
 
-        $deleted = materias::query()->whereIn('id', $ids->all())->delete();
+        $deleted = Materias::query()->whereIn('id', $ids->all())->delete();
 
         return response()->json(['deleted' => $deleted]);
     }
@@ -379,13 +379,13 @@ class MateriasController extends Controller
     public function store(Request $request)
     {
         $materias = $request->all();
-        materias::insert($materias);
+        Materias::insert($materias);
         return response()->json(['data' => $materias]);
     }
     
     public function show($id)
     {
-        $materias = materias::where('id','=',$id)->firstOrFail();
+        $materias = Materias::where('id','=',$id)->firstOrFail();
         return response()->json(['data' => $materias]);
     }
     
@@ -393,13 +393,13 @@ class MateriasController extends Controller
     public function update(Request $request)
     {
         $materias = $request->all();
-        materias::where('id','=',$request->id)->update($materias);
+        Materias::where('id','=',$request->id)->update($materias);
         return response()->json(['data' => $materias]);
     }
     
     public function destroy($id)
     {
-        materias::destroy($id);
+        Materias::destroy($id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de materias

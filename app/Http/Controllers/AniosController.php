@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\anios;
+use App\Models\Anios;
 use Illuminate\Http\Request;
 use App\Http\Middleware\UpdateTokenExpiration;
 use Illuminate\Routing\Controller;
@@ -16,7 +16,7 @@ class AniosController extends Controller
     //#region Inicio Controller de Crud PHP de anios
     public function index()
     {
-        $anios = anios::all();
+        $anios = Anios::all();
         return response()->json(['data' => $anios]);
     }
     
@@ -24,13 +24,13 @@ class AniosController extends Controller
     public function store(Request $request)
     {
         $anios = $request->all();
-        anios::insert($anios);
+        Anios::insert($anios);
         return response()->json(['data' => $anios]);
     }
     
     public function show($id)
     {
-        $anios = anios::where('id','=',$id)->firstOrFail();
+        $anios = Anios::where('id','=',$id)->firstOrFail();
         return response()->json(['data' => $anios]);
     }
     
@@ -38,13 +38,13 @@ class AniosController extends Controller
     public function update(Request $request)
     {
         $anios = $request->all();
-        anios::where('id','=',$request->id)->update($anios);
+        Anios::where('id','=',$request->id)->update($anios);
         return response()->json(['data' => $anios]);
     }
     
     public function destroy($id)
     {
-        anios::destroy($id);
+        Anios::destroy($id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de anios

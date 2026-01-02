@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\estudiantesifas;
-use App\Models\planteladministrativos;
-use App\Models\planteldocentes;
+use App\Models\Estudiantesifas;
+use App\Models\Planteladministrativos;
+use App\Models\Planteldocentes;
 use Illuminate\Http\Request;
-use App\Models\usuarioslcchs;
+use App\Models\Usuarioslcchs;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -69,7 +69,7 @@ class AuthController extends Controller
         // $admin = Usuario::where('usuario', '=', $user)->where('contrasenia', '=', $pass)->first();
 
         //INTENTANDO INICIO DE SESION COMO SUPERADMINISTRADOR
-        $sesion = usuarioslcchs::where('Usuario','=', $user)->first();
+        $sesion = Usuarioslcchs::where('Usuario','=', $user)->first();
         try {
             if ($sesion->Estado == 'ACTIVO') {
                 if (Hash::check($pass, $sesion->Contrasenia)) {
@@ -94,7 +94,7 @@ class AuthController extends Controller
         //INTENTANDO INICIO DE SESION COMO ADMINISTRATIVO DEL PLANTEL
         if ($login==false) {
             //INTENTANDO INICIO DE SESION COMO ADMINISTRATIVO DEL PLANTEL
-            $sesion = planteladministrativos::where('Usuario','=', $user)->first();
+            $sesion = Planteladministrativos::where('Usuario','=', $user)->first();
             try {
                 if ($sesion->Estado == 'ACTIVO') {
                     if (Hash::check($pass, $sesion->Contrasenia)) {
@@ -117,7 +117,7 @@ class AuthController extends Controller
         //INTENTANDO INICIO DE SESION COMO DOCENTE DEL PLANTEL
         if ($login==false) {
             //INTENTANDO INICIO DE SESION COMO ADMINISTRATIVO DEL PLANTEL
-            $sesion = planteldocentes::where('Usuario','=', $user)->first();
+            $sesion = Planteldocentes::where('Usuario','=', $user)->first();
             try {
                 if ($sesion->Estado == 'ACTIVO') {
                     if (Hash::check($pass, $sesion->Contrasenia)) {
@@ -140,7 +140,7 @@ class AuthController extends Controller
         //INTENTANDO INICIO DE SESION COMO ESTUDIANTE 
         if ($login==false) {
             //INTENTANDO INICIO DE SESION COMO ESTUDIANTE
-            $sesion = estudiantesifas::where('Usuario','=', $user)->first();
+            $sesion = Estudiantesifas::where('Usuario','=', $user)->first();
             try {
                 if ($sesion->Estado == 'ACTIVO') {
                     if (Hash::check($pass, $sesion->Contrasenia)) {
@@ -196,7 +196,7 @@ class AuthController extends Controller
                     $planteladministrativos = $sesion->Tipo;
                     $Permisos = $sesion->Permisos;
                     //PARA SACAR EL NOMBRE DE INSTITUCION
-                    $institucion = \App\Models\instituciones::find($sesion->instituciones_id);
+                    $institucion = \App\Models\Instituciones::find($sesion->instituciones_id);
                     $nameInstitucion = $institucion ? $institucion->Nombre : null;
                     switch ($planteladministrativos) {
                         case 'RECTOR(A)':
@@ -225,7 +225,7 @@ class AuthController extends Controller
                     $planteldocentes = $sesion->Tipo;
                     $Permisos = $sesion->Permisos;
                     //PARA SACAR EL NOMBRE DE INSTITUCION
-                    $institucion = \App\Models\instituciones::find($sesion->instituciones_id);
+                    $institucion = \App\Models\Instituciones::find($sesion->instituciones_id);
                     $nameInstitucion = $institucion ? $institucion->Nombre : null;
                     switch ($planteldocentes) {
                         case 'DOCENTE':
@@ -333,28 +333,28 @@ class AuthController extends Controller
         }
 
         // Verifica si el usuario autenticado es del modelo Usuario o Cliente
-        if ($user instanceof \App\Models\usuarioslcchs) {
+        if ($user instanceof \App\Models\Usuarioslcchs) {
             return response()->json([
             'tipo' => 'lcch',
             'usuario' => $user,
             'abilities' => $abilities
             ]);
         } 
-        elseif ($user instanceof \App\Models\planteladministrativos) {
+        elseif ($user instanceof \App\Models\Planteladministrativos) {
             return response()->json([
             'tipo' => 'cliente',
             'usuario' => $user,
             'abilities' => $abilities
             ]);
         } 
-        elseif ($user instanceof \App\Models\planteldocentes) {
+        elseif ($user instanceof \App\Models\Planteldocentes) {
             return response()->json([
             'tipo' => 'cliente',
             'usuario' => $user,
             'abilities' => $abilities
             ]);
         } 
-        elseif ($user instanceof \App\Models\estudiantesifas) {
+        elseif ($user instanceof \App\Models\Estudiantesifas) {
             return response()->json([
             'tipo' => 'cliente',
             'usuario' => $user,

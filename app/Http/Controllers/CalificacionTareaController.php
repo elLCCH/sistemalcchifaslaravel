@@ -6,8 +6,8 @@ use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\AulaParticipante;
 use App\Models\CalificacionTarea;
 use App\Models\EntregaTarea;
-use App\Models\planteldocentes;
-use App\Models\usuarioslcchs;
+use App\Models\Planteldocentes;
+use App\Models\Usuarioslcchs;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -21,11 +21,11 @@ class CalificacionTareaController extends Controller
 
     private function canCalificar($user, $aulaId): bool
     {
-        if ($user instanceof usuarioslcchs) {
+        if ($user instanceof Usuarioslcchs) {
             return true;
         }
 
-        if ($user instanceof planteldocentes) {
+        if ($user instanceof Planteldocentes) {
             return AulaParticipante::query()
                 ->where('aulas_virtuales_id', (int) $aulaId)
                 ->where('tipo', 'DOCENTE')
@@ -44,7 +44,7 @@ class CalificacionTareaController extends Controller
             return response()->json(['success' => false, 'message' => 'No autenticado'], 401);
         }
 
-        if (!($user instanceof planteldocentes || $user instanceof usuarioslcchs)) {
+        if (!($user instanceof Planteldocentes || $user instanceof Usuarioslcchs)) {
             return response()->json(['success' => false, 'message' => 'Solo docentes pueden calificar'], 403);
         }
 
@@ -59,7 +59,7 @@ class CalificacionTareaController extends Controller
             return response()->json(['success' => false, 'message' => 'No se pudo resolver aula/tarea'], 422);
         }
 
-        if ($user instanceof planteldocentes && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
+        if ($user instanceof Planteldocentes && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 
@@ -75,7 +75,7 @@ class CalificacionTareaController extends Controller
             'visibilidad' => ['nullable', 'string', 'max:15'],
         ]);
 
-        if ($user instanceof usuarioslcchs) {
+        if ($user instanceof Usuarioslcchs) {
             $docenteId = (int) ($validated['planteldocentes_id'] ?? 0);
             if ($docenteId <= 0) {
                 return response()->json(['success' => false, 'message' => 'planteldocentes_id es requerido para superadmin'], 422);
@@ -94,7 +94,7 @@ class CalificacionTareaController extends Controller
             ->first();
 
         $payload = [
-            'planteldocentes_id' => ($user instanceof planteldocentes) ? (int) $user->id : (int) ($validated['planteldocentes_id'] ?? 0),
+            'planteldocentes_id' => ($user instanceof Planteldocentes) ? (int) $user->id : (int) ($validated['planteldocentes_id'] ?? 0),
             'puntaje_obtenido' => $validated['puntaje_obtenido'] ?? null,
             'comentario_docente' => $validated['comentario_docente'] ?? null,
             'fecha_calificacion' => Carbon::now(),

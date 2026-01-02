@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\historialinformacionestudiantes;
+use App\Models\Historialinformacionestudiantes;
 use Illuminate\Http\Request;
 
 use Illuminate\Routing\Controller;
@@ -17,7 +17,7 @@ class HistorialinformacionestudiantesController extends Controller
     //#region Inicio Controller de Crud PHP de historialinformacionestudiantes
     public function index()
     {
-        $historialinformacionestudiantes = historialinformacionestudiantes::all();
+        $historialinformacionestudiantes = Historialinformacionestudiantes::all();
         return response()->json(['data' => $historialinformacionestudiantes]);
     }
     
@@ -25,13 +25,13 @@ class HistorialinformacionestudiantesController extends Controller
     public function store(Request $request)
     {
         $historialinformacionestudiantes = $request->all();
-        historialinformacionestudiantes::insert($historialinformacionestudiantes);
+        Historialinformacionestudiantes::insert($historialinformacionestudiantes);
         return response()->json(['data' => $historialinformacionestudiantes]);
     }
     
     public function show($id)
     {
-        $historialinformacionestudiantes = historialinformacionestudiantes::where('id','=',$id)->firstOrFail();
+        $historialinformacionestudiantes = Historialinformacionestudiantes::where('id','=',$id)->firstOrFail();
         return response()->json(['data' => $historialinformacionestudiantes]);
     }
     
@@ -39,13 +39,13 @@ class HistorialinformacionestudiantesController extends Controller
     public function update(Request $request)
     {
         $historialinformacionestudiantes = $request->all();
-        historialinformacionestudiantes::where('id','=',$request->id)->update($historialinformacionestudiantes);
+        Historialinformacionestudiantes::where('id','=',$request->id)->update($historialinformacionestudiantes);
         return response()->json(['data' => $historialinformacionestudiantes]);
     }
     
     public function destroy($id)
     {
-        historialinformacionestudiantes::destroy($id);
+        Historialinformacionestudiantes::destroy($id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de historialinformacionestudiantes

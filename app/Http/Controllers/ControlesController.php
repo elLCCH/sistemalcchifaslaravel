@@ -2,9 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\controles;
+use App\Models\Controles;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
@@ -63,7 +62,7 @@ class ControlesController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $query = controles::query();
+        $query = Controles::query();
 
         // mismo scope que index(): global (NULL) + institucional (si aplica)
         if (!empty($user?->instituciones_id)) {
@@ -115,7 +114,7 @@ class ControlesController extends Controller
         $user = request()->user();
         $categoria = $this->upperTrim((string) $request->query('categoria', ''));
 
-        $query = controles::query();
+        $query = Controles::query();
 
         // Por defecto: devolver controles globales (instituciones_id NULL)
         // + los específicos de la institución del usuario (si aplica)
@@ -162,14 +161,14 @@ class ControlesController extends Controller
             }
         }
 
-        $id = controles::insertGetId($payload);
-        $row = controles::where('id', $id)->first();
+        $id = Controles::insertGetId($payload);
+        $row = Controles::where('id', $id)->first();
         return response()->json(['data' => $row]);
     }
     
     public function show($id)
     {
-        $controles = controles::where('id','=',$id)->firstOrFail();
+        $controles = Controles::where('id','=',$id)->firstOrFail();
         return response()->json(['data' => $controles]);
     }
     
@@ -189,15 +188,15 @@ class ControlesController extends Controller
             $payload['instituciones_id'] = null;
         }
 
-        controles::where('id', '=', $request->id)->update($payload);
-        $row = controles::where('id', '=', $request->id)->first();
+        Controles::where('id', '=', $request->id)->update($payload);
+        $row = Controles::where('id', '=', $request->id)->first();
         return response()->json(['data' => $row]);
     }
     
     public function destroy($id)
     {
-        controles::destroy($id);
+        Controles::destroy($id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
-    //#endregion Fin Controller de Crud PHP de controles
+    //#endregion Fin Controller de Crud PHP de Controles
 }

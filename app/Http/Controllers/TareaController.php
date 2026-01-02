@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\AulaParticipante;
 use App\Models\Tarea;
-use App\Models\planteladministrativos;
-use App\Models\planteldocentes;
-use App\Models\usuarioslcchs;
+use App\Models\Planteladministrativos;
+use App\Models\Planteldocentes;
+use App\Models\Usuarioslcchs;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
@@ -20,15 +20,15 @@ class TareaController extends Controller
 
     private function canEditarTarea($user, $aulaId): bool
     {
-        if ($user instanceof usuarioslcchs) {
+        if ($user instanceof Usuarioslcchs) {
             return true;
         }
 
-        if ($user instanceof planteladministrativos) {
+        if ($user instanceof Planteladministrativos) {
             return true;
         }
 
-        if ($user instanceof planteldocentes) {
+        if ($user instanceof Planteldocentes) {
             return AulaParticipante::query()
                 ->where('aulas_virtuales_id', (int) $aulaId)
                 ->where('tipo', 'DOCENTE')

@@ -7,10 +7,10 @@ use App\Models\Archivo;
 use App\Models\ArchivoRelacion;
 use App\Models\EntregaTarea;
 use App\Models\PublicacionAula;
-use App\Models\usuarioslcchs;
-use App\Models\planteladministrativos;
-use App\Models\planteldocentes;
-use App\Models\estudiantesifas;
+use App\Models\Usuarioslcchs;
+use App\Models\Planteladministrativos;
+use App\Models\Planteldocentes;
+use App\Models\Estudiantesifas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -25,16 +25,16 @@ class LChaulaArchivoController extends Controller
 
     private function actorInfo($user): array
     {
-        if ($user instanceof planteldocentes) {
+        if ($user instanceof Planteldocentes) {
             return ['tipo' => 'PLANTELDOCENTE', 'id' => (int) $user->id];
         }
-        if ($user instanceof planteladministrativos) {
+        if ($user instanceof Planteladministrativos) {
             return ['tipo' => 'ADMIN', 'id' => (int) $user->id];
         }
-        if ($user instanceof estudiantesifas) {
+        if ($user instanceof Estudiantesifas) {
             return ['tipo' => 'ESTUDIANTE', 'id' => (int) $user->id];
         }
-        if ($user instanceof usuarioslcchs) {
+        if ($user instanceof Usuarioslcchs) {
             return ['tipo' => 'SUPERADMIN', 'id' => (int) $user->id];
         }
         return ['tipo' => 'OTRO', 'id' => (int) ($user->id ?? 0)];
@@ -99,7 +99,7 @@ class LChaulaArchivoController extends Controller
         }
 
         // Control básico de institución (evita subidas cruzadas)
-        if (($user instanceof planteldocentes || $user instanceof planteladministrativos) && (int) $user->instituciones_id !== (int) $institucionId) {
+        if (($user instanceof Planteldocentes || $user instanceof Planteladministrativos) && (int) $user->instituciones_id !== (int) $institucionId) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 
@@ -166,7 +166,7 @@ class LChaulaArchivoController extends Controller
         }
 
         // control básico de institución
-        if (($user instanceof planteldocentes || $user instanceof planteladministrativos) && (int) $user->instituciones_id !== (int) $archivo->instituciones_id) {
+        if (($user instanceof Planteldocentes || $user instanceof Planteladministrativos) && (int) $user->instituciones_id !== (int) $archivo->instituciones_id) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 

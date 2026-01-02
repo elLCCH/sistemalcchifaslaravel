@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\planteldocentes;
+use App\Models\Planteldocentes;
 use Illuminate\Http\Request;
 
 use Illuminate\Support\Facades\Hash;
@@ -21,7 +21,7 @@ class PlanteldocentesController extends Controller
         // $planteldocentes = planteldocentes::all();
         $user = request()->user();
 
-        $query = \App\Models\planteldocentes::query();
+        $query = \App\Models\Planteldocentes::query();
         if (!empty($user?->instituciones_id)) {
             $query->where('instituciones_id', $user->instituciones_id);
         }
@@ -30,7 +30,7 @@ class PlanteldocentesController extends Controller
 
         if (empty($user?->instituciones_id)) {
             foreach ($planteldocentes as $planteldocente) {
-                $institucion = \App\Models\instituciones::find($planteldocente->instituciones_id);
+                $institucion = \App\Models\Instituciones::find($planteldocente->instituciones_id);
                 $planteldocente->NombreInstitucion = $institucion ? $institucion->Nombre : null;
             }
         } else {
@@ -50,14 +50,14 @@ class PlanteldocentesController extends Controller
             $planteldocentes['instituciones_id'] = $user->instituciones_id;
         }
         $planteldocentes['Contrasenia'] = Hash::make($request->input('Contrasenia'));
-        planteldocentes::insert($planteldocentes);
+        Planteldocentes::insert($planteldocentes);
         return response()->json(['data' => $planteldocentes]);
     }
     
     public function show($id)
     {
         $user = request()->user();
-        $planteldocentes = planteldocentes::query()
+        $planteldocentes = Planteldocentes::query()
             ->where('id', '=', $id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);
@@ -78,7 +78,7 @@ class PlanteldocentesController extends Controller
         // return response()->json(['data' => $planteldocentes]);
 
         $user = $request->user();
-        $planteldocentes = planteldocentes::query()
+        $planteldocentes = Planteldocentes::query()
             ->where('id', '=', $request->id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);
@@ -109,7 +109,7 @@ class PlanteldocentesController extends Controller
     public function destroy($id)
     {
         $user = request()->user();
-        $row = planteldocentes::query()
+        $row = Planteldocentes::query()
             ->where('id', '=', $id)
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('instituciones_id', $user->instituciones_id);

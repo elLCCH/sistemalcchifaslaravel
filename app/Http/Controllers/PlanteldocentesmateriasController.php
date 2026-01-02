@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\planteldocentesmaterias;
+use App\Models\Planteldocentesmaterias;
 use Illuminate\Http\Request;
 
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
-use App\Models\materias;
-use App\Models\planteldocentes;
+use App\Models\Materias;
+use App\Models\Planteldocentes;
 class PlanteldocentesmateriasController extends Controller
 {
    public function __construct()
@@ -25,7 +25,7 @@ class PlanteldocentesmateriasController extends Controller
 
         $isSuperAdmin = empty($user?->instituciones_id);
 
-        $query = planteldocentesmaterias::query()
+        $query = Planteldocentesmaterias::query()
             ->select('planteldocentesmaterias.*')
             ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id');
 
@@ -90,7 +90,7 @@ class PlanteldocentesmateriasController extends Controller
 
         $isSuperAdmin = empty($user?->instituciones_id);
 
-        $row = planteldocentesmaterias::query()
+        $row = Planteldocentesmaterias::query()
             ->select('planteldocentesmaterias.*')
             ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
             ->when(!$isSuperAdmin, function ($q) use ($user) {
@@ -111,7 +111,7 @@ class PlanteldocentesmateriasController extends Controller
 
         $isSuperAdmin = empty($user?->instituciones_id);
 
-        $assignment = planteldocentesmaterias::query()
+        $assignment = Planteldocentesmaterias::query()
             ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
             ->when(!$isSuperAdmin, function ($q) use ($user) {
                 $q->where('planteldocentes.instituciones_id', $user->instituciones_id);
@@ -135,7 +135,7 @@ class PlanteldocentesmateriasController extends Controller
 
         $isSuperAdmin = empty($user?->instituciones_id);
 
-        $deleted = planteldocentesmaterias::query()
+        $deleted = Planteldocentesmaterias::query()
             ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
             ->when(!$isSuperAdmin, function ($q) use ($user) {
                 $q->where('planteldocentes.instituciones_id', $user->instituciones_id);
@@ -161,7 +161,7 @@ class PlanteldocentesmateriasController extends Controller
             'Paralelo' => ['nullable', 'string', 'max:50'],
         ]);
 
-        $docenteInstitucionId = planteldocentes::query()
+        $docenteInstitucionId = Planteldocentes::query()
             ->where('id', $validated['planteldocentes_id'])
             ->value('instituciones_id');
 
@@ -169,7 +169,7 @@ class PlanteldocentesmateriasController extends Controller
             return response()->json(['message' => 'Docente no encontrado'], 404);
         }
 
-        $materiaInstitucionId = materias::query()
+        $materiaInstitucionId = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('materias.id', $validated['materias_id'])
@@ -194,7 +194,7 @@ class PlanteldocentesmateriasController extends Controller
         }
 
         // Validaciones por ModoMateria (reglas de asignación)
-        $modoMateria = materias::query()
+        $modoMateria = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->where('materias.id', $validated['materias_id'])
             ->value('plandeestudios.ModoMateria');
@@ -220,13 +220,13 @@ class PlanteldocentesmateriasController extends Controller
 
         $esUnDocentePorMateria = (str_contains($modoNorm, '1') && str_contains($modoNorm, 'DOCENTE'));
         if ($esUnDocentePorMateria) {
-            $otrosAsignados = planteldocentesmaterias::query()
+            $otrosAsignados = Planteldocentesmaterias::query()
                 ->where('materias_id', $validated['materias_id'])
                 ->where('planteldocentes_id', '!=', $validated['planteldocentes_id'])
                 ->exists();
 
             if ($otrosAsignados) {
-                $nombres = planteldocentesmaterias::query()
+                $nombres = Planteldocentesmaterias::query()
                     ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
                     ->where('planteldocentesmaterias.materias_id', $validated['materias_id'])
                     ->select(['planteldocentes.id', 'planteldocentes.Nombres', 'planteldocentes.Apellidos'])
@@ -247,7 +247,7 @@ class PlanteldocentesmateriasController extends Controller
             }
         }
 
-        $assignment = planteldocentesmaterias::query()->firstOrCreate(
+        $assignment = Planteldocentesmaterias::query()->firstOrCreate(
             [
                 'planteldocentes_id' => $validated['planteldocentes_id'],
                 'materias_id' => $validated['materias_id'],
@@ -281,7 +281,7 @@ class PlanteldocentesmateriasController extends Controller
             'materias_id' => ['required', 'integer'],
         ]);
 
-        $docenteInstitucionId = planteldocentes::query()
+        $docenteInstitucionId = Planteldocentes::query()
             ->where('id', $validated['planteldocentes_id'])
             ->value('instituciones_id');
 
@@ -293,7 +293,7 @@ class PlanteldocentesmateriasController extends Controller
             return response()->json(['message' => 'Docente no pertenece a la institución'], 403);
         }
 
-        $deleted = planteldocentesmaterias::query()
+        $deleted = Planteldocentesmaterias::query()
             ->where('planteldocentes_id', $validated['planteldocentes_id'])
             ->where('materias_id', $validated['materias_id'])
             ->delete();

@@ -7,9 +7,9 @@ use App\Models\AulaParticipante;
 use App\Models\AulaVirtual;
 use App\Models\PublicacionAula;
 use App\Models\Tarea;
-use App\Models\planteladministrativos;
-use App\Models\planteldocentes;
-use App\Models\usuarioslcchs;
+use App\Models\Planteladministrativos;
+use App\Models\Planteldocentes;
+use App\Models\Usuarioslcchs;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -23,13 +23,13 @@ class PublicacionAulaController extends Controller
 
     private function actorTipo($user): string
     {
-        if ($user instanceof planteldocentes) {
+        if ($user instanceof Planteldocentes) {
             return 'PLANTELDOCENTE';
         }
-        if ($user instanceof planteladministrativos) {
+        if ($user instanceof Planteladministrativos) {
             return 'ADMIN';
         }
-        if ($user instanceof usuarioslcchs) {
+        if ($user instanceof Usuarioslcchs) {
             return 'SUPERADMIN';
         }
         return 'OTRO';
@@ -37,20 +37,20 @@ class PublicacionAulaController extends Controller
 
     private function canPublicar($user, AulaVirtual $aula): bool
     {
-        if ($user instanceof usuarioslcchs) {
+        if ($user instanceof Usuarioslcchs) {
             return true;
         }
 
-        if (($user instanceof planteladministrativos || $user instanceof planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
+        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
             return false;
         }
 
         // administrativos: permitido por defecto
-        if ($user instanceof planteladministrativos) {
+        if ($user instanceof Planteladministrativos) {
             return true;
         }
 
-        if ($user instanceof planteldocentes) {
+        if ($user instanceof Planteldocentes) {
             return AulaParticipante::query()
                 ->where('aulas_virtuales_id', (int) $aula->id)
                 ->where('tipo', 'DOCENTE')
@@ -74,7 +74,7 @@ class PublicacionAulaController extends Controller
             return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
         }
 
-        if (($user instanceof planteladministrativos || $user instanceof planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
+        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 

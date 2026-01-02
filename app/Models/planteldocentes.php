@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Laravel\Sanctum\HasApiTokens;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
-class planteldocentes extends Authenticatable
+class Planteldocentes extends Authenticatable
 {
     use HasApiTokens;
     protected $table = 'planteldocentes';

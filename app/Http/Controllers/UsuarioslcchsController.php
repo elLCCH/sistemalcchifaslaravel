@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\usuarioslcchs;
+use App\Models\Usuarioslcchs;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
@@ -17,7 +17,7 @@ class UsuarioslcchsController extends Controller
     //#region Inicio Controller de Crud PHP de usuarioslcchs
     public function index()
     {
-        $usuarioslcchs = usuarioslcchs::all();
+        $usuarioslcchs = Usuarioslcchs::all();
         return response()->json(['data' => $usuarioslcchs]);
     }
     
@@ -26,13 +26,13 @@ class UsuarioslcchsController extends Controller
     {
         $usuarioslcchs = $request->all();
         $usuarioslcchs['Contrasenia'] = Hash::make($request->input('Contrasenia'));
-        usuarioslcchs::insert($usuarioslcchs);
+        Usuarioslcchs::insert($usuarioslcchs);
         return response()->json(['data' => $usuarioslcchs]);
     }
     
     public function show($id)
     {
-        $usuarioslcchs = usuarioslcchs::where('id','=',$id)->firstOrFail();
+        $usuarioslcchs = Usuarioslcchs::where('id','=',$id)->firstOrFail();
         return response()->json(['data' => $usuarioslcchs]);
     }
     
@@ -43,7 +43,7 @@ class UsuarioslcchsController extends Controller
         // usuarioslcchs::where('id','=',$request->id)->update($usuarioslcchs);
         // return response()->json(['data' => $usuarioslcchs]);
 
-        $usuarioslcchs = usuarioslcchs::findOrFail($request->id);
+        $usuarioslcchs = Usuarioslcchs::findOrFail($request->id);
         $requestData = $request->all();
 
         if ($request->has('Contrasenia')) {
@@ -64,7 +64,7 @@ class UsuarioslcchsController extends Controller
     
     public function destroy($id)
     {
-        usuarioslcchs::destroy($id);
+        Usuarioslcchs::destroy($id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de usuarioslcchs

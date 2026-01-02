@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\calificaciones;
-use App\Models\infoestudiantesifas;
-use App\Models\materias;
+use App\Models\Calificaciones;
+use App\Models\Infoestudiantesifas;
+use App\Models\Materias;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -25,7 +25,7 @@ class CalificacionesController extends Controller
 
     private function getInstitucionIdFromInfo(int $infoId): ?int
     {
-        $inst = infoestudiantesifas::query()
+        $inst = Infoestudiantesifas::query()
             ->where('id', $infoId)
             ->value('instituciones_id');
 
@@ -52,7 +52,7 @@ class CalificacionesController extends Controller
 
         $isSuperAdmin = $this->isSuperAdmin($user);
 
-        $query = calificaciones::query();
+        $query = Calificaciones::query();
         if (!$isSuperAdmin) {
             $query
                 ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
@@ -89,7 +89,7 @@ class CalificacionesController extends Controller
             abort(404);
         }
 
-        $query = calificaciones::query()
+        $query = Calificaciones::query()
             ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
@@ -163,7 +163,7 @@ class CalificacionesController extends Controller
             $avgEvalCount = 4;
         }
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $infoId)
             ->first();
 
@@ -184,7 +184,7 @@ class CalificacionesController extends Controller
         $ids = collect($items)->pluck('id')->map(fn ($x) => (int) $x)->values();
 
         // Verifica pertenencia institución + que sean de la misma inscripción
-        $allowed = calificaciones::query()
+        $allowed = Calificaciones::query()
             ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
@@ -212,7 +212,7 @@ class CalificacionesController extends Controller
 
             foreach ($items as $payload) {
                 $rowId = (int) $payload['id'];
-                /** @var calificaciones $row */
+                /** @var Calificaciones $row */
                 $row = $allowed->get($rowId);
                 if (!$row) {
                     continue;
@@ -288,7 +288,7 @@ class CalificacionesController extends Controller
             abort(404);
         }
 
-        $materia = materias::query()
+        $materia = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
@@ -332,7 +332,7 @@ class CalificacionesController extends Controller
             ->orderBy('planteldocentes.Nombres')
             ->get();
 
-        $query = calificaciones::query()
+        $query = Calificaciones::query()
             ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
             ->join('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
@@ -430,7 +430,7 @@ class CalificacionesController extends Controller
         $items = $validated['items'];
         $ids = collect($items)->pluck('id')->map(fn ($x) => (int) $x)->values();
 
-        $allowed = calificaciones::query()
+        $allowed = Calificaciones::query()
             ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
@@ -457,7 +457,7 @@ class CalificacionesController extends Controller
             $updated = 0;
             foreach ($items as $payload) {
                 $rowId = (int) $payload['id'];
-                /** @var calificaciones $row */
+                /** @var Calificaciones $row */
                 $row = $allowed->get($rowId);
                 if (!$row) continue;
 
@@ -557,7 +557,7 @@ class CalificacionesController extends Controller
             return response()->json(['message' => 'Acceso no permitido'], 403);
         }
 
-        $created = calificaciones::create($validated);
+        $created = Calificaciones::create($validated);
         return response()->json(['data' => $created], 201);
     }
     
@@ -570,7 +570,7 @@ class CalificacionesController extends Controller
 
         $isSuperAdmin = $this->isSuperAdmin($user);
 
-        $row = calificaciones::query()
+        $row = Calificaciones::query()
             ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
             ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
@@ -627,7 +627,7 @@ class CalificacionesController extends Controller
 
         $id = (int) $validated['id'];
 
-        $row = calificaciones::query()
+        $row = Calificaciones::query()
             ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
             ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
@@ -657,7 +657,7 @@ class CalificacionesController extends Controller
         $payload = $validated;
         unset($payload['id']);
 
-        calificaciones::query()->where('id', $id)->update($payload);
+        Calificaciones::query()->where('id', $id)->update($payload);
 
         return response()->json(['data' => ['updated' => true]]);
     }
@@ -680,7 +680,7 @@ class CalificacionesController extends Controller
 
         $forzar = (bool) ($validated['forzar'] ?? false);
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
             ->first();
 
@@ -697,7 +697,7 @@ class CalificacionesController extends Controller
             return response()->json(['message' => 'Inscripción no pertenece a la institución'], 403);
         }
 
-        $materiaRow = materias::query()
+        $materiaRow = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('materias.id', $validated['materias_id'])
@@ -734,7 +734,7 @@ class CalificacionesController extends Controller
 
         DB::beginTransaction();
         try {
-            $assignment = calificaciones::query()->firstOrCreate(
+            $assignment = Calificaciones::query()->firstOrCreate(
                 [
                     'infoestudiantesifas_id' => $validated['infoestudiantesifas_id'],
                     'materias_id' => $validated['materias_id'],
@@ -744,7 +744,7 @@ class CalificacionesController extends Controller
                 ]
             );
 
-            $count = calificaciones::query()
+            $count = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->count();
 
@@ -773,7 +773,7 @@ class CalificacionesController extends Controller
             'materias_id' => ['required', 'integer'],
         ]);
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
             ->first();
 
@@ -800,12 +800,12 @@ class CalificacionesController extends Controller
 
         DB::beginTransaction();
         try {
-            $deleted = calificaciones::query()
+            $deleted = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->where('materias_id', $validated['materias_id'])
                 ->delete();
 
-            $count = calificaciones::query()
+            $count = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->count();
 
@@ -838,7 +838,7 @@ class CalificacionesController extends Controller
             'EstadoRegistroMateria' => ['nullable', 'string', 'max:50'],
         ]);
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
             ->first();
 
@@ -861,7 +861,7 @@ class CalificacionesController extends Controller
 
         $allParalelos = (bool) ($validated['all_paralelos'] ?? false);
 
-        $materiasQuery = materias::query()
+        $materiasQuery = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('carreras.instituciones_id', $infoInstitucionId)
@@ -878,7 +878,7 @@ class CalificacionesController extends Controller
             return response()->json(['data' => ['created' => 0, 'total_materias' => 0]]);
         }
 
-        $existing = calificaciones::query()
+        $existing = Calificaciones::query()
             ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
             ->whereIn('materias_id', $materiasIds)
             ->pluck('materias_id')
@@ -896,7 +896,7 @@ class CalificacionesController extends Controller
                     continue;
                 }
 
-                calificaciones::create([
+                Calificaciones::create([
                     'infoestudiantesifas_id' => (int) $validated['infoestudiantesifas_id'],
                     'materias_id' => $mid,
                     'EstadoRegistroMateria' => $validated['EstadoRegistroMateria'] ?? null,
@@ -904,7 +904,7 @@ class CalificacionesController extends Controller
                 $created++;
             }
 
-            $count = calificaciones::query()
+            $count = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->count();
 
@@ -938,7 +938,7 @@ class CalificacionesController extends Controller
 
         $forzar = (bool) ($validated['forzar'] ?? false);
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
             ->first();
 
@@ -961,7 +961,7 @@ class CalificacionesController extends Controller
 
         $paralelo = trim((string) ($validated['paralelo'] ?? ''));
 
-        $materiasQuery = materias::query()
+        $materiasQuery = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('carreras.instituciones_id', $infoInstitucionId)
@@ -980,7 +980,7 @@ class CalificacionesController extends Controller
             return response()->json(['data' => ['created' => 0, 'total_materias' => 0]]);
         }
 
-        $existing = calificaciones::query()
+        $existing = Calificaciones::query()
             ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
             ->whereIn('materias_id', $materiasIds)
             ->pluck('materias_id')
@@ -1010,7 +1010,7 @@ class CalificacionesController extends Controller
                 $created = count($rowsToInsert);
             }
 
-            $count = calificaciones::query()
+            $count = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->count();
 
@@ -1049,7 +1049,7 @@ class CalificacionesController extends Controller
 
         $forzar = (bool) ($validated['forzar'] ?? false);
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
             ->first();
 
@@ -1072,7 +1072,7 @@ class CalificacionesController extends Controller
 
         $paralelo = trim((string) ($validated['paralelo'] ?? ''));
 
-        $materiasQuery = materias::query()
+        $materiasQuery = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('carreras.instituciones_id', $infoInstitucionId)
@@ -1093,12 +1093,12 @@ class CalificacionesController extends Controller
 
         DB::beginTransaction();
         try {
-            $deleted = calificaciones::query()
+            $deleted = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->whereIn('materias_id', $materiasIds)
                 ->delete();
 
-            $count = calificaciones::query()
+            $count = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->count();
 
@@ -1135,7 +1135,7 @@ class CalificacionesController extends Controller
             'EstadoRegistroMateria' => ['nullable', 'string', 'max:50'],
         ]);
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
             ->first();
 
@@ -1157,7 +1157,7 @@ class CalificacionesController extends Controller
             return response()->json(['message' => 'Año o Resolución no definidos para asignación masiva'], 422);
         }
 
-        $materiasIds = materias::query()
+        $materiasIds = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('carreras.instituciones_id', $infoInstitucionId)
@@ -1170,7 +1170,7 @@ class CalificacionesController extends Controller
             return response()->json(['data' => ['created' => 0, 'total_materias' => 0]]);
         }
 
-        $existing = calificaciones::query()
+        $existing = Calificaciones::query()
             ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
             ->whereIn('materias_id', $materiasIds)
             ->pluck('materias_id')
@@ -1199,7 +1199,7 @@ class CalificacionesController extends Controller
                 $created = count($rowsToInsert);
             }
 
-            $count = calificaciones::query()
+            $count = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->count();
 
@@ -1235,7 +1235,7 @@ class CalificacionesController extends Controller
             'resolucion' => ['required', 'string', 'max:50'],
         ]);
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
             ->first();
 
@@ -1257,7 +1257,7 @@ class CalificacionesController extends Controller
             return response()->json(['message' => 'Año o Resolución no definidos para desasignación masiva'], 422);
         }
 
-        $materiasIds = materias::query()
+        $materiasIds = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('carreras.instituciones_id', $infoInstitucionId)
@@ -1272,12 +1272,12 @@ class CalificacionesController extends Controller
 
         DB::beginTransaction();
         try {
-            $deleted = calificaciones::query()
+            $deleted = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->whereIn('materias_id', $materiasIds)
                 ->delete();
 
-            $count = calificaciones::query()
+            $count = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->count();
 
@@ -1311,7 +1311,7 @@ class CalificacionesController extends Controller
             'infoestudiantesifas_id' => ['required', 'integer'],
         ]);
 
-        $info = infoestudiantesifas::query()
+        $info = Infoestudiantesifas::query()
             ->where('id', $validated['infoestudiantesifas_id'])
             ->first();
 
@@ -1329,7 +1329,7 @@ class CalificacionesController extends Controller
 
         DB::beginTransaction();
         try {
-            $deleted = calificaciones::query()
+            $deleted = Calificaciones::query()
                 ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
                 ->delete();
 
@@ -1353,7 +1353,7 @@ class CalificacionesController extends Controller
 
         $isSuperAdmin = $this->isSuperAdmin($user);
 
-        $row = calificaciones::query()
+        $row = Calificaciones::query()
             ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
             ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
@@ -1380,7 +1380,7 @@ class CalificacionesController extends Controller
             abort(404);
         }
 
-        calificaciones::query()->where('id', (int) $id)->delete();
+        Calificaciones::query()->where('id', (int) $id)->delete();
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
     //#endregion Fin Controller de Crud PHP de calificaciones

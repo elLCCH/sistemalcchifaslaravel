@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class usuarioslcchs extends Authenticatable
+class Usuarioslcchs extends Authenticatable
 {
      use HasApiTokens, HasFactory;
     protected $table = 'usuarioslcchs';

@@ -5,14 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\AulaParticipante;
 use App\Models\AulaVirtual;
-use App\Models\calificaciones;
-use App\Models\infoestudiantesifas;
-use App\Models\materias;
-use App\Models\planteladministrativos;
-use App\Models\planteldocentes;
-use App\Models\planteldocentesmaterias;
-use App\Models\usuarioslcchs;
-use App\Models\estudiantesifas;
+use App\Models\Materias;
+use App\Models\Planteladministrativos;
+use App\Models\Planteldocentes;
+use App\Models\Planteldocentesmaterias;
+use App\Models\Usuarioslcchs;
+use App\Models\Estudiantesifas;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
@@ -32,8 +30,8 @@ class AulaVirtualController extends Controller
 
         $query = AulaVirtual::query();
 
-        // SUPERADMIN (usuarioslcchs): puede listar por institucion si la manda
-        if ($user instanceof usuarioslcchs) {
+        // SUPERADMIN (Usuarioslcchs): puede listar por institucion si la manda
+        if ($user instanceof Usuarioslcchs) {
             if ($request->filled('instituciones_id')) {
                 $query->where('instituciones_id', (int) $request->get('instituciones_id'));
             }
@@ -41,14 +39,14 @@ class AulaVirtualController extends Controller
         }
 
         // ADMINISTRATIVO: lista por su institución
-        if ($user instanceof planteladministrativos) {
+        if ($user instanceof Planteladministrativos) {
             $query->where('instituciones_id', (int) $user->instituciones_id);
             return response()->json(['success' => true, 'data' => $query->orderByDesc('id')->get()]);
         }
 
         // DOCENTE: lista aulas de sus materias asignadas
-        if ($user instanceof planteldocentes) {
-            $materiasIds = planteldocentesmaterias::query()
+        if ($user instanceof Planteldocentes) {
+            $materiasIds = Planteldocentesmaterias::query()
                 ->where('planteldocentes_id', (int) $user->id)
                 ->pluck('materias_id')
                 ->unique()
@@ -77,7 +75,7 @@ class AulaVirtualController extends Controller
         }
 
         // ESTUDIANTE: lista aulas en las que tiene materias (vía calificaciones)
-        if ($user instanceof estudiantesifas) {
+        if ($user instanceof Estudiantesifas) {
             $sub = AulaVirtual::query()
                 ->join('calificaciones', 'aulas_virtuales.materias_id', '=', 'calificaciones.materias_id')
                 ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
@@ -104,7 +102,7 @@ class AulaVirtualController extends Controller
         }
 
         // control de institución (excepto superadmin)
-        if (($user instanceof planteladministrativos || $user instanceof planteldocentes) && (int) $aula->instituciones_id !== (int) $user->instituciones_id) {
+        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $aula->instituciones_id !== (int) $user->instituciones_id) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 
@@ -124,7 +122,7 @@ class AulaVirtualController extends Controller
             return response()->json(['success' => false, 'message' => 'No autenticado'], 401);
         }
 
-        if (!($user instanceof planteladministrativos || $user instanceof planteldocentes || $user instanceof usuarioslcchs)) {
+        if (!($user instanceof Planteladministrativos || $user instanceof Planteldocentes || $user instanceof Usuarioslcchs)) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 
@@ -138,7 +136,7 @@ class AulaVirtualController extends Controller
         ]);
 
         $institucionId = null;
-        if ($user instanceof usuarioslcchs) {
+        if ($user instanceof Usuarioslcchs) {
             $institucionId = (int) ($validated['instituciones_id'] ?? 0);
             if ($institucionId <= 0) {
                 return response()->json(['success' => false, 'message' => 'instituciones_id es requerido para superadmin'], 422);
@@ -148,7 +146,7 @@ class AulaVirtualController extends Controller
         }
 
         // validar que la materia pertenezca a la institución
-        $materiaInstitucionId = materias::query()
+        $materiaInstitucionId = Materias::query()
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('materias.id', (int) $validated['materias_id'])
@@ -175,7 +173,7 @@ class AulaVirtualController extends Controller
         );
 
         // Si lo crea un docente, registrarlo como participante TITULAR con permisos completos
-        if ($user instanceof planteldocentes) {
+        if ($user instanceof Planteldocentes) {
             AulaParticipante::query()->firstOrCreate(
                 [
                     'aulas_virtuales_id' => (int) $aula->id,
@@ -194,7 +192,7 @@ class AulaVirtualController extends Controller
         }
 
         // Si lo crea un administrativo, registrarlo como ADMIN con permisos de administración
-        if ($user instanceof planteladministrativos) {
+        if ($user instanceof Planteladministrativos) {
             AulaParticipante::query()->firstOrCreate(
                 [
                     'aulas_virtuales_id' => (int) $aula->id,
@@ -227,7 +225,7 @@ class AulaVirtualController extends Controller
             return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
         }
 
-        if (($user instanceof planteladministrativos || $user instanceof planteldocentes) && (int) $aula->instituciones_id !== (int) $user->instituciones_id) {
+        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $aula->instituciones_id !== (int) $user->instituciones_id) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 
@@ -255,7 +253,7 @@ class AulaVirtualController extends Controller
             return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
         }
 
-        if (!($user instanceof usuarioslcchs)) {
+        if (!($user instanceof Usuarioslcchs)) {
             return response()->json(['success' => false, 'message' => 'Solo superadmin puede eliminar aulas'], 403);
         }
 
