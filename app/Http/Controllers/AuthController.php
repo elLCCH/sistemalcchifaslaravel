@@ -170,12 +170,12 @@ class AuthController extends Controller
                     $tiposuperadministrador = $sesion->Tipo;
                     $Permisos = $sesion->Permisos;
                     switch ($tiposuperadministrador) {
-                        case 'LCCH':
-                            $tokenResult = $sesion->createPersonalizedToken('LCCH', ['*'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'lcchs', 'permisos' => $Permisos]);
+                        case 'CREADOR':
+                            $tokenResult = $sesion->createPersonalizedToken('LCCH', ['CREADOR'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'lcchs', 'permisos' => $Permisos]);
                             $token = $tokenResult->plainTextToken;
                             break;
                         case 'TECNICO':
-                            $tokenResult = $sesion->createPersonalizedToken('LCCH', ['TECNICO'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'lcchs', 'permisos' => $Permisos]);
+                            $tokenResult = $sesion->createPersonalizedToken('LCCH', ['TÉCNICO'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'lcchs', 'permisos' => $Permisos]);
                             $token = $tokenResult->plainTextToken;
                             break;
                         
@@ -254,11 +254,11 @@ class AuthController extends Controller
                     $estudiantesifas = $sesion->Tipo;
                     switch ($estudiantesifas) {
                         case 'DOCENTE':
-                            $tokenResult = $sesion->createPersonalizedToken('ESTUDIANTE', ['DOCENTE'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'estudiantes']);
+                            $tokenResult = $sesion->createPersonalizedToken('ESTUDIANTE', ['ESTUDIANTE'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'estudiantes']);
                             $token = $tokenResult->plainTextToken;
                             break;
                         case 'DOCENTECOLABORADOR':
-                            $tokenResult = $sesion->createPersonalizedToken('ESTUDIANTE', ['DOCENTECOLABORADOR'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'estudiantes']);
+                            $tokenResult = $sesion->createPersonalizedToken('ESTUDIANTE', ['ESTUDIANTE'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'estudiantes']);
                             $token = $tokenResult->plainTextToken;
                             break;
                         
