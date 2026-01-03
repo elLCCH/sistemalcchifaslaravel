@@ -10,6 +10,8 @@ use Illuminate\Support\Str;
 
 class CaptureSessionController extends Controller
 {
+    private const MAX_UPLOAD_BYTES = 40 * 1024 * 1024; // 40MB
+
     public function store(Request $request)
     {
         $user = $request->user();
@@ -135,15 +137,70 @@ class CaptureSessionController extends Controller
             return response()->json(['error' => 'Sesión expirada'], 410);
         }
 
+        $iniToBytes = static function (?string $val): int {
+            $val = trim((string) $val);
+            if ($val === '') return 0;
+
+            $last = strtolower(substr($val, -1));
+            $num = (float) $val;
+            switch ($last) {
+                case 'g':
+                    $num *= 1024;
+                    // no break
+                case 'm':
+                    $num *= 1024;
+                    // no break
+                case 'k':
+                    $num *= 1024;
+                    break;
+            }
+            return (int) round($num);
+        };
+
+        $postMaxRaw = ini_get('post_max_size');
+        $uploadMaxRaw = ini_get('upload_max_filesize');
+        $postMaxBytes = $iniToBytes($postMaxRaw);
+        $uploadMaxBytes = $iniToBytes($uploadMaxRaw);
+        $serverLimitBytes = 0;
+        foreach ([$postMaxBytes, $uploadMaxBytes] as $limit) {
+            if ($limit > 0) {
+                $serverLimitBytes = $serverLimitBytes > 0 ? min($serverLimitBytes, $limit) : $limit;
+            }
+        }
+        $effectiveMaxBytes = $serverLimitBytes > 0 ? min(self::MAX_UPLOAD_BYTES, $serverLimitBytes) : self::MAX_UPLOAD_BYTES;
+
         $file = $request->file('file');
         if (!$file) {
+            // Si excede post_max_size/upload_max_filesize, PHP no llena $_FILES y Laravel lo ve como "sin archivo".
+            $contentLength = (int) ($request->server('CONTENT_LENGTH') ?? 0);
+            if ($contentLength > 0 && $serverLimitBytes > 0 && $contentLength > $serverLimitBytes) {
+                $maxMb = (int) floor($effectiveMaxBytes / (1024 * 1024));
+                return response()->json([
+                    'error' => "La foto excede el límite permitido (máx {$maxMb}MB). En el hosting ajusta post_max_size={$postMaxRaw} y upload_max_filesize={$uploadMaxRaw} a >= 40M.",
+                ], 413);
+            }
+
             return response()->json(['error' => 'No se envió ningún archivo'], 400);
         }
 
-        // Validación básica de imagen
+        $size = $file->getSize();
+        if (is_int($size) && $size > $effectiveMaxBytes) {
+            $maxMb = (int) floor($effectiveMaxBytes / (1024 * 1024));
+            return response()->json([
+                'error' => "La foto excede el límite permitido (máx {$maxMb}MB).",
+            ], 413);
+        }
+
+        // Validación básica de imagen (tolerante con HEIC/HEIF en hosting)
         $mime = $file->getMimeType();
-        if (!$mime || !str_starts_with($mime, 'image/')) {
-            return response()->json(['error' => 'El archivo debe ser una imagen'], 422);
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'];
+
+        $looksLikeImage = ($mime && str_starts_with($mime, 'image/')) || in_array($ext, $allowedExtensions, true);
+        if (!$looksLikeImage) {
+            return response()->json([
+                'error' => 'El archivo debe ser una imagen (jpg, png, webp, gif, heic).',
+            ], 422);
         }
 
         $base = 'archivos/institucion' . $session->institucion_id;

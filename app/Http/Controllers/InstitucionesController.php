@@ -11,7 +11,8 @@ class InstitucionesController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+        // $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class])->except(['index', 'show']);
     }
     //#region Inicio Controller de Crud PHP de Instituciones
     public function index()

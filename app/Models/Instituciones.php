@@ -33,6 +33,10 @@ class Instituciones extends Model
         'Historia',
         'Funciones',
         'Caractisticas',
+        'ColorInstitucional',
+        'ColorFuerte',
+        'ColorMedio',
+        'ColorBajo',
         'Estado',
         'Visibilidad',
     ];

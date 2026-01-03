@@ -11,7 +11,7 @@ class IniciosController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class])->except(['index', 'show']);
     }
     //controllerPHPlcch inicios, $
     //#region Inicio Controller de Crud PHP de inicios

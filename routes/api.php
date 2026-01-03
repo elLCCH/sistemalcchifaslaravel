@@ -69,8 +69,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // =========================
     // InstitucionesController
     // =========================
-    Route::get('/instituciones', [InstitucionesController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
-    Route::get('/instituciones/{id}', [InstitucionesController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    
     Route::post('/instituciones', [InstitucionesController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR']);
     Route::put('/instituciones/{id}', [InstitucionesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR']);
     Route::delete('/instituciones/{id}', [InstitucionesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR']);
@@ -115,7 +114,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // ControlesController
     // =========================
     Route::get('controles/options-bulk', [ControlesController::class, 'optionsBulk'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE']);
-    Route::get('/controles', [ControlesController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::get('/controles/{id}', [ControlesController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::post('/controles', [ControlesController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::put('/controles/{id}', [ControlesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
@@ -155,7 +153,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // IniciosController
     // =========================
     // Route::get('/inicios', [IniciosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
-    Route::get('/inicios/{id}', [IniciosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    
     Route::post('/inicios', [IniciosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::put('/inicios/{id}', [IniciosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::delete('/inicios/{id}', [IniciosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
@@ -260,6 +258,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
 });
 // RUTAS API PUBLICAS DE CARGA SIN INICIAR SESION
 Route::get('/inicios', [IniciosController::class, 'index']);
+Route::get('/inicios/{id}', [IniciosController::class, 'show']);
+Route::get('/instituciones', [InstitucionesController::class, 'index']);
+Route::get('/instituciones/{id}', [InstitucionesController::class, 'show']);
+Route::get('/controles', [ControlesController::class, 'index']);
 
 // ============================================================
 // RUTAS API PUBLICAS PARA RECOGER FOTOS DESDE EL CELULAR

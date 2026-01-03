@@ -11,7 +11,7 @@ class ControlesController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class])->except(['index', 'show']);
     }
 
     private function upperTrim(?string $value): ?string
