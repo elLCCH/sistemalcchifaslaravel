@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AniosController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CalifhistoriasConsultaController;
+use App\Http\Controllers\CalifhistoriasController;
 use App\Http\Controllers\CalificacionesController;
 use App\Http\Controllers\InstitucionesController;
 use App\Http\Controllers\UsuarioslcchsController;
@@ -196,8 +198,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // =========================
     // PlanteladministrativosController
     // =========================
-    Route::get('/planteladministrativos', [PlanteladministrativosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
-    Route::get('/planteladministrativos/{id}', [PlanteladministrativosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::get('/planteladministrativos', [PlanteladministrativosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),TÉCNICO,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::get('/planteladministrativos/{id}', [PlanteladministrativosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),TÉCNICO,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::post('/planteladministrativos', [PlanteladministrativosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A)']);
     Route::put('/planteladministrativos/{id}', [PlanteladministrativosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
     Route::delete('/planteladministrativos/{id}', [PlanteladministrativosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A)']);
@@ -255,6 +257,41 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('capture-pairings/{token}/request-capture', [CapturePairingController::class, 'requestCapture'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),NINGUNA,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
     Route::post('capture-pairings/{token}/cancel-capture', [CapturePairingController::class, 'cancelCapture'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),NINGUNA,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
 
+
+    
+    // =========================
+    // CalifhistoriasController
+    // =========================
+    Route::get('/califhistorias', [CalifhistoriasController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+
+    // =========================
+    // Califhistorias - Consultas (solo lectura)
+    // =========================
+    Route::get('/califhistorias/opciones/instituciones', [CalifhistoriasConsultaController::class, 'opcionesInstituciones'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/opciones/anios', [CalifhistoriasConsultaController::class, 'opcionesAnios'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/opciones/mallas', [CalifhistoriasConsultaController::class, 'opcionesMallas'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/opciones/niveles', [CalifhistoriasConsultaController::class, 'opcionesNiveles'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/opciones/cursos', [CalifhistoriasConsultaController::class, 'opcionesCursos'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/opciones/docentes', [CalifhistoriasConsultaController::class, 'opcionesDocentes'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/opciones/docentes-especialidad', [CalifhistoriasConsultaController::class, 'opcionesDocentesEspecialidad'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/opciones/cis', [CalifhistoriasConsultaController::class, 'opcionesCIs'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+
+    Route::get('/califhistorias/consultas/curso', [CalifhistoriasConsultaController::class, 'porCurso'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/consultas/docente', [CalifhistoriasConsultaController::class, 'porDocente'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/consultas/docente-especialidad', [CalifhistoriasConsultaController::class, 'porDocenteEspecialidad'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/consultas/estudiante', [CalifhistoriasConsultaController::class, 'porEstudiante'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/consultas/estudiantes-por-nombre', [CalifhistoriasConsultaController::class, 'estudiantesPorNombre'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/consultas/estudiantes-por-ci', [CalifhistoriasConsultaController::class, 'estudiantesPorCi'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+
+    Route::get('/califhistorias/estadisticas/general', [CalifhistoriasConsultaController::class, 'estadisticasGeneral'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/estadisticas/docente', [CalifhistoriasConsultaController::class, 'estadisticasPorDocente'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/estadisticas/estudiante', [CalifhistoriasConsultaController::class, 'estadisticasPorEstudiante'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::get('/califhistorias/estadisticas/curso', [CalifhistoriasConsultaController::class, 'estadisticasPorCurso'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+
+    Route::get('/califhistorias/{id}', [CalifhistoriasController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::post('/califhistorias', [CalifhistoriasController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+    Route::put('/califhistorias/{id}', [CalifhistoriasController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+    Route::delete('/califhistorias/{id}', [CalifhistoriasController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
 });
 // RUTAS API PUBLICAS DE CARGA SIN INICIAR SESION
 Route::get('/inicios', [IniciosController::class, 'index']);

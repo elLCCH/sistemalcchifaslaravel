@@ -11,9 +11,9 @@ class FileUploadController extends Controller
     {
         $user = $request->user();
         $institucionId = $user ? ($user->instituciones_id ?? null) : null;
-        if (!$institucionId) {
-            return response()->json(['error' => 'Usuario sin institución'], 422);
-        }
+        // if (!$institucionId) {
+        //     return response()->json(['error' => 'Usuario sin institución'], 422);
+        // }
 
         $file = $request->file('file');
         if (!$file) {
@@ -28,28 +28,32 @@ class FileUploadController extends Controller
 
         switch ($request->input('type')) {
             case 'Foto':
-                $path = $base . '/FotosPerfiles';
-                break;
-            case 'pagosAnualesUnicos':
-                $path = $base . '/pagoslcch/pagosunicosgestiones';
+                $path = 'archivos/compartidosifas/FotosPerfiles';
                 break;
             case 'Logo':
-                $path = $base . '/logo';
+                $path = 'archivos/compartidosifas/logo';
                 break;
             case 'BannerInicial':
-                $path = $base . '/BannerInicial';
+                $path = 'archivos/compartidosifas/BannerInicial';
                 break;
             case 'ImagenVision':
-                $path = $base . '/ImagenVision';
+                $path = 'archivos/compartidosifas/ImagenVision';
                 break;
             case 'ImagenMision':
-                $path = $base . '/ImagenMision';
+                $path = 'archivos/compartidosifas/ImagenMision';
                 break;
             case 'inicioscarreras':
-                $path = $base . '/inicios/carreras';
+                $path = 'archivos/compartidosifas/inicios/carreras';
                 break;
             case 'inicioscarouseles':
-                $path = $base . '/inicios/carouseles';
+                $path = 'archivos/compartidosifas/inicios/carouseles';
+                break;
+            case 'iniciospublicaciones':
+                $path = 'archivos/compartidosifas/inicios/publicaciones';
+                break;
+                
+            case 'pagosAnualesUnicos':
+                $path = $base . '/pagoslcch/pagosunicosgestiones';
                 break;
             case 'pagoslcchcomprobantes':
                 $path = $base . '/pagoslcch/comprobantes';

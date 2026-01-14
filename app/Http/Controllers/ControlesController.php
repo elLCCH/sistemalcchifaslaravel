@@ -41,7 +41,7 @@ class ControlesController extends Controller
      */
     public function optionsBulk(Request $request)
     {
-        $user = request()->user();
+        $user = auth('sanctum')->user();
 
         $raw = $request->query('categorias', []);
         $categorias = [];
@@ -64,8 +64,13 @@ class ControlesController extends Controller
 
         $query = Controles::query();
 
-        // mismo scope que index(): global (NULL) + institucional (si aplica)
-        if (!empty($user?->instituciones_id)) {
+        // mismo scope que index():
+        // - superlcchs: todo
+        // - institucional: global (NULL) + institución del usuario
+        // - sin sesión: solo global
+        if ($user instanceof \App\Models\Usuarioslcchs) {
+            // sin filtro
+        } elseif (!empty($user?->instituciones_id)) {
             $query->where(function ($q) use ($user) {
                 $q->whereNull('instituciones_id')
                     ->orWhere('instituciones_id', $user->instituciones_id);
@@ -77,7 +82,6 @@ class ControlesController extends Controller
         $rows = $query
             ->whereIn('Categoria', $categorias)
             ->orderBy('Categoria')
-            ->orderBy('ParaI')
             ->get();
 
         $data = [];
@@ -111,14 +115,20 @@ class ControlesController extends Controller
 
     public function index(Request $request)
     {
-        $user = request()->user();
+        // Nota: esta ruta está pública; si llega un Bearer token, intentamos resolver usuario por Sanctum.
+        // Si no hay sesión, se devuelven solo controles globales.
+        $user = auth('sanctum')->user();
         $categoria = $this->upperTrim((string) $request->query('categoria', ''));
 
         $query = Controles::query();
 
-        // Por defecto: devolver controles globales (instituciones_id NULL)
-        // + los específicos de la institución del usuario (si aplica)
-        if (!empty($user?->instituciones_id)) {
+        // Por defecto:
+        // - superlcchs: todo
+        // - institucional: global (instituciones_id NULL) + los de su institución
+        // - sin sesión: solo global
+        if ($user instanceof \App\Models\Usuarioslcchs) {
+            // sin filtro
+        } elseif (!empty($user?->instituciones_id)) {
             $query->where(function ($q) use ($user) {
                 $q->whereNull('instituciones_id')
                     ->orWhere('instituciones_id', $user->instituciones_id);

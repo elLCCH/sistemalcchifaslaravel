@@ -338,28 +338,28 @@ class AuthController extends Controller
         // Verifica si el usuario autenticado es del modelo Usuario o Cliente
         if ($user instanceof \App\Models\Usuarioslcchs) {
             return response()->json([
-            'tipo' => 'lcch',
+            'tipo' => 'superlcchs',
             'usuario' => $user,
             'abilities' => $abilities
             ]);
         } 
         elseif ($user instanceof \App\Models\Planteladministrativos) {
             return response()->json([
-            'tipo' => 'cliente',
+            'tipo' => 'planteladministrativos',
             'usuario' => $user,
             'abilities' => $abilities
             ]);
         } 
         elseif ($user instanceof \App\Models\Planteldocentes) {
             return response()->json([
-            'tipo' => 'cliente',
+            'tipo' => 'planteldocentes',
             'usuario' => $user,
             'abilities' => $abilities
             ]);
         } 
         elseif ($user instanceof \App\Models\Estudiantesifas) {
             return response()->json([
-            'tipo' => 'cliente',
+            'tipo' => 'estudiantesifas',
             'usuario' => $user,
             'abilities' => $abilities
             ]);
