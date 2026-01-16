@@ -411,9 +411,20 @@ class CalifhistoriasConsultaController extends Controller
             'ci' => ['required', 'string'],
         ]);
 
+        $ci = trim((string) $validated['ci']);
+
         $query = Califhistorias::query()
-            ->where('Institucion', $validated['institucion'])
-            ->where('CI', $validated['ci'])
+            ->where('Institucion', $validated['institucion']);
+
+        // Modo menos estricto: si el CI es numérico, permitir coincidencias parciales (ej: 1234 -> 1234-OR).
+        // Si trae letras/sufijos, usar coincidencia exacta para no mezclar estudiantes por substring.
+        if ($ci !== '' && preg_match('/^\d+$/', $ci)) {
+            $query->where('CI', 'like', "%{$ci}%");
+        } else {
+            $query->where('CI', $ci);
+        }
+
+        $query
             ->orderBy('Anio')
             ->orderBy('Malla')
             ->orderBy('NivelCurso')
@@ -590,12 +601,19 @@ class CalifhistoriasConsultaController extends Controller
             'ci' => ['required', 'string'],
         ]);
 
+        $ci = trim((string) $validated['ci']);
+
         $pass = $this->passMark($request);
         $expr = $this->abandonoExpr($pass);
 
         $base = Califhistorias::query()
-            ->where('Institucion', $validated['institucion'])
-            ->where('CI', $validated['ci']);
+            ->where('Institucion', $validated['institucion']);
+
+        if ($ci !== '' && preg_match('/^\d+$/', $ci)) {
+            $base->where('CI', 'like', "%{$ci}%");
+        } else {
+            $base->where('CI', $ci);
+        }
 
         $stats = $base->clone()
             ->selectRaw('COUNT(*) as total_registros')

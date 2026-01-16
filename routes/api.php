@@ -29,6 +29,9 @@ use App\Http\Controllers\RegistroCalificacionesController;
 use App\Http\Controllers\FileUploadController;
 use App\Http\Controllers\CaptureSessionController;
 use App\Http\Controllers\CapturePairingController;
+use App\Http\Controllers\InfoauditoriaController;
+use App\Http\Controllers\BrandingController;
+use App\Http\Middleware\AuditMiddleware;
 Route::post('/verify-token', [TokenController::class, 'verify']);
 Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como el routing de angular: v1/auth/login
     Route::post('/login', [AuthController::class, "login"]); //EJECUTAR LA FUNCION login desde el authcontroller
@@ -43,13 +46,27 @@ Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como e
     Route::post('/cambiar-clave', [AuthController::class, 'cambiarClave'])->middleware('auth:sanctum'); //cambiar clave de usuario ESTO SUELE SER PARA PERMITIR EL AUTORIZADO
     Route::get('/user', [AuthController::class, 'getUser'])->middleware('auth:sanctum'); //v1/auth/user
 });
+
+Route::prefix('v1/branding')->middleware('auth:sanctum')->group(function () {
+    Route::get('/assets', [BrandingController::class, 'assets']);
+    // Endpoints legacy (string)
+    Route::get('/ObtenerLogo', [BrandingController::class, 'ObtenerLogo']);
+    Route::get('/ObtenerMinisterio', [BrandingController::class, 'ObtenerMinisterio']);
+    Route::get('/ObtenerMinisterioEscudo', [BrandingController::class, 'ObtenerMinisterioEscudo']);
+});
 // Route::middleware("auth:sanctum")->group(function(){
 //     Route::resource('usuarioslcchs', usuarioslcchsController::class);
 // });
 
 
 
-Route::middleware(['auth:sanctum'])->group(function () {
+Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
+    // =========================
+    // InfoauditoriaController
+    // =========================
+    Route::get('/infoauditoria', [InfoauditoriaController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
+    Route::get('/infoauditoria/{id}', [InfoauditoriaController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
+
     // =========================
     // AniosController
     // =========================

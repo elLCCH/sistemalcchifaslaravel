@@ -1,3 +1,12 @@
+-- ==========================================================
+-- MySQL: asegurar UTF8 real (tildes/ñ) en todo el script
+-- ==========================================================
+SET NAMES utf8mb4;
+SET CHARACTER SET utf8mb4;
+SET collation_connection = 'utf8mb4_unicode_ci';
+SET FOREIGN_KEY_CHECKS = 0;
+
+DROP TABLE IF EXISTS `personal_access_tokens`;
 CREATE TABLE `personal_access_tokens` (
     `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
     `tokenable_type` VARCHAR(255) NOT NULL,
@@ -16,7 +25,8 @@ CREATE TABLE `personal_access_tokens` (
     INDEX `personal_access_tokens_tokenable_type_tokenable_id_index` (`tokenable_type`, `tokenable_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE OR REPLACE TABLE anios (
+DROP TABLE IF EXISTS `anios`;
+CREATE TABLE `anios` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     Anio VARCHAR(11) NULL,
     Estado VARCHAR(15) NULL,
@@ -26,10 +36,11 @@ CREATE OR REPLACE TABLE anios (
     Predeterminado VARCHAR(50) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- PARA LAS INSTITUCIONES
-CREATE OR REPLACE TABLE instituciones (
+DROP TABLE IF EXISTS `instituciones`;
+CREATE TABLE `instituciones` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     AnioIncorporacion VARCHAR(20) NULL,
     NIT VARCHAR(30) NULL,
@@ -61,9 +72,10 @@ CREATE OR REPLACE TABLE instituciones (
     Visibilidad VARCHAR(10) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE OR REPLACE TABLE carreras (
+  DROP TABLE IF EXISTS `carreras`;
+  CREATE TABLE `carreras` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     instituciones_id INT NOT NULL,
     NombreCarrera VARCHAR(100) NULL,
@@ -88,10 +100,11 @@ CREATE OR REPLACE TABLE carreras (
     Visibilidad VARCHAR(10) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
+    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE OR REPLACE TABLE plandeestudios (
+  DROP TABLE IF EXISTS `plandeestudios`;
+  CREATE TABLE `plandeestudios` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     carreras_id INT NOT NULL,
     Rango INT NULL, -- PARA ORDENAR LAS MATERIAS
@@ -109,11 +122,12 @@ CREATE OR REPLACE TABLE plandeestudios (
     RelacionDocenteCursoAEstudiante VARCHAR(60) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (carreras_id) REFERENCES carreras(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (anio_id) REFERENCES anios(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
+    FOREIGN KEY (carreras_id) REFERENCES carreras(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (anio_id) REFERENCES anios(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 -- PARA LOS USUARIOS DOCENTES Y ADMINS DE LAS INSTITUCIONES
-CREATE OR REPLACE TABLE usuarioslcchs (
+  DROP TABLE IF EXISTS `usuarioslcchs`;
+  CREATE TABLE `usuarioslcchs` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     Nombres VARCHAR(100) NULL,
     Apellidos VARCHAR(100) NULL,
@@ -129,8 +143,10 @@ CREATE OR REPLACE TABLE usuarioslcchs (
     Visibilidad VARCHAR(15) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-CREATE OR REPLACE TABLE planteldocentes (
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  DROP TABLE IF EXISTS `planteldocentes`;
+  CREATE TABLE `planteldocentes` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     instituciones_id INT NOT NULL,
     Nombres VARCHAR(100) NULL,
@@ -152,9 +168,11 @@ CREATE OR REPLACE TABLE planteldocentes (
     
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
-CREATE OR REPLACE TABLE planteladministrativos (
+    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+  DROP TABLE IF EXISTS `planteladministrativos`;
+  CREATE TABLE `planteladministrativos` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     instituciones_id INT NOT NULL,
     Nombres VARCHAR(100) NULL,
@@ -176,10 +194,11 @@ CREATE OR REPLACE TABLE planteladministrativos (
     
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
+    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 -- ESTUDIANTES IFAS
-CREATE OR REPLACE TABLE estudiantesifas (
+  DROP TABLE IF EXISTS `estudiantesifas`;
+  CREATE TABLE `estudiantesifas` (
     id INT AUTO_INCREMENT PRIMARY KEY, 
     Foto VARCHAR(250) NULL, -- INFORMACION PERSONAL
     Ap_Paterno VARCHAR(50) NULL,
@@ -210,9 +229,10 @@ CREATE OR REPLACE TABLE estudiantesifas (
 
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE OR REPLACE TABLE infoestudiantesifas (
+  DROP TABLE IF EXISTS `infoestudiantesifas`;
+  CREATE TABLE `infoestudiantesifas` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     estudiantesifas_id INT NOT NULL,
     planteldocadmins_id INT NULL,
@@ -235,15 +255,16 @@ CREATE OR REPLACE TABLE infoestudiantesifas (
     FotoPago VARCHAR(250) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (estudiantesifas_id) REFERENCES estudiantesifas(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (planteldocadmins_id) REFERENCES planteldocentes(id) ON UPDATE CASCADE ON DELETE SET NULL,
-    FOREIGN KEY (planteldocadmins_idPC) REFERENCES planteldocentes(id) ON UPDATE CASCADE ON DELETE SET NULL,
-    FOREIGN KEY (planteldocadmins_idOtros) REFERENCES planteldocentes(id) ON UPDATE CASCADE ON DELETE SET NULL,
-    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
+    FOREIGN KEY (estudiantesifas_id) REFERENCES estudiantesifas(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (planteldocadmins_id) REFERENCES planteldocentes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (planteldocadmins_idPC) REFERENCES planteldocentes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (planteldocadmins_idOtros) REFERENCES planteldocentes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- MATERIAS
-CREATE OR REPLACE TABLE materias (
+DROP TABLE IF EXISTS `materias`;
+CREATE TABLE `materias` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     plandeestudios_id INT NOT NULL,
     Paralelo VARCHAR(5) NULL,
@@ -251,20 +272,22 @@ CREATE OR REPLACE TABLE materias (
     EstadoEnvio VARCHAR(250) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (plandeestudios_id) REFERENCES plandeestudios(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
+    FOREIGN KEY (plandeestudios_id) REFERENCES plandeestudios(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE OR REPLACE TABLE planteldocentesmaterias (
+  DROP TABLE IF EXISTS `planteldocentesmaterias`;
+  CREATE TABLE `planteldocentesmaterias` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     planteldocentes_id INT NOT NULL,
     materias_id INT NOT NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (planteldocentes_id) REFERENCES planteldocentes(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (materias_id) REFERENCES materias(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
+    FOREIGN KEY (planteldocentes_id) REFERENCES planteldocentes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (materias_id) REFERENCES materias(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE OR REPLACE TABLE calificaciones (
+  DROP TABLE IF EXISTS `calificaciones`;
+  CREATE TABLE `calificaciones` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     infoestudiantesifas_id INT NOT NULL,
     materias_id INT NOT NULL,
@@ -284,31 +307,50 @@ CREATE OR REPLACE TABLE calificaciones (
     
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (infoestudiantesifas_id) REFERENCES infoestudiantesifas(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (materias_id) REFERENCES materias(id) ON UPDATE CASCADE ON DELETE CASCADE
-);
+    FOREIGN KEY (infoestudiantesifas_id) REFERENCES infoestudiantesifas(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    FOREIGN KEY (materias_id) REFERENCES materias(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE OR REPLACE TABLE historialinformacionestudiantes (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    Nombres VARCHAR(100) NULL,
-    Apellidos VARCHAR(100) NULL,
-    Anio VARCHAR(11) NULL,
-    Categoria VARCHAR(50) NULL,
-    DocenteEspecialidad VARCHAR(100) NULL,
-    DocentePC VARCHAR(100) NULL,
-    DocenteOtros VARCHAR(100) NULL,
-    Institucion VARCHAR(100) NULL,
-    Especialidad VARCHAR(100) NULL,
-    Observacion TEXT NULL,
-    Turno VARCHAR(20) NULL,
-    Edad INT NULL,
-    MallaCurricular VARCHAR(100) NULL,
-    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+DROP TABLE IF EXISTS `infoauditorias`;
+CREATE TABLE `infoauditorias` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+
+  `actor_type` VARCHAR(255) NULL,
+  `actor_id` BIGINT UNSIGNED NULL,
+  `actor_nombrecompleto` VARCHAR(120) NULL,
+  `actor_pertenencia` VARCHAR(50) NULL,
+  `actor_permisos` VARCHAR(100) NULL,
+
+  `accion` VARCHAR(20) NOT NULL,
+  `recurso` VARCHAR(120) NULL,
+  `recurso_id` VARCHAR(64) NULL,
+
+  `metodo` VARCHAR(10) NOT NULL,
+  `url` TEXT NOT NULL,
+  `route_name` VARCHAR(190) NULL,
+  `ip` VARCHAR(45) NULL,
+  `user_agent` TEXT NULL,
+
+  `request_headers` JSON NULL,
+  `request_body` JSON NULL,
+  `old_values` JSON NULL,
+  `new_values` JSON NULL,
+
+  `status_code` SMALLINT UNSIGNED NULL,
+  `mensaje` VARCHAR(255) NULL,
+
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  INDEX `idx_infoauditoria_accion_created_at` (`accion`, `created_at`),
+  INDEX `idx_infoauditoria_recurso_recurso_id` (`recurso`, `recurso_id`),
+  INDEX `idx_infoauditoria_actor` (`actor_type`, `actor_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
-CREATE OR REPLACE TABLE inicios (
+DROP TABLE IF EXISTS `inicios`;
+CREATE TABLE `inicios` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     archivo VARCHAR(200) NULL,
     etiqueta VARCHAR(50) NULL,
@@ -330,15 +372,16 @@ CREATE OR REPLACE TABLE inicios (
 
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 -- controles es usado para los select de categorias, en si seria como si fuera el antiguo api
-CREATE OR REPLACE TABLE controles (
+  DROP TABLE IF EXISTS `controles`;
+  CREATE TABLE `controles` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     instituciones_id INT NULL,
     Estado VARCHAR(15) NULL,
     Visibilidad VARCHAR(15) NULL,
     Categoria VARCHAR(60) NULL, 
-    NivelCurso VARCHAR(100) NULL, 
+    NivelCurso VARCHAR(250) NULL, 
     ParaI VARCHAR(60) NULL, 
     Edades VARCHAR(60) NULL, 
 
@@ -346,10 +389,11 @@ CREATE OR REPLACE TABLE controles (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (instituciones_id) REFERENCES instituciones(id) ON UPDATE CASCADE ON DELETE CASCADE
 
-);
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- PARA LOS RUBROS DE CALIFICACIONES registro de calificaciones
 -- 1) Evaluaciones por materia (Eval 1..4)
+DROP TABLE IF EXISTS `evaluaciones_materia`;
 CREATE TABLE evaluaciones_materia (
   id INT AUTO_INCREMENT PRIMARY KEY,
   materias_id INT NOT NULL,
@@ -373,6 +417,7 @@ CREATE TABLE evaluaciones_materia (
 
 
 -- 2) Rubros/columnas dentro de cada evaluación
+DROP TABLE IF EXISTS `rubros_evaluacion`;
 CREATE TABLE rubros_evaluacion (
   id INT AUTO_INCREMENT PRIMARY KEY,
   evaluacion_id INT NOT NULL,
@@ -396,6 +441,7 @@ CREATE TABLE rubros_evaluacion (
 
 
 -- 3) Notas por estudiante por rubro
+DROP TABLE IF EXISTS `notas_rubro`;
 CREATE TABLE notas_rubro (
   id INT AUTO_INCREMENT PRIMARY KEY,
   rubro_id INT NOT NULL,
@@ -421,6 +467,7 @@ CREATE TABLE notas_rubro (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- PARA SACAR FOTO CON CELULAR Y EMPAREJAR CELULAR
+DROP TABLE IF EXISTS `capture_sessions`;
 CREATE TABLE `capture_sessions` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `token` VARCHAR(128) NOT NULL,
@@ -439,6 +486,7 @@ CREATE TABLE `capture_sessions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
+DROP TABLE IF EXISTS `capture_pairings`;
 CREATE TABLE `capture_pairings` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `token` VARCHAR(128) NOT NULL,
@@ -464,7 +512,8 @@ CREATE TABLE `capture_pairings` (
 
 
 -- PARA SISTEMA PAGOS
-CREATE OR REPLACE TABLE pagoslcch (
+DROP TABLE IF EXISTS `pagoslcch`;
+CREATE TABLE `pagoslcch` (
   id INT AUTO_INCREMENT PRIMARY KEY,
   infoestudiantesifas_id INT NOT NULL,
 
@@ -483,9 +532,11 @@ CREATE OR REPLACE TABLE pagoslcch (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
   CONSTRAINT fk_pagoslcch_info FOREIGN KEY (infoestudiantesifas_id)
-    REFERENCES infoestudiantesifas(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    REFERENCES infoestudiantesifas(id) ON UPDATE CASCADE ON DELETE RESTRICT,
 
   UNIQUE KEY uq_pagoslcch_mes (infoestudiantesifas_id, gestion, mes),
   INDEX idx_pagoslcch_info (infoestudiantesifas_id),
   INDEX idx_pagoslcch_fecha (fechapago)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+SET FOREIGN_KEY_CHECKS = 1;

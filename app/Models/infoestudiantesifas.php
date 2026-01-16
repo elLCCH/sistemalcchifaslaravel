@@ -21,6 +21,7 @@ class Infoestudiantesifas extends Model
         'Anotaciones',
         'Notas',
         'Observacion',
+        'Matricula',
         'Categoria',
         'Turno',
         'Curso_Solicitado',
@@ -28,6 +29,7 @@ class Infoestudiantesifas extends Model
         'CantidadMateriasAsignadas',
         'InstrumentoMusical',
         'InstrumentoMusicalSecundario',
+        'FotoPago',
     ];
     //
 }

@@ -136,7 +136,7 @@ class MateriasController extends Controller
             return response()->json(['data' => $materias]);
         }
 
-        // Si se mandan filtros por anio/resolucion, se usan en lugar de Curso/Paralelo.
+        // Filtros por Año/Resolución (para performance). Estos NO deben quitar el filtro por Curso/Paralelo.
         if ($anioId !== null && $anioId !== '' && (int) $anioId > 0) {
             $query->where('plandeestudios.anio_id', (int) $anioId);
         }
@@ -145,13 +145,12 @@ class MateriasController extends Controller
             $query->where('carreras.Resolucion', $resolucion);
         }
 
-        $usaFiltrosAnioResolucion = ($anioId !== null && $anioId !== '' && (int) $anioId > 0) || ($resolucion !== '');
-
-        if (!$usaFiltrosAnioResolucion) {
-            // Comportamiento anterior: filtrar por curso/paralelo de la inscripción.
-            if (!empty($info->Curso_Solicitado)) {
-                $query->where('plandeestudios.LvlCurso', $info->Curso_Solicitado);
-            }
+        // Regla solicitada:
+        // - Si NO hay Curso_Solicitado: mostrar todo (dentro de Año/Resolución si vienen).
+        // - Si hay Curso_Solicitado: filtrar por ese nivel.
+        // - Si además hay Paralelo_Solicitado: filtrar también por paralelo.
+        if (!empty($info->Curso_Solicitado)) {
+            $query->where('plandeestudios.LvlCurso', $info->Curso_Solicitado);
 
             if (!empty($info->Paralelo_Solicitado)) {
                 $query->where('materias.Paralelo', $info->Paralelo_Solicitado);
@@ -229,6 +228,7 @@ class MateriasController extends Controller
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('plandeestudios.anio_id', $anioId)
             ->where('carreras.Resolucion', $resolucion)
+            ->where('plandeestudios.LvlCurso', $lvlCurso)
             ->where('materias.Paralelo', $paraleloNuevo)
             ->whereNotIn('materias.id', $ids->all());
 
@@ -281,6 +281,7 @@ class MateriasController extends Controller
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('plandeestudios.anio_id', $anioId)
             ->where('carreras.Resolucion', $resolucion)
+            ->where('plandeestudios.LvlCurso', $lvlCurso)
             ->where('materias.Paralelo', $paraleloNuevo);
 
         if (!empty($institucionId)) {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Infoestudiantesifas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
@@ -89,6 +90,49 @@ class InfoestudiantesifasController extends Controller
     private function cursoEsTecnicoSuperior(string $cursoSolicitado): bool
     {
         return stripos($cursoSolicitado, 'SUPERIOR') !== false;
+    }
+
+    private function getInstitucionIdFromRequest(Request $request, $user): int
+    {
+        // Si el usuario está ligado a una institución, se impone.
+        if (!empty($user?->instituciones_id)) {
+            return (int) $user->instituciones_id;
+        }
+
+        return (int) $request->input('instituciones_id', 0);
+    }
+
+    private function getAnioFromFecha(?string $fecha): int
+    {
+        try {
+            return Carbon::parse($fecha ?: Carbon::now()->toDateString())->year;
+        } catch (\Throwable $e) {
+            return Carbon::now()->year;
+        }
+    }
+
+    private function existeInscripcionMismaInstMismoAnio(int $estudianteId, int $institucionId, int $anio, ?int $ignoreId = null): ?array
+    {
+        if ($estudianteId <= 0 || $institucionId <= 0 || $anio <= 0) return null;
+
+        $q = Infoestudiantesifas::query()
+            ->where('estudiantesifas_id', $estudianteId)
+            ->where('instituciones_id', $institucionId)
+            ->whereRaw('YEAR(COALESCE(FechInsc, created_at)) = ?', [$anio]);
+
+        if ($ignoreId) {
+            $q->where('id', '<>', $ignoreId);
+        }
+
+        $row = $q->orderByDesc('id')->first();
+        if (!$row) return null;
+
+        return [
+            'id' => (int) $row->id,
+            'FechInsc' => $row->FechInsc,
+            'instituciones_id' => (int) $row->instituciones_id,
+            'estudiantesifas_id' => (int) $row->estudiantesifas_id,
+        ];
     }
 
     public function estadisticas(Request $request)
@@ -661,13 +705,51 @@ class InfoestudiantesifasController extends Controller
     
     public function store(Request $request)
     {
-        $infoestudiantesifas = $request->all();
-        $user = request()->user();
-        if ($user->instituciones_id) {
-            $infoestudiantesifas['instituciones_id'] = $user->instituciones_id;
+        $user = $request->user();
+
+        $data = $request->validate([
+            'estudiantesifas_id' => ['required', 'integer', 'min:1'],
+            'planteldocadmins_id' => ['nullable', 'integer'],
+            'planteldocadmins_idPC' => ['nullable', 'integer'],
+            'planteldocadmins_idOtros' => ['nullable', 'integer'],
+            'instituciones_id' => ['nullable', 'integer'],
+            'FechInsc' => ['nullable', 'date'],
+            'Verificacion' => ['nullable', 'string', 'max:100'],
+            'Anotaciones' => ['nullable', 'string'],
+            'Notas' => ['nullable', 'string'],
+            'Observacion' => ['nullable', 'string'],
+            'Matricula' => ['nullable', 'string', 'max:30'],
+            'Categoria' => ['nullable', 'string', 'max:50'],
+            'Turno' => ['nullable', 'string', 'max:20'],
+            'Curso_Solicitado' => ['nullable', 'string', 'max:60'],
+            'Paralelo_Solicitado' => ['nullable', 'string', 'max:5'],
+            'CantidadMateriasAsignadas' => ['nullable', 'integer'],
+            'InstrumentoMusical' => ['nullable', 'string', 'max:100'],
+            'InstrumentoMusicalSecundario' => ['nullable', 'string', 'max:100'],
+            'FotoPago' => ['nullable', 'string', 'max:250'],
+        ]);
+
+        $institucionId = $this->getInstitucionIdFromRequest($request, $user);
+        if ($institucionId <= 0) {
+            return response()->json(['message' => 'instituciones_id es requerido'], 422);
         }
-        Infoestudiantesifas::insert($infoestudiantesifas);
-        return response()->json(['data' => $infoestudiantesifas]);
+        $data['instituciones_id'] = $institucionId;
+
+        $anio = Carbon::now()->year;
+        $force = filter_var($request->query('force', $request->input('force', '0')), FILTER_VALIDATE_BOOLEAN);
+
+        $dup = $this->existeInscripcionMismaInstMismoAnio((int) $data['estudiantesifas_id'], $institucionId, $anio, null);
+        if ($dup && !$force) {
+            return response()->json([
+                'message' => 'Ya existe una inscripción de este estudiante en esta institución en la gestión actual.',
+                'requires_confirmation' => true,
+                'duplicate' => $dup,
+                'anio' => $anio,
+            ], 409);
+        }
+
+        $row = Infoestudiantesifas::create($data);
+        return response()->json(['data' => $row], 201);
     }
     
     public function show($id)
@@ -694,9 +776,46 @@ class InfoestudiantesifasController extends Controller
             })
             ->firstOrFail();
 
-        $payload = $request->all();
-        if (!empty($user?->instituciones_id)) {
-            $payload['instituciones_id'] = $user->instituciones_id;
+        $payload = $request->validate([
+            'estudiantesifas_id' => ['sometimes', 'required', 'integer', 'min:1'],
+            'planteldocadmins_id' => ['nullable', 'integer'],
+            'planteldocadmins_idPC' => ['nullable', 'integer'],
+            'planteldocadmins_idOtros' => ['nullable', 'integer'],
+            'instituciones_id' => ['nullable', 'integer'],
+            'FechInsc' => ['nullable', 'date'],
+            'Verificacion' => ['nullable', 'string', 'max:100'],
+            'Anotaciones' => ['nullable', 'string'],
+            'Notas' => ['nullable', 'string'],
+            'Observacion' => ['nullable', 'string'],
+            'Matricula' => ['nullable', 'string', 'max:30'],
+            'Categoria' => ['nullable', 'string', 'max:50'],
+            'Turno' => ['nullable', 'string', 'max:20'],
+            'Curso_Solicitado' => ['nullable', 'string', 'max:60'],
+            'Paralelo_Solicitado' => ['nullable', 'string', 'max:5'],
+            'CantidadMateriasAsignadas' => ['nullable', 'integer'],
+            'InstrumentoMusical' => ['nullable', 'string', 'max:100'],
+            'InstrumentoMusicalSecundario' => ['nullable', 'string', 'max:100'],
+            'FotoPago' => ['nullable', 'string', 'max:250'],
+        ]);
+
+        $institucionId = $this->getInstitucionIdFromRequest($request, $user);
+        if ($institucionId > 0) {
+            $payload['instituciones_id'] = $institucionId;
+        }
+
+        $estudianteId = (int) ($payload['estudiantesifas_id'] ?? $row->estudiantesifas_id);
+        $instId = (int) ($payload['instituciones_id'] ?? $row->instituciones_id);
+        $anio = Carbon::now()->year;
+
+        $force = filter_var($request->query('force', $request->input('force', '0')), FILTER_VALIDATE_BOOLEAN);
+        $dup = $this->existeInscripcionMismaInstMismoAnio($estudianteId, $instId, $anio, (int) $row->id);
+        if ($dup && !$force) {
+            return response()->json([
+                'message' => 'Ya existe una inscripción de este estudiante en esta institución en la gestión actual.',
+                'requires_confirmation' => true,
+                'duplicate' => $dup,
+                'anio' => $anio,
+            ], 409);
         }
 
         $row->update($payload);
