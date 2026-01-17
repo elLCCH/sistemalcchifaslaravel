@@ -7,6 +7,7 @@ use App\Models\CaptureSession;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class CapturePairingController extends Controller
@@ -15,6 +16,7 @@ class CapturePairingController extends Controller
 
     private function expireIfInactive(CapturePairing $pairing): void
     {
+        try {
         if (in_array($pairing->status, ['REVOKED', 'EXPIRED'], true)) {
             return;
         }
@@ -33,10 +35,21 @@ class CapturePairingController extends Controller
             $pairing->pending_capture_token = null;
             $pairing->save();
         }
+        } catch (\Throwable $e) {
+            Log::error('CapturePairing expireIfInactive failed', [
+                'pairing_token' => $pairing->token ?? null,
+                'pairing_id' => $pairing->id ?? null,
+                'status' => $pairing->status ?? null,
+                'exception' => $e->getMessage(),
+            ]);
+            // No bloquear la API por un error de fecha/cast.
+            return;
+        }
     }
 
     private function isLinkActive(CapturePairing $pairing): bool
     {
+        try {
         if ($pairing->status !== 'LINKED') {
             return false;
         }
@@ -46,6 +59,15 @@ class CapturePairingController extends Controller
         }
 
         return $pairing->last_seen_at->greaterThanOrEqualTo(now()->subSeconds(self::INACTIVITY_SECONDS));
+        } catch (\Throwable $e) {
+            Log::error('CapturePairing isLinkActive failed', [
+                'pairing_token' => $pairing->token ?? null,
+                'pairing_id' => $pairing->id ?? null,
+                'status' => $pairing->status ?? null,
+                'exception' => $e->getMessage(),
+            ]);
+            return false;
+        }
     }
 
     private function effectiveStatus(CapturePairing $pairing): string
@@ -171,83 +193,94 @@ class CapturePairingController extends Controller
     // Público: el celular pregunta si hay una captura pendiente.
     public function pendingCapture(string $token)
     {
-        $pairing = CapturePairing::where('token', '=', $token)->first();
-        if (!$pairing) {
-            return response()->json(['error' => 'Vinculación no encontrada'], 404);
-        }
-
-        $this->expireIfInactive($pairing);
-        $pairing->refresh();
-
-        if ($pairing->status === 'EXPIRED') {
-            $pairing->pending_capture_token = null;
-            $pairing->save();
-            return response()->json(['error' => 'Vinculación expirada'], 410);
-        }
-
-        if ($pairing->status !== 'LINKED') {
-            return response()->json([
-                'data' => [
-                    'status' => $pairing->status,
-                    'capture_token' => null,
-                ]
-            ]);
-        }
-
-        if ($pairing->expires_at && now()->greaterThan($pairing->expires_at)) {
-            $pairing->status = 'EXPIRED';
-            $pairing->pending_capture_token = null;
-            $pairing->save();
-            return response()->json(['error' => 'Vinculación expirada'], 410);
-        }
-
-        $pairing->last_seen_at = now();
-        $pairing->save();
-
-        $captureToken = $pairing->pending_capture_token;
-        if (!$captureToken) {
-            return response()->json([
-                'data' => [
-                    'status' => $pairing->status,
-                    'capture_token' => null,
-                ]
-            ]);
-        }
-
-        $session = CaptureSession::where('token', '=', $captureToken)->first();
-        if (!$session) {
-            $pairing->pending_capture_token = null;
-            $pairing->save();
-            return response()->json([
-                'data' => [
-                    'status' => $pairing->status,
-                    'capture_token' => null,
-                ]
-            ]);
-        }
-
-        if (!str_starts_with($session->status, 'PENDING') || now()->greaterThan($session->expires_at)) {
-            if (str_starts_with($session->status, 'PENDING') && now()->greaterThan($session->expires_at)) {
-                $session->status = 'EXPIRED';
-                $session->save();
+        try {
+            $pairing = CapturePairing::where('token', '=', $token)->first();
+            if (!$pairing) {
+                return response()->json(['error' => 'Vinculación no encontrada'], 404);
             }
-            $pairing->pending_capture_token = null;
+
+            $this->expireIfInactive($pairing);
+            $pairing->refresh();
+
+            if ($pairing->status === 'EXPIRED') {
+                $pairing->pending_capture_token = null;
+                $pairing->save();
+                return response()->json(['error' => 'Vinculación expirada'], 410);
+            }
+
+            if ($pairing->status !== 'LINKED') {
+                return response()->json([
+                    'data' => [
+                        'status' => $pairing->status,
+                        'capture_token' => null,
+                    ]
+                ]);
+            }
+
+            if ($pairing->expires_at && now()->greaterThan($pairing->expires_at)) {
+                $pairing->status = 'EXPIRED';
+                $pairing->pending_capture_token = null;
+                $pairing->save();
+                return response()->json(['error' => 'Vinculación expirada'], 410);
+            }
+
+            $pairing->last_seen_at = now();
             $pairing->save();
+
+            $captureToken = $pairing->pending_capture_token;
+            if (!$captureToken) {
+                return response()->json([
+                    'data' => [
+                        'status' => $pairing->status,
+                        'capture_token' => null,
+                    ]
+                ]);
+            }
+
+            $session = CaptureSession::where('token', '=', $captureToken)->first();
+            if (!$session) {
+                $pairing->pending_capture_token = null;
+                $pairing->save();
+                return response()->json([
+                    'data' => [
+                        'status' => $pairing->status,
+                        'capture_token' => null,
+                    ]
+                ]);
+            }
+
+            if (!str_starts_with($session->status, 'PENDING') || now()->greaterThan($session->expires_at)) {
+                if (str_starts_with($session->status, 'PENDING') && now()->greaterThan($session->expires_at)) {
+                    $session->status = 'EXPIRED';
+                    $session->save();
+                }
+                $pairing->pending_capture_token = null;
+                $pairing->save();
+                return response()->json([
+                    'data' => [
+                        'status' => $pairing->status,
+                        'capture_token' => null,
+                    ]
+                ]);
+            }
+
             return response()->json([
                 'data' => [
                     'status' => $pairing->status,
-                    'capture_token' => null,
+                    'capture_token' => $session->token,
+                    'expires_at' => $session->expires_at,
                 ]
             ]);
-        }
+        } catch (\Throwable $e) {
+            Log::error('CapturePairing pendingCapture failed', [
+                'pairing_token' => $token,
+                'exception' => $e->getMessage(),
+            ]);
 
-        return response()->json([
-            'data' => [
-                'status' => $pairing->status,
-                'capture_token' => $session->token,
-                'expires_at' => $session->expires_at,
-            ]
-        ]);
+            return response()->json([
+                'error' => 'Error interno al consultar captura pendiente. Reintenta; si persiste, revisa permisos/DB y logs del servidor.',
+            ], 500);
+        }
     }
 
     // Privado: PC solicita una captura (modo espera) para un estudiante.

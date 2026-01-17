@@ -6,6 +6,7 @@ use App\Models\CaptureSession;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class CaptureSessionController extends Controller
@@ -183,6 +184,14 @@ class CaptureSessionController extends Controller
             return response()->json(['error' => 'No se envió ningún archivo'], 400);
         }
 
+        if (method_exists($file, 'isValid') && !$file->isValid()) {
+            $errCode = method_exists($file, 'getError') ? $file->getError() : null;
+            return response()->json([
+                'error' => 'Error al recibir el archivo en el servidor. Intenta nuevamente o reduce el tamaño de la foto.',
+                'upload_error' => $errCode,
+            ], 422);
+        }
+
         $size = $file->getSize();
         if (is_int($size) && $size > $effectiveMaxBytes) {
             $maxMb = (int) floor($effectiveMaxBytes / (1024 * 1024));
@@ -208,12 +217,34 @@ class CaptureSessionController extends Controller
             ? ($base . '/pagoslcch/pagosunicosgestiones')
             : ($base . '/FotosPerfiles');
 
-        if (!File::exists(public_path($path))) {
-            File::makeDirectory(public_path($path), 0755, true, true);
-        }
+        $fullDir = public_path($path);
 
-        $safeName = time() . '_' . Str::random(8) . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $file->getClientOriginalName());
-        $file->move(public_path($path), $safeName);
+        try {
+            if (!File::exists($fullDir)) {
+                File::makeDirectory($fullDir, 0755, true, true);
+            }
+
+            if (!is_dir($fullDir) || !is_writable($fullDir)) {
+                return response()->json([
+                    'error' => 'El servidor no tiene permisos para guardar la imagen. Verifica permisos de escritura en la carpeta de destino.',
+                ], 500);
+            }
+
+            $safeName = time() . '_' . Str::random(8) . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $file->getClientOriginalName());
+            $file->move($fullDir, $safeName);
+        } catch (\Throwable $e) {
+            Log::error('CaptureSession upload failed', [
+                'token' => $token,
+                'institucion_id' => $session->institucion_id,
+                'path' => $path,
+                'fullDir' => $fullDir,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'No se pudo guardar la imagen en el servidor (error interno). En hosting suele ser permisos de escritura o falta de espacio.',
+            ], 500);
+        }
 
         $session->file_path = "$path/$safeName";
         $session->status = 'UPLOADED';
