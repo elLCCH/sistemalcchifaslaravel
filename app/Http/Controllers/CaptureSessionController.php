@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 
 class CaptureSessionController extends Controller
 {
-    private const MAX_UPLOAD_BYTES = 40 * 1024 * 1024; // 40MB
+    private const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
     public function store(Request $request)
     {
@@ -177,7 +177,7 @@ class CaptureSessionController extends Controller
             if ($contentLength > 0 && $serverLimitBytes > 0 && $contentLength > $serverLimitBytes) {
                 $maxMb = (int) floor($effectiveMaxBytes / (1024 * 1024));
                 return response()->json([
-                    'error' => "La foto excede el límite permitido (máx {$maxMb}MB). En el hosting ajusta post_max_size={$postMaxRaw} y upload_max_filesize={$uploadMaxRaw} a >= 40M.",
+                    'error' => "La foto excede el límite permitido (máx {$maxMb}MB). En el hosting ajusta post_max_size={$postMaxRaw} y upload_max_filesize={$uploadMaxRaw} a >= 20M.",
                 ], 413);
             }
 
@@ -186,6 +186,43 @@ class CaptureSessionController extends Controller
 
         if (method_exists($file, 'isValid') && !$file->isValid()) {
             $errCode = method_exists($file, 'getError') ? $file->getError() : null;
+
+            Log::warning('CaptureSession upload received invalid file', [
+                'token' => $token,
+                'institucion_id' => $session->institucion_id,
+                'upload_error' => $errCode,
+                'post_max_size' => $postMaxRaw,
+                'upload_max_filesize' => $uploadMaxRaw,
+                'content_length' => (int) ($request->server('CONTENT_LENGTH') ?? 0),
+            ]);
+
+            // Errores de tamaño (muy común en hosting con upload_max_filesize=2M/4M)
+            if (in_array($errCode, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                $maxMb = (int) floor($effectiveMaxBytes / (1024 * 1024));
+                return response()->json([
+                    'error' => "La foto excede el límite permitido por el servidor (máx {$maxMb}MB).",
+                    'upload_error' => $errCode,
+                    'limits' => [
+                        'post_max_size' => $postMaxRaw,
+                        'upload_max_filesize' => $uploadMaxRaw,
+                    ],
+                ], 413);
+            }
+
+            if ($errCode === UPLOAD_ERR_NO_FILE) {
+                return response()->json([
+                    'error' => 'No se envió ningún archivo.',
+                    'upload_error' => $errCode,
+                ], 400);
+            }
+
+            if (in_array($errCode, [UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE, UPLOAD_ERR_EXTENSION], true)) {
+                return response()->json([
+                    'error' => 'El servidor no pudo procesar el archivo (configuración/permiso de temporales).',
+                    'upload_error' => $errCode,
+                ], 500);
+            }
+
             return response()->json([
                 'error' => 'Error al recibir el archivo en el servidor. Intenta nuevamente o reduce el tamaño de la foto.',
                 'upload_error' => $errCode,
