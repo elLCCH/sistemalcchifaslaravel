@@ -13,9 +13,14 @@ class Pagoslcch extends Model
 
     protected $fillable = [
         'infoestudiantesifas_id',
+        'nrodocumento',
         'mes',
         'gestion',
         'monto',
+        'acuenta',
+        'saldo',
+        'dolarboliviano',
+        'mediopago',
         'fechapago',
         'horapago',
         'file',

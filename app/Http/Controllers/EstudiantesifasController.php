@@ -57,6 +57,7 @@ class EstudiantesifasController extends Controller
         }
 
         $search = trim((string) $request->query('search', ''));
+        $relevance = filter_var($request->query('relevance', '0'), FILTER_VALIDATE_BOOLEAN);
         $searchMode = strtolower(trim((string) $request->query('search_mode', 'all')));
         if (!in_array($searchMode, ['any', 'all'], true)) {
             $searchMode = 'all';
@@ -131,8 +132,51 @@ class EstudiantesifasController extends Controller
                         });
                     }
                 }
-            })
-            ->orderBy($sortBy, $sortDir);
+            });
+
+        // Orden por relevancia (mejores coincidencias arriba) cuando se busca.
+        // Se activa explícitamente con ?relevance=1 para no interferir con ordenamientos manuales.
+        if ($relevance && $search !== '') {
+            $searchNorm = strtoupper($search);
+            $tokensScore = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $tokensScore = array_values(array_filter(array_map('trim', $tokensScore), function ($t) {
+                return (string) $t !== '';
+            }));
+
+            $fullNameExpr = "UPPER(CONCAT_WS(' ', COALESCE(Ap_Paterno,''), COALESCE(Ap_Materno,''), COALESCE(Nombre,'')))";
+            $ciExpr = "UPPER(COALESCE(CI,''))";
+
+            $scoreSql = "(CASE\n"
+                . " WHEN {$ciExpr} = ? THEN 4000\n"
+                . " WHEN {$ciExpr} LIKE CONCAT(?, '%') THEN 3000\n"
+                . " WHEN {$fullNameExpr} = ? THEN 2500\n"
+                . " WHEN {$fullNameExpr} LIKE CONCAT(?, '%') THEN 2000\n"
+                . " ELSE 0\n"
+                . " END";
+
+            $bindings = [$searchNorm, $searchNorm, $searchNorm, $searchNorm];
+
+            foreach ($tokensScore as $tok) {
+                $tokUp = strtoupper((string) $tok);
+                // Aporta por cantidad de ocurrencias del token en el nombre completo.
+                $scoreSql .= " + 120 * ((LENGTH({$fullNameExpr}) - LENGTH(REPLACE({$fullNameExpr}, ?, ''))) / GREATEST(LENGTH(?), 1))";
+                $bindings[] = $tokUp;
+                $bindings[] = $tokUp;
+
+                // Si el token tiene dígitos, también aporta por ocurrencias en CI.
+                if (preg_match('/\\d/', $tokUp)) {
+                    $scoreSql .= " + 160 * ((LENGTH({$ciExpr}) - LENGTH(REPLACE({$ciExpr}, ?, ''))) / GREATEST(LENGTH(?), 1))";
+                    $bindings[] = $tokUp;
+                    $bindings[] = $tokUp;
+                }
+            }
+
+            $scoreSql .= ")";
+
+            $query->orderByRaw($scoreSql . ' DESC', $bindings);
+        }
+
+        $query->orderBy($sortBy, $sortDir);
 
         if ($sortBy !== 'id') {
             $query->orderByDesc('id');

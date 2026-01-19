@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 
 class CaptureSessionController extends Controller
 {
-    private const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
+    private const MAX_UPLOAD_BYTES = 30 * 1024 * 1024; // 30MB
 
     public function store(Request $request)
     {
@@ -177,7 +177,7 @@ class CaptureSessionController extends Controller
             if ($contentLength > 0 && $serverLimitBytes > 0 && $contentLength > $serverLimitBytes) {
                 $maxMb = (int) floor($effectiveMaxBytes / (1024 * 1024));
                 return response()->json([
-                    'error' => "La foto excede el límite permitido (máx {$maxMb}MB). En el hosting ajusta post_max_size={$postMaxRaw} y upload_max_filesize={$uploadMaxRaw} a >= 20M.",
+                    'error' => "La foto excede el límite permitido (máx {$maxMb}MB). En el hosting ajusta post_max_size={$postMaxRaw} y upload_max_filesize={$uploadMaxRaw} a >= 30M.",
                 ], 413);
             }
 

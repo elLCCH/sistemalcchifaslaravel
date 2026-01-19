@@ -356,6 +356,7 @@ class InfoestudiantesifasController extends Controller
         }
 
         $search = trim((string) $request->query('search', ''));
+        $relevance = filter_var($request->query('relevance', '0'), FILTER_VALIDATE_BOOLEAN);
         $searchMode = strtolower(trim((string) $request->query('search_mode', 'all')));
         if (!in_array($searchMode, ['any', 'all'], true)) {
             $searchMode = 'all';
@@ -520,6 +521,63 @@ class InfoestudiantesifasController extends Controller
                     }
                 }
             });
+
+        // Orden por relevancia (mejores coincidencias arriba) cuando se busca.
+        // Se activa explícitamente con ?relevance=1 para no interferir con ordenamientos manuales.
+        if ($relevance && $search !== '') {
+            $searchNorm = strtoupper($search);
+            $tokensScore = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $tokensScore = array_values(array_filter(array_map('trim', $tokensScore), function ($t) {
+                return (string) $t !== '';
+            }));
+
+            $fullNameExpr = "UPPER(CONCAT_WS(' ', COALESCE(estudiantesifas.Ap_Paterno,''), COALESCE(estudiantesifas.Ap_Materno,''), COALESCE(estudiantesifas.Nombre,'')))";
+            $ciExpr = "UPPER(COALESCE(estudiantesifas.CI,''))";
+            $matriculaExpr = "UPPER(COALESCE(infoestudiantesifas.Matricula,''))";
+            $instExpr = "UPPER(COALESCE(instituciones.Nombre,''))";
+            $cursoParExpr = "UPPER(CONCAT(TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado,'')),' ',TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado,''))))";
+
+            $scoreSql = "(CASE\n"
+                . " WHEN {$ciExpr} = ? THEN 5000\n"
+                . " WHEN {$ciExpr} LIKE CONCAT(?, '%') THEN 3500\n"
+                . " WHEN {$matriculaExpr} = ? THEN 3200\n"
+                . " WHEN {$matriculaExpr} LIKE CONCAT(?, '%') THEN 2500\n"
+                . " WHEN {$fullNameExpr} = ? THEN 2400\n"
+                . " WHEN {$fullNameExpr} LIKE CONCAT(?, '%') THEN 1800\n"
+                . " ELSE 0\n"
+                . " END";
+
+            $bindings = [$searchNorm, $searchNorm, $searchNorm, $searchNorm, $searchNorm, $searchNorm];
+
+            foreach ($tokensScore as $tok) {
+                $tokUp = strtoupper((string) $tok);
+                $scoreSql .= " + 90 * ((LENGTH({$fullNameExpr}) - LENGTH(REPLACE({$fullNameExpr}, ?, ''))) / GREATEST(LENGTH(?), 1))";
+                $bindings[] = $tokUp;
+                $bindings[] = $tokUp;
+
+                $scoreSql .= " + 60 * ((LENGTH({$matriculaExpr}) - LENGTH(REPLACE({$matriculaExpr}, ?, ''))) / GREATEST(LENGTH(?), 1))";
+                $bindings[] = $tokUp;
+                $bindings[] = $tokUp;
+
+                $scoreSql .= " + 25 * ((LENGTH({$cursoParExpr}) - LENGTH(REPLACE({$cursoParExpr}, ?, ''))) / GREATEST(LENGTH(?), 1))";
+                $bindings[] = $tokUp;
+                $bindings[] = $tokUp;
+
+                $scoreSql .= " + 10 * ((LENGTH({$instExpr}) - LENGTH(REPLACE({$instExpr}, ?, ''))) / GREATEST(LENGTH(?), 1))";
+                $bindings[] = $tokUp;
+                $bindings[] = $tokUp;
+
+                if (preg_match('/\d/', $tokUp)) {
+                    $scoreSql .= " + 120 * ((LENGTH({$ciExpr}) - LENGTH(REPLACE({$ciExpr}, ?, ''))) / GREATEST(LENGTH(?), 1))";
+                    $bindings[] = $tokUp;
+                    $bindings[] = $tokUp;
+                }
+            }
+
+            $scoreSql .= ")";
+
+            $query->orderByRaw($scoreSql . ' DESC', $bindings);
+        }
 
         // Filtro por gestión/año (y/o SIN ASIGNAR)
         $anioIdInt = (int) ($anioId ?? 0);

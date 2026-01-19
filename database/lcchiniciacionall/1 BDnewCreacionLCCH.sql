@@ -516,11 +516,15 @@ DROP TABLE IF EXISTS `pagoslcch`;
 CREATE TABLE `pagoslcch` (
   id INT AUTO_INCREMENT PRIMARY KEY,
   infoestudiantesifas_id INT NOT NULL,
-
+  nrodocumento INT NULL,
   mes TINYINT NOT NULL,          -- 1..12
   gestion VARCHAR(10) NOT NULL,  -- ej: 2025
   monto INT NULL,
-
+  acuenta INT NULL,
+  saldo INT NULL,
+  dolarboliviano VARCHAR(20) NULL,
+  mediopago VARCHAR(50) NULL,    
+  
   fechapago DATE NULL,
   horapago TIME NULL,
 

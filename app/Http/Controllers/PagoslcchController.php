@@ -115,6 +115,15 @@ class PagoslcchController extends Controller
             $gestion = (string) date('Y');
         }
 
+        $anioSubquery = "COALESCE((
+            SELECT MAX(a.Anio)
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+        ), 'SIN ASIGNAR')";
+
         $info = DB::table('infoestudiantesifas')
             ->where('id', $infoId)
             ->first();
@@ -127,17 +136,25 @@ class PagoslcchController extends Controller
             return response()->json(['error' => 'Inscripción fuera de su institución'], 403);
         }
 
-        // Mes máximo pagado por "compañeros" de la MISMA institución (excluyendo al estudiante actual) para esa gestión.
-        // Solo cuenta pagos marcados como PAGADO.
-        $maxMesCompaneros = DB::table('pagoslcch')
+        // Importante: comparar con "compañeros" del mismo año (asignación) para no mezclar cohortes.
+        $anioAsignacion = DB::table('infoestudiantesifas')
+            ->where('id', $infoId)
+            ->selectRaw($anioSubquery . ' as Anio')
+            ->value('Anio');
+        $anioAsignacion = (string) ($anioAsignacion ?? 'SIN ASIGNAR');
+
+        // Meses referencia pagados por "compañeros" (misma institución + mismo año asignación), excluyendo al estudiante actual.
+        // Se usa rango [min..max] para evitar marcar meses previos a cuando arrancó el pago real (ej. empezaron en febrero).
+        $companerosQuery = DB::table('pagoslcch')
             ->join('infoestudiantesifas', 'pagoslcch.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
             ->where('pagoslcch.gestion', $gestion)
             ->where('infoestudiantesifas.id', '!=', $infoId)
             ->where('infoestudiantesifas.instituciones_id', (int) $info->instituciones_id)
-            ->where('pagoslcch.estadopago', '=', 'PAGADO')
-            ->max('pagoslcch.mes');
+            ->whereRaw($anioSubquery . ' = ?', [$anioAsignacion])
+            ->where('pagoslcch.estadopago', '=', 'PAGADO');
 
-        $maxMesCompaneros = (int) ($maxMesCompaneros ?? 0);
+        $minMesCompaneros = (int) (($companerosQuery->clone())->min('pagoslcch.mes') ?? 0);
+        $maxMesCompaneros = (int) (($companerosQuery->clone())->max('pagoslcch.mes') ?? 0);
 
         // Meses pagados por el estudiante actual en esa gestión.
         $mesesPagados = DB::table('pagoslcch')
@@ -154,8 +171,8 @@ class PagoslcchController extends Controller
         $mesesPagadosSet = array_fill_keys($mesesPagados, true);
 
         $mesesDeuda = [];
-        if ($maxMesCompaneros > 0) {
-            for ($m = 1; $m <= $maxMesCompaneros; $m++) {
+        if ($minMesCompaneros > 0 && $maxMesCompaneros > 0 && $minMesCompaneros <= $maxMesCompaneros) {
+            for ($m = $minMesCompaneros; $m <= $maxMesCompaneros; $m++) {
                 if (!isset($mesesPagadosSet[$m])) {
                     $mesesDeuda[] = $m;
                 }
@@ -166,6 +183,7 @@ class PagoslcchController extends Controller
             'data' => [
                 'infoestudiantesifas_id' => $infoId,
                 'gestion' => $gestion,
+                'min_mes_companeros' => $minMesCompaneros,
                 'max_mes_companeros' => $maxMesCompaneros,
                 'meses_pagados' => $mesesPagados,
                 'meses_deuda' => $mesesDeuda,
@@ -213,20 +231,25 @@ class PagoslcchController extends Controller
             WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
         ), 'SIN ASIGNAR')";
 
-        // Meses "referencia" pagados por algún estudiante de la institución (para esa gestión de pago)
-        $expectedMonths = DB::table('pagoslcch')
+        // Meses "referencia" pagados por la cohorte (misma institución + mismo año asignación): rango [min..max]
+        $refQuery = DB::table('pagoslcch')
             ->join('infoestudiantesifas', 'pagoslcch.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
             ->where('infoestudiantesifas.instituciones_id', $institucionId)
+            ->whereRaw($anioSubquery . ' = ?', [$gestion])
             ->where('pagoslcch.gestion', $gestionPago)
-            ->where('pagoslcch.estadopago', '=', 'PAGADO')
-            ->select('pagoslcch.mes')
-            ->distinct()
-            ->orderBy('pagoslcch.mes', 'asc')
-            ->pluck('pagoslcch.mes')
-            ->map(fn ($x) => (int) $x)
-            ->filter(fn ($x) => $x >= 1 && $x <= 12)
-            ->values()
-            ->all();
+            ->where('pagoslcch.estadopago', '=', 'PAGADO');
+
+        $refMin = (int) (($refQuery->clone())->min('pagoslcch.mes') ?? 0);
+        $refMax = (int) (($refQuery->clone())->max('pagoslcch.mes') ?? 0);
+
+        $expectedMonths = [];
+        if ($refMin >= 1 && $refMax >= 1 && $refMin <= $refMax) {
+            for ($m = $refMin; $m <= $refMax; $m++) {
+                if ($m >= 1 && $m <= 12) {
+                    $expectedMonths[] = $m;
+                }
+            }
+        }
 
         $expectedCount = count($expectedMonths);
         if ($expectedCount === 0) {
@@ -269,7 +292,7 @@ class PagoslcchController extends Controller
                         ->orWhere('estudiantesifas.Nombre', 'like', $like)
                         ->orWhere('instituciones.Nombre', 'like', $like)
                         ->orWhere('estudiantesifas.CI', 'like', $like)
-                        ->orWhere('estudiantesifas.Matricula', 'like', $like);
+                        ->orWhere('infoestudiantesifas.Matricula', 'like', $like);
                 });
             })
             ->groupBy('infoestudiantesifas.id')
@@ -313,7 +336,6 @@ class PagoslcchController extends Controller
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre',
                 'estudiantesifas.CI',
-                'estudiantesifas.Matricula',
                 DB::raw($anioSubquery . ' as Anio'),
             ])
             ->whereIn('infoestudiantesifas.id', $ids)
@@ -322,6 +344,8 @@ class PagoslcchController extends Controller
             ->orderBy('estudiantesifas.Nombre', 'asc')
             ->orderByDesc('infoestudiantesifas.id')
             ->get();
+
+        // Si estás aquí, ya filtraste por institución + año (asignación) en idsQuery; expectedMonths también está filtrado.
 
         $paidRows = DB::table('pagoslcch')
             ->whereIn('infoestudiantesifas_id', $ids)
@@ -376,6 +400,8 @@ class PagoslcchController extends Controller
                 'to' => $paginator->lastItem(),
             ],
             'expected_months' => $expectedMonths,
+            'expected_months_min' => $refMin,
+            'expected_months_max' => $refMax,
             'gestion' => $gestion,
             'gestion_pago' => $gestionPago,
         ]);
@@ -385,12 +411,17 @@ class PagoslcchController extends Controller
     {
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
+            'nrodocumento' => ['nullable', 'integer'],
             'mes' => ['required', 'integer', 'min:1', 'max:12'],
             'gestion' => ['required', 'string', 'max:10'],
             'monto' => ['nullable', 'integer'],
+            'acuenta' => ['nullable', 'integer'],
+            'saldo' => ['nullable', 'integer'],
+            'dolarboliviano' => ['nullable', 'string', 'max:20'],
+            'mediopago' => ['nullable', 'string', 'max:50'],
             'fechapago' => ['nullable', 'date'],
             'horapago' => ['nullable'],
-            'file' => ['nullable', 'string'],
+            'file' => ['nullable', 'string', 'max:300'],
             'observacion' => ['nullable', 'string'],
             'estadopago' => ['nullable', 'string', 'max:50'],
         ]);
@@ -428,12 +459,17 @@ class PagoslcchController extends Controller
     {
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
+            'nrodocumento' => ['nullable', 'integer'],
             'mes' => ['required', 'integer', 'min:1', 'max:12'],
             'gestion' => ['required', 'string', 'max:10'],
             'monto' => ['nullable', 'integer'],
+            'acuenta' => ['nullable', 'integer'],
+            'saldo' => ['nullable', 'integer'],
+            'dolarboliviano' => ['nullable', 'string', 'max:20'],
+            'mediopago' => ['nullable', 'string', 'max:50'],
             'fechapago' => ['nullable', 'date'],
             'horapago' => ['nullable'],
-            'file' => ['nullable', 'string'],
+            'file' => ['nullable', 'string', 'max:300'],
             'observacion' => ['nullable', 'string'],
             'estadopago' => ['nullable', 'string', 'max:50'],
         ]);
@@ -480,5 +516,99 @@ class PagoslcchController extends Controller
 
         Pagoslcch::destroy($pago->id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
+    }
+
+    public function pagadores(Request $request)
+    {
+        $user = $request->user();
+        if (empty($user?->instituciones_id)) {
+            return response()->json(['error' => 'Usuario sin institución'], 403);
+        }
+
+        $institucionId = (int) $user->instituciones_id;
+
+        $gestion = trim((string) $request->query('gestion', ''));
+        if ($gestion === '') {
+            $gestion = (string) date('Y');
+        }
+
+        $gestionPago = trim((string) $request->query('gestion_pago', ''));
+        if ($gestionPago === '') {
+            $gestionPago = $gestion === 'SIN ASIGNAR' ? (string) date('Y') : $gestion;
+        }
+
+        $mes = (int) $request->query('mes', 0);
+        if ($mes < 1 || $mes > 12) {
+            return response()->json(['error' => 'Mes inválido'], 422);
+        }
+
+        $search = trim((string) $request->query('search', ''));
+        $perPage = (int) $request->query('per_page', 10);
+        if ($perPage < 1) {
+            $perPage = 10;
+        }
+        if ($perPage > 50) {
+            $perPage = 50;
+        }
+
+        $anioSubquery = "COALESCE((
+            SELECT MAX(a.Anio)
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+        ), 'SIN ASIGNAR')";
+
+        $query = DB::table('pagoslcch')
+            ->join('infoestudiantesifas', 'pagoslcch.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
+            ->join('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
+            ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
+            ->where('infoestudiantesifas.instituciones_id', $institucionId)
+            ->whereRaw($anioSubquery . ' = ?', [$gestion])
+            ->where('pagoslcch.gestion', $gestionPago)
+            ->where('pagoslcch.mes', $mes)
+            ->where('pagoslcch.estadopago', '=', 'PAGADO')
+            ->when($search !== '', function ($q) use ($search) {
+                $like = '%' . $search . '%';
+                $q->where(function ($qq) use ($like) {
+                    $qq->where('estudiantesifas.Ap_Paterno', 'like', $like)
+                        ->orWhere('estudiantesifas.Ap_Materno', 'like', $like)
+                        ->orWhere('estudiantesifas.Nombre', 'like', $like)
+                        ->orWhere('estudiantesifas.CI', 'like', $like)
+                        ->orWhere('infoestudiantesifas.Matricula', 'like', $like);
+                });
+            })
+            ->select([
+                'pagoslcch.*',
+                'estudiantesifas.Ap_Paterno',
+                'estudiantesifas.Ap_Materno',
+                'estudiantesifas.Nombre',
+                'estudiantesifas.CI',
+                'infoestudiantesifas.Matricula',
+                DB::raw($anioSubquery . ' as Anio'),
+                DB::raw('instituciones.Nombre as NombreInstitucion'),
+            ])
+            ->orderBy('estudiantesifas.Ap_Paterno', 'asc')
+            ->orderBy('estudiantesifas.Ap_Materno', 'asc')
+            ->orderBy('estudiantesifas.Nombre', 'asc')
+            ->orderByDesc('pagoslcch.id');
+
+        $paginator = $query->paginate($perPage);
+
+        return response()->json([
+            'data' => $paginator->items(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+            'gestion' => $gestion,
+            'gestion_pago' => $gestionPago,
+            'mes' => $mes,
+        ]);
     }
 }

@@ -198,6 +198,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::get('pagoslcch/by-info/{infoId}', [PagoslcchController::class, 'byInfo'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
     Route::get('pagoslcch/deuda/by-info/{infoId}', [PagoslcchController::class, 'deudaByInfo'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
     Route::get('pagoslcch/deudores', [PagoslcchController::class, 'deudores'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+    Route::get('pagoslcch/pagadores', [PagoslcchController::class, 'pagadores'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
     Route::get('pagoslcch/{id}', [PagoslcchController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
     Route::post('pagoslcch', [PagoslcchController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
     Route::put('pagoslcch/{id}', [PagoslcchController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
