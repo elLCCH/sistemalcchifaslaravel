@@ -151,7 +151,9 @@ class PagoslcchController extends Controller
             ->where('infoestudiantesifas.id', '!=', $infoId)
             ->where('infoestudiantesifas.instituciones_id', (int) $info->instituciones_id)
             ->whereRaw($anioSubquery . ' = ?', [$anioAsignacion])
-            ->where('pagoslcch.estadopago', '=', 'PAGADO');
+            ->where('pagoslcch.estadopago', '=', 'PAGADO')
+            // Ignorar "NO ES MENSUALIDAD" (mes=0) y cualquier valor fuera de rango
+            ->whereBetween('pagoslcch.mes', [1, 12]);
 
         $minMesCompaneros = (int) (($companerosQuery->clone())->min('pagoslcch.mes') ?? 0);
         $maxMesCompaneros = (int) (($companerosQuery->clone())->max('pagoslcch.mes') ?? 0);
@@ -161,6 +163,8 @@ class PagoslcchController extends Controller
             ->where('infoestudiantesifas_id', $infoId)
             ->where('gestion', $gestion)
             ->where('estadopago', '=', 'PAGADO')
+            // Ignorar "NO ES MENSUALIDAD" (mes=0)
+            ->whereBetween('mes', [1, 12])
             ->select('mes')
             ->distinct()
             ->pluck('mes')
@@ -412,7 +416,8 @@ class PagoslcchController extends Controller
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
             'nrodocumento' => ['nullable', 'integer'],
-            'mes' => ['required', 'integer', 'min:1', 'max:12'],
+            // mes=0 => "NO ES MENSUALIDAD"
+            'mes' => ['required', 'integer', 'min:0', 'max:12'],
             'gestion' => ['required', 'string', 'max:10'],
             'monto' => ['nullable', 'integer'],
             'acuenta' => ['nullable', 'integer'],
@@ -434,6 +439,21 @@ class PagoslcchController extends Controller
                 ->exists();
             if (!$ok) {
                 return response()->json(['error' => 'Inscripción fuera de su institución'], 403);
+            }
+        }
+
+        // Evitar duplicidad de mensualidad (solo meses 1..12). Para mes=0 se permite múltiples registros.
+        $mes = (int) ($validated['mes'] ?? 0);
+        if ($mes >= 1 && $mes <= 12) {
+            $exists = DB::table('pagoslcch')
+                ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
+                ->where('gestion', $validated['gestion'])
+                ->where('mes', $mes)
+                ->exists();
+            if ($exists) {
+                return response()->json([
+                    'error' => 'No se puede repetir la misma mensualidad (mes) en la misma gestión.',
+                ], 422);
             }
         }
 
@@ -460,7 +480,8 @@ class PagoslcchController extends Controller
         $validated = $request->validate([
             'infoestudiantesifas_id' => ['required', 'integer'],
             'nrodocumento' => ['nullable', 'integer'],
-            'mes' => ['required', 'integer', 'min:1', 'max:12'],
+            // mes=0 => "NO ES MENSUALIDAD"
+            'mes' => ['required', 'integer', 'min:0', 'max:12'],
             'gestion' => ['required', 'string', 'max:10'],
             'monto' => ['nullable', 'integer'],
             'acuenta' => ['nullable', 'integer'],
@@ -495,6 +516,22 @@ class PagoslcchController extends Controller
                 ->exists();
             if (!$ok) {
                 return response()->json(['error' => 'Inscripción fuera de su institución'], 403);
+            }
+        }
+
+        // Evitar duplicidad de mensualidad (solo meses 1..12), excluyendo el registro actual.
+        $mes = (int) ($validated['mes'] ?? 0);
+        if ($mes >= 1 && $mes <= 12) {
+            $exists = DB::table('pagoslcch')
+                ->where('infoestudiantesifas_id', $validated['infoestudiantesifas_id'])
+                ->where('gestion', $validated['gestion'])
+                ->where('mes', $mes)
+                ->where('id', '!=', (int) $id)
+                ->exists();
+            if ($exists) {
+                return response()->json([
+                    'error' => 'No se puede repetir la misma mensualidad (mes) en la misma gestión.',
+                ], 422);
             }
         }
 
