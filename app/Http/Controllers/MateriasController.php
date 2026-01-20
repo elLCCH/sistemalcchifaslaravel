@@ -384,10 +384,43 @@ class MateriasController extends Controller
         return response()->json(['data' => $materias]);
     }
     
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $materias = Materias::where('id','=',$id)->firstOrFail();
-        return response()->json(['data' => $materias]);
+        $user = $request->user();
+        if (!$user) {
+            abort(401);
+        }
+
+        $isSuperAdmin = empty($user?->instituciones_id);
+
+        $query = Materias::query()
+            ->select([
+                'materias.*',
+                'plandeestudios.NombreMateria',
+                'plandeestudios.SiglaMateria',
+                'plandeestudios.ModoMateria',
+                'plandeestudios.LvlCurso',
+                'plandeestudios.RangoLvlCurso',
+                'plandeestudios.Rango',
+                'plandeestudios.anio_id',
+                'plandeestudios.carreras_id',
+                'carreras.Resolucion',
+                'carreras.NombreCarrera',
+                $isSuperAdmin ? 'instituciones.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion'),
+                'anios.Anio',
+            ])
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->join('instituciones', 'carreras.instituciones_id', '=', 'instituciones.id')
+            ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
+            ->where('materias.id', '=', (int) $id);
+
+        if (!$isSuperAdmin) {
+            $query->where('carreras.instituciones_id', (int) $user->instituciones_id);
+        }
+
+        $materia = $query->firstOrFail();
+        return response()->json(['data' => $materia]);
     }
     
     

@@ -102,7 +102,11 @@ class CalificacionesController extends Controller
                 'plandeestudios.NombreMateria',
                 'plandeestudios.SiglaMateria',
                 'plandeestudios.LvlCurso',
+                'plandeestudios.anio_id',
+                'plandeestudios.carreras_id',
                 'anios.Anio',
+                'carreras.Resolucion',
+                'carreras.NombreCarrera',
                 'carreras.CantidadEvaluaciones',
             ])
             ->orderBy('plandeestudios.RangoLvlCurso')
