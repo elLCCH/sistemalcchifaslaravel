@@ -25,10 +25,12 @@ class PlandeestudiosController extends Controller
 
         $anioId = request()->query('anio_id');
         $resolucion = request()->query('resolucion');
+        $nivel = request()->query('nivel');
         $institucionIdParam = request()->query('instituciones_id');
 
         $anioId = $anioId !== null ? (int) $anioId : null;
         $resolucion = $resolucion !== null ? trim((string) $resolucion) : null;
+        $nivel = $nivel !== null ? trim((string) $nivel) : null;
         $institucionIdParam = $institucionIdParam !== null ? (int) $institucionIdParam : null;
 
         $plandeestudiosQuery = DB::table('plandeestudios as pe')
@@ -40,6 +42,7 @@ class PlandeestudiosController extends Controller
             'a.Anio as Anio',
             'c.NombreCarrera',
             'c.Resolucion',
+            'c.Nivel',
             $isSuperAdmin ? 'i.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion')
             )
             ->when(!$isSuperAdmin, function ($q) use ($user) {
@@ -53,6 +56,9 @@ class PlandeestudiosController extends Controller
             })
             ->when(!empty($resolucion), function ($q) use ($resolucion) {
                 $q->where('c.Resolucion', '=', $resolucion);
+            })
+            ->when(!empty($nivel), function ($q) use ($nivel) {
+                $q->where('c.Nivel', '=', $nivel);
             })
             ->orderBy('pe.carreras_id')->orderBy('pe.RangoLvlCurso')->orderBy('pe.Rango');
 

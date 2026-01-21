@@ -666,6 +666,58 @@ class CalificacionesController extends Controller
         return response()->json(['data' => ['updated' => true]]);
     }
 
+    public function updateEstadoRegistro(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Usuario inválido'], 422);
+        }
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
+
+        $validated = $request->validate([
+            'id' => ['required', 'integer'],
+            'EstadoRegistroMateria' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $id = (int) $validated['id'];
+
+        $row = Calificaciones::query()
+            ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
+            ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('calificaciones.id', $id)
+            ->select([
+                'calificaciones.id',
+                'infoestudiantesifas.instituciones_id as info_instituciones_id',
+                'carreras.instituciones_id as materia_instituciones_id',
+            ])
+            ->first();
+
+        if (!$row) {
+            return response()->json(['message' => 'Registro no encontrado'], 404);
+        }
+
+        $infoInst = (int) ($row->info_instituciones_id ?? 0);
+        $matInst = (int) ($row->materia_instituciones_id ?? 0);
+        if ($infoInst <= 0 || $matInst <= 0 || $infoInst !== $matInst) {
+            return response()->json(['message' => 'Registro inválido'], 422);
+        }
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== $infoInst) {
+            return response()->json(['message' => 'Acceso no permitido'], 403);
+        }
+
+        Calificaciones::query()
+            ->where('id', $id)
+            ->update([
+                'EstadoRegistroMateria' => $validated['EstadoRegistroMateria'] ?? null,
+            ]);
+
+        return response()->json(['data' => ['updated' => true]]);
+    }
+
     public function assign(Request $request)
     {
         $user = $request->user();

@@ -99,6 +99,17 @@ class CalifhistoriasConsultaController extends Controller
         );
     }
 
+    private function digitsLikePattern(string $digits): string
+    {
+        // Permite coincidencia aunque el CI tenga separadores o sufijos.
+        // Ej: 80287731 => %8%0%2%8%7%7%3%1%
+        $digits = preg_replace('/\D+/', '', $digits) ?? '';
+        if ($digits === '') {
+            return '%';
+        }
+        return '%' . implode('%', str_split($digits)) . '%';
+    }
+
     // =====================================================
     // OPCIONES PARA SELECTS (DISTINCT)
     // =====================================================
@@ -416,10 +427,11 @@ class CalifhistoriasConsultaController extends Controller
         $query = Califhistorias::query()
             ->where('Institucion', $validated['institucion']);
 
-        // Modo menos estricto: si el CI es numérico, permitir coincidencias parciales (ej: 1234 -> 1234-OR).
-        // Si trae letras/sufijos, usar coincidencia exacta para no mezclar estudiantes por substring.
+        // Si el CI recibido es numérico (o fue normalizado a solo dígitos desde frontend),
+        // buscamos por secuencia de dígitos para soportar CIs con separadores/sufijos.
+        // Ej: 80287731 debe encontrar 8028773-1H.
         if ($ci !== '' && preg_match('/^\d+$/', $ci)) {
-            $query->where('CI', 'like', "%{$ci}%");
+            $query->where('CI', 'like', $this->digitsLikePattern($ci));
         } else {
             $query->where('CI', $ci);
         }
@@ -453,6 +465,7 @@ class CalifhistoriasConsultaController extends Controller
         }
 
         $q = trim((string) $validated['q']);
+        $qDigits = preg_replace('/\D+/', '', $q) ?? '';
 
         $query = Califhistorias::query()
             ->select([
@@ -464,7 +477,18 @@ class CalifhistoriasConsultaController extends Controller
             ->where('Institucion', $validated['institucion'])
             ->whereNotNull('CI')
             ->where('CI', '<>', '')
-            ->where('CI', 'like', "%{$q}%")
+            ->where(function ($sub) use ($q, $qDigits) {
+                // Si el usuario escribe el CI completo (con guión/letras), respetamos substring.
+                if ($q !== '') {
+                    $sub->where('CI', 'like', "%{$q}%");
+                }
+
+                // Si vienen solo dígitos (o el CI contiene separadores/sufijos),
+                // hacemos match por secuencia de dígitos.
+                if ($qDigits !== '' && strlen($qDigits) >= 3) {
+                    $sub->orWhere('CI', 'like', $this->digitsLikePattern($qDigits));
+                }
+            })
             ->distinct();
 
         $query = $this->orderByNombreNullFirst($query)->orderBy('CI');

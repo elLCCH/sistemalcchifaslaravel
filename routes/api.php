@@ -21,6 +21,8 @@ use App\Http\Controllers\PlanteladministrativosController;
 use App\Http\Controllers\PlanteldocentesController;
 use App\Http\Controllers\PlanteldocentesmateriasController;
 use App\Http\Controllers\PagoslcchController;
+use App\Http\Controllers\TalleristasController;
+use App\Http\Controllers\PagostalleresController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -31,7 +33,18 @@ use App\Http\Controllers\CaptureSessionController;
 use App\Http\Controllers\CapturePairingController;
 use App\Http\Controllers\InfoauditoriaController;
 use App\Http\Controllers\BrandingController;
+use App\Http\Controllers\PublicHorariosController;
+use App\Http\Controllers\PerfilController;
 use App\Http\Middleware\AuditMiddleware;
+
+// ============================================================
+// ENDPOINTS PÚBLICOS (legacy/publicos)
+// Usados por componentes públicos: horarios/paralelos
+// ============================================================
+Route::get('/Anio', [PublicHorariosController::class, 'anios']);
+Route::post('/HorariosCursos', [PublicHorariosController::class, 'cursos']);
+Route::post('/ListaEstudiantesCurso', [PublicHorariosController::class, 'estudiantesCurso']);
+Route::post('/ListaEstudiantesGestion', [PublicHorariosController::class, 'estudiantesGestion']);
 Route::post('/verify-token', [TokenController::class, 'verify']);
 Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como el routing de angular: v1/auth/login
     Route::post('/login', [AuthController::class, "login"]); //EJECUTAR LA FUNCION login desde el authcontroller
@@ -47,12 +60,18 @@ Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como e
     Route::get('/user', [AuthController::class, 'getUser'])->middleware('auth:sanctum'); //v1/auth/user
 });
 
+Route::prefix('v1/perfil')->middleware('auth:sanctum')->group(function () {
+    Route::get('/materias', [PerfilController::class, 'materias']);
+    Route::get('/deudas', [PerfilController::class, 'deudas']);
+    Route::put('/materias/{materiaId}', [PerfilController::class, 'updateMateriaDocente']);
+});
+
 Route::prefix('v1/branding')->middleware('auth:sanctum')->group(function () {
-    Route::get('/assets', [BrandingController::class, 'assets']);
+    Route::get('/assets', 'App\\Http\\Controllers\\BrandingController@assets');
     // Endpoints legacy (string)
-    Route::get('/ObtenerLogo', [BrandingController::class, 'ObtenerLogo']);
-    Route::get('/ObtenerMinisterio', [BrandingController::class, 'ObtenerMinisterio']);
-    Route::get('/ObtenerMinisterioEscudo', [BrandingController::class, 'ObtenerMinisterioEscudo']);
+    Route::get('/ObtenerLogo', 'App\\Http\\Controllers\\BrandingController@ObtenerLogo');
+    Route::get('/ObtenerMinisterio', 'App\\Http\\Controllers\\BrandingController@ObtenerMinisterio');
+    Route::get('/ObtenerMinisterioEscudo', 'App\\Http\\Controllers\\BrandingController@ObtenerMinisterioEscudo');
 });
 // Route::middleware("auth:sanctum")->group(function(){
 //     Route::resource('usuarioslcchs', usuarioslcchsController::class);
@@ -113,6 +132,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::post('calificaciones/bulk-update-materia', [CalificacionesController::class, 'bulkUpdateMateria'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
     Route::post('calificaciones/assign', [CalificacionesController::class, 'assign'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
     Route::post('calificaciones/unassign', [CalificacionesController::class, 'unassign'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+	Route::post('calificaciones/update-estado-registro', [CalificacionesController::class, 'updateEstadoRegistro'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
     Route::post('calificaciones/assign-bulk-curso', [CalificacionesController::class, 'assignBulkCurso'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
     Route::post('calificaciones/assign-bulk-categoria', [CalificacionesController::class, 'assignBulkCategoria'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
     Route::post('calificaciones/unassign-bulk-categoria', [CalificacionesController::class, 'unassignBulkCategoria'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
@@ -203,6 +223,25 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::post('pagoslcch', [PagoslcchController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
     Route::put('pagoslcch/{id}', [PagoslcchController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
     Route::delete('pagoslcch/{id}', [PagoslcchController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A)']);
+
+    // =========================
+    // TalleristasController
+    // =========================
+    Route::get('/talleristas', [TalleristasController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
+    Route::get('/talleristas/{id}', [TalleristasController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
+    Route::post('/talleristas', [TalleristasController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES']);
+    Route::put('/talleristas/{id}', [TalleristasController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES']);
+    Route::delete('/talleristas/{id}', [TalleristasController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES']);
+
+    // =========================
+    // PagostalleresController
+    // =========================
+    Route::get('/pagostalleres', [PagostalleresController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
+    Route::get('/pagostalleres/by-tallerista/{talleristaId}', [PagostalleresController::class, 'byTallerista'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
+    Route::get('/pagostalleres/{id}', [PagostalleresController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
+    Route::post('/pagostalleres', [PagostalleresController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
+    Route::put('/pagostalleres/{id}', [PagostalleresController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
+    Route::delete('/pagostalleres/{id}', [PagostalleresController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES']);
 
     // =========================
     // PlandeestudiosController

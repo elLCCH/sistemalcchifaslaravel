@@ -268,6 +268,8 @@ CREATE TABLE `materias` (
     id INT AUTO_INCREMENT PRIMARY KEY,
     plandeestudios_id INT NOT NULL,
     Paralelo VARCHAR(5) NULL,
+    Turno VARCHAR(20) NULL,
+    ModoAsistencia VARCHAR(20) NULL,
     EstadoHabilitacion VARCHAR(50) NULL,
     EstadoEnvio VARCHAR(250) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,

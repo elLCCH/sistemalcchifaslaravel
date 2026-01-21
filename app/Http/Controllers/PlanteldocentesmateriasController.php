@@ -40,12 +40,14 @@ class PlanteldocentesmateriasController extends Controller
         // Filtros opcionales: Año/Resolución (global para el asignador)
         $anioId = $request->query('anio_id');
         $resolucion = trim((string) $request->query('resolucion', ''));
+        $nivel = trim((string) $request->query('nivel', ''));
 
         $filtraPorAnio = ($anioId !== null && $anioId !== '' && (int) $anioId > 0);
         $filtraPorResolucion = ($resolucion !== '');
+        $filtraPorNivel = ($nivel !== '');
         $filtraPorInstitucion = $request->filled('instituciones_id') || !$isSuperAdmin;
 
-        if ($filtraPorAnio || $filtraPorResolucion || $filtraPorInstitucion) {
+        if ($filtraPorAnio || $filtraPorResolucion || $filtraPorNivel || $filtraPorInstitucion) {
             $query
                 ->join('materias', 'planteldocentesmaterias.materias_id', '=', 'materias.id')
                 ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
@@ -57,6 +59,10 @@ class PlanteldocentesmateriasController extends Controller
 
             if ($filtraPorResolucion) {
                 $query->where('carreras.Resolucion', $resolucion);
+            }
+
+            if ($filtraPorNivel) {
+                $query->where('carreras.Nivel', $nivel);
             }
 
             $institucionId = null;

@@ -29,6 +29,7 @@ class MateriasController extends Controller
             'plandeestudios.ModoMateria',
             'plandeestudios.LvlCurso',
             'carreras.Resolucion',
+            'carreras.Nivel',
             'carreras.NombreCarrera',
             $isSuperAdmin ? 'instituciones.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion'),
             'anios.Anio',
@@ -52,6 +53,7 @@ class MateriasController extends Controller
         // Filtros opcionales
         $anioId = $request->query('anio_id');
         $resolucion = trim((string) $request->query('resolucion', ''));
+        $nivel = trim((string) $request->query('nivel', ''));
 
         if ($anioId !== null && $anioId !== '' && (int) $anioId > 0) {
             $query->where('plandeestudios.anio_id', (int) $anioId);
@@ -59,6 +61,10 @@ class MateriasController extends Controller
 
         if ($resolucion !== '') {
             $query->where('carreras.Resolucion', $resolucion);
+        }
+
+        if ($nivel !== '') {
+            $query->where('carreras.Nivel', $nivel);
         }
 
         $materias = $query->get();
@@ -98,6 +104,7 @@ class MateriasController extends Controller
                 'plandeestudios.RangoLvlCurso',
                 'plandeestudios.Rango',
                 'carreras.Resolucion',
+                'carreras.Nivel',
                 'carreras.NombreCarrera',
                 DB::raw('NULL as NombreInstitucion'),
                 'anios.Anio',
@@ -112,6 +119,7 @@ class MateriasController extends Controller
         // Se priorizan estos filtros para evitar cargar demasiada información con el tiempo.
         $anioId = $request->query('anio_id');
         $resolucion = trim((string) $request->query('resolucion', ''));
+        $nivel = trim((string) $request->query('nivel', ''));
 
         $all = (string) $request->query('all', '0');
         $modoAll = in_array(strtolower($all), ['1', 'true', 'si', 'yes'], true);
@@ -125,6 +133,10 @@ class MateriasController extends Controller
 
             if ($resolucion !== '') {
                 $query->where('carreras.Resolucion', $resolucion);
+            }
+
+            if ($nivel !== '') {
+                $query->where('carreras.Nivel', $nivel);
             }
 
             $materias = $query
@@ -143,6 +155,10 @@ class MateriasController extends Controller
 
         if ($resolucion !== '') {
             $query->where('carreras.Resolucion', $resolucion);
+        }
+
+        if ($nivel !== '') {
+            $query->where('carreras.Nivel', $nivel);
         }
 
         // Regla solicitada:
@@ -185,14 +201,20 @@ class MateriasController extends Controller
         $validated = $request->validate([
             'anio_id' => ['required', 'integer', 'min:1'],
             'resolucion' => ['required', 'string'],
+            'nivel' => ['nullable', 'string'],
             'lvlcurso' => ['required', 'string'],
             'paralelo_actual' => ['required', 'string'],
             'paralelo_nuevo' => ['required', 'string'],
             'instituciones_id' => ['nullable', 'integer', 'min:1'],
+            'Turno' => ['nullable', 'string'],
+            'ModoAsistencia' => ['nullable', 'string'],
+            'EstadoHabilitacion' => ['nullable', 'string'],
+            'EstadoEnvio' => ['nullable', 'string'],
         ]);
 
         $anioId = (int) $validated['anio_id'];
         $resolucion = trim((string) $validated['resolucion']);
+        $nivel = trim((string) ($validated['nivel'] ?? ''));
         $lvlCurso = trim((string) $validated['lvlcurso']);
         $paraleloActual = trim((string) $validated['paralelo_actual']);
         $paraleloNuevo = trim((string) $validated['paralelo_nuevo']);
@@ -213,6 +235,10 @@ class MateriasController extends Controller
             ->where('plandeestudios.LvlCurso', $lvlCurso)
             ->where('materias.Paralelo', $paraleloActual);
 
+        if ($nivel !== '') {
+            $idsQuery->where('carreras.Nivel', $nivel);
+        }
+
         if (!empty($institucionId)) {
             $idsQuery->where('carreras.instituciones_id', $institucionId);
         }
@@ -232,6 +258,10 @@ class MateriasController extends Controller
             ->where('materias.Paralelo', $paraleloNuevo)
             ->whereNotIn('materias.id', $ids->all());
 
+        if ($nivel !== '') {
+            $existsQuery->where('carreras.Nivel', $nivel);
+        }
+
         if (!empty($institucionId)) {
             $existsQuery->where('carreras.instituciones_id', $institucionId);
         }
@@ -240,9 +270,39 @@ class MateriasController extends Controller
             return response()->json(['message' => 'Ese paralelo ya existe para el mismo Año y Resolución'], 422);
         }
 
+        $updateData = ['Paralelo' => $paraleloNuevo];
+
+        if (array_key_exists('Turno', $validated)) {
+            $turno = trim((string) ($validated['Turno'] ?? ''));
+            if ($turno !== '') {
+                $updateData['Turno'] = $turno;
+            }
+        }
+
+        if (array_key_exists('ModoAsistencia', $validated)) {
+            $modoAsistencia = trim((string) ($validated['ModoAsistencia'] ?? ''));
+            if ($modoAsistencia !== '') {
+                $updateData['ModoAsistencia'] = $modoAsistencia;
+            }
+        }
+
+        if (array_key_exists('EstadoHabilitacion', $validated)) {
+            $estadoHab = trim((string) ($validated['EstadoHabilitacion'] ?? ''));
+            if ($estadoHab !== '') {
+                $updateData['EstadoHabilitacion'] = $estadoHab;
+            }
+        }
+
+        if (array_key_exists('EstadoEnvio', $validated)) {
+            $estadoEnv = trim((string) ($validated['EstadoEnvio'] ?? ''));
+            if ($estadoEnv !== '') {
+                $updateData['EstadoEnvio'] = $estadoEnv;
+            }
+        }
+
         $updated = Materias::query()
             ->whereIn('id', $ids->all())
-            ->update(['Paralelo' => $paraleloNuevo]);
+            ->update($updateData);
 
         return response()->json(['updated' => $updated]);
     }
@@ -257,15 +317,19 @@ class MateriasController extends Controller
         $validated = $request->validate([
             'anio_id' => ['required', 'integer', 'min:1'],
             'resolucion' => ['required', 'string'],
+            'nivel' => ['nullable', 'string'],
             'lvlcurso' => ['required', 'string'],
             'paralelo_nuevo' => ['required', 'string'],
             'instituciones_id' => ['nullable', 'integer', 'min:1'],
+            'Turno' => ['nullable', 'string'],
+            'ModoAsistencia' => ['nullable', 'string'],
             'EstadoHabilitacion' => ['nullable', 'string'],
             'EstadoEnvio' => ['nullable', 'string'],
         ]);
 
         $anioId = (int) $validated['anio_id'];
         $resolucion = trim((string) $validated['resolucion']);
+        $nivel = trim((string) ($validated['nivel'] ?? ''));
         $lvlCurso = trim((string) $validated['lvlcurso']);
         $paraleloNuevo = trim((string) $validated['paralelo_nuevo']);
 
@@ -284,6 +348,10 @@ class MateriasController extends Controller
             ->where('plandeestudios.LvlCurso', $lvlCurso)
             ->where('materias.Paralelo', $paraleloNuevo);
 
+        if ($nivel !== '') {
+            $existsQuery->where('carreras.Nivel', $nivel);
+        }
+
         if (!empty($institucionId)) {
             $existsQuery->where('carreras.instituciones_id', $institucionId);
         }
@@ -300,6 +368,10 @@ class MateriasController extends Controller
             ->where('carreras.Resolucion', $resolucion)
             ->where('plandeestudios.LvlCurso', $lvlCurso);
 
+        if ($nivel !== '') {
+            $planesQuery->where('carreras.Nivel', $nivel);
+        }
+
         if (!empty($institucionId)) {
             $planesQuery->where('carreras.instituciones_id', $institucionId);
         }
@@ -309,14 +381,23 @@ class MateriasController extends Controller
             return response()->json(['message' => 'No se encontraron planes de estudio para ese curso con el filtro actual'], 404);
         }
 
-        $estadoHab = array_key_exists('EstadoHabilitacion', $validated) ? (string) ($validated['EstadoHabilitacion'] ?? '') : '';
-        $estadoEnv = array_key_exists('EstadoEnvio', $validated) ? (string) ($validated['EstadoEnvio'] ?? '') : '';
+        $turno = array_key_exists('Turno', $validated) ? trim((string) ($validated['Turno'] ?? '')) : '';
+        $modoAsistencia = array_key_exists('ModoAsistencia', $validated) ? trim((string) ($validated['ModoAsistencia'] ?? '')) : '';
+        $estadoHab = array_key_exists('EstadoHabilitacion', $validated) ? trim((string) ($validated['EstadoHabilitacion'] ?? '')) : '';
+        $estadoEnv = array_key_exists('EstadoEnvio', $validated) ? trim((string) ($validated['EstadoEnvio'] ?? '')) : '';
+
+        $turno = $turno !== '' ? $turno : null;
+        $modoAsistencia = $modoAsistencia !== '' ? $modoAsistencia : null;
+        $estadoHab = $estadoHab !== '' ? $estadoHab : null;
+        $estadoEnv = $estadoEnv !== '' ? $estadoEnv : null;
 
         $rows = [];
         foreach ($planIds as $pid) {
             $rows[] = [
                 'plandeestudios_id' => $pid,
                 'Paralelo' => $paraleloNuevo,
+                'Turno' => $turno,
+                'ModoAsistencia' => $modoAsistencia,
                 'EstadoHabilitacion' => $estadoHab,
                 'EstadoEnvio' => $estadoEnv,
             ];
@@ -337,6 +418,7 @@ class MateriasController extends Controller
         $validated = $request->validate([
             'anio_id' => ['required', 'integer', 'min:1'],
             'resolucion' => ['required', 'string'],
+            'nivel' => ['nullable', 'string'],
             'lvlcurso' => ['required', 'string'],
             'paralelo_actual' => ['required', 'string'],
             'instituciones_id' => ['nullable', 'integer', 'min:1'],
@@ -344,6 +426,7 @@ class MateriasController extends Controller
 
         $anioId = (int) $validated['anio_id'];
         $resolucion = trim((string) $validated['resolucion']);
+        $nivel = trim((string) ($validated['nivel'] ?? ''));
         $lvlCurso = trim((string) $validated['lvlcurso']);
         $paraleloActual = trim((string) $validated['paralelo_actual']);
 
@@ -361,6 +444,10 @@ class MateriasController extends Controller
             ->where('carreras.Resolucion', $resolucion)
             ->where('plandeestudios.LvlCurso', $lvlCurso)
             ->where('materias.Paralelo', $paraleloActual);
+
+        if ($nivel !== '') {
+            $idsQuery->where('carreras.Nivel', $nivel);
+        }
 
         if (!empty($institucionId)) {
             $idsQuery->where('carreras.instituciones_id', $institucionId);

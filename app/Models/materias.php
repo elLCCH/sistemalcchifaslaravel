@@ -13,6 +13,8 @@ class Materias extends Model
     protected $fillable = [
         'plandeestudios_id',
         'Paralelo',
+        'Turno',
+        'NombreMateria',
         'EstadoHabilitacion',
         'EstadoEnvio',
     ];
