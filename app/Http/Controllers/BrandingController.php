@@ -18,6 +18,53 @@ class BrandingController extends Controller
         return strtr($upper, $map);
     }
 
+    private function toDataUrl(?string $src): ?string
+    {
+        $src = is_string($src) ? trim($src) : null;
+        if (!$src) {
+            return null;
+        }
+
+        // Ya es DataURL
+        if (str_starts_with($src, 'data:image/')) {
+            return $src;
+        }
+
+        // Si viene con comillas o espacios raros
+        $src = trim($src, " \t\n\r\0\x0B\"'");
+        if ($src === '') {
+            return null;
+        }
+
+        // Intentar resolver como archivo local en /public
+        $relative = ltrim($src, '/');
+        $full = public_path($relative);
+        if (!is_file($full)) {
+            // fallback: algunos guardan rutas tipo 'public/...' o similares
+            $fullAlt = base_path($relative);
+            if (is_file($fullAlt)) {
+                $full = $fullAlt;
+            }
+        }
+
+        if (!is_file($full)) {
+            // Si no existe como archivo local, devolver original (mejor que romper)
+            return $src;
+        }
+
+        $bytes = @file_get_contents($full);
+        if ($bytes === false) {
+            return $src;
+        }
+
+        $mime = @mime_content_type($full);
+        if (!$mime) {
+            $mime = 'image/png';
+        }
+
+        return 'data:' . $mime . ';base64,' . base64_encode($bytes);
+    }
+
     private function getTokenName(Request $request): ?string
     {
         $token = $request->bearerToken();
@@ -119,14 +166,18 @@ class BrandingController extends Controller
 
         $logoDb = $inst?->Logo;
         $logoDb = is_string($logoDb) ? trim($logoDb) : $logoDb;
-        $logo = ($logoDb !== null && $logoDb !== '') ? $logoDb : $this->logoPorInstitucion($nameInst);
+        $logoRaw = ($logoDb !== null && $logoDb !== '') ? $logoDb : $this->logoPorInstitucion($nameInst);
+
+        $logo = $this->toDataUrl(is_string($logoRaw) ? $logoRaw : null);
+        $ministerio = $this->toDataUrl($this->ministerio());
+        $ministerioEscudo = $this->toDataUrl($this->ministerioEscudo());
 
         return response()->json([
             'nameInst' => $nameInst,
             'instituciones_id' => $inst?->id ?? ($request->user()->instituciones_id ?? null),
             'logo' => $logo,
-            'ministerio' => $this->ministerio(),
-            'ministerioEscudo' => $this->ministerioEscudo(),
+            'ministerio' => $ministerio,
+            'ministerioEscudo' => $ministerioEscudo,
         ]);
     }
 
@@ -136,7 +187,8 @@ class BrandingController extends Controller
         $nameInst = $inst?->Nombre ?? $this->getTokenName($request);
         $logoDb = $inst?->Logo;
         $logoDb = is_string($logoDb) ? trim($logoDb) : $logoDb;
-        $logo = ($logoDb !== null && $logoDb !== '') ? $logoDb : ($this->logoPorInstitucion($nameInst) ?? '');
+        $logoRaw = ($logoDb !== null && $logoDb !== '') ? $logoDb : ($this->logoPorInstitucion($nameInst) ?? '');
+        $logo = $this->toDataUrl(is_string($logoRaw) ? $logoRaw : null) ?? '';
 
         return response((string) $logo, 200)
             ->header('Content-Type', 'text/plain; charset=utf-8');
@@ -144,13 +196,13 @@ class BrandingController extends Controller
 
     public function ObtenerMinisterio(Request $request)
     {
-        return response((string) ($this->ministerio() ?? ''), 200)
+        return response((string) ($this->toDataUrl($this->ministerio()) ?? ''), 200)
             ->header('Content-Type', 'text/plain; charset=utf-8');
     }
 
     public function ObtenerMinisterioEscudo(Request $request)
     {
-        return response((string) ($this->ministerioEscudo() ?? ''), 200)
+        return response((string) ($this->toDataUrl($this->ministerioEscudo()) ?? ''), 200)
             ->header('Content-Type', 'text/plain; charset=utf-8');
     }
 }
