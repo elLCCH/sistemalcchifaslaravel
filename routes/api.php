@@ -23,6 +23,10 @@ use App\Http\Controllers\PlanteldocentesmateriasController;
 use App\Http\Controllers\PagoslcchController;
 use App\Http\Controllers\TalleristasController;
 use App\Http\Controllers\PagostalleresController;
+use App\Http\Controllers\EventosController;
+use App\Http\Controllers\EstudianteseventosController;
+use App\Http\Controllers\PublicEventosController;
+use App\Http\Controllers\DiseniocertificadopdfsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -35,6 +39,7 @@ use App\Http\Controllers\InfoauditoriaController;
 use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\PublicHorariosController;
 use App\Http\Controllers\PerfilController;
+use App\Http\Controllers\BibliotecaarchivoslcchController;
 use App\Http\Middleware\AuditMiddleware;
 
 // ============================================================
@@ -244,6 +249,35 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::delete('/pagostalleres/{id}', [PagostalleresController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES']);
 
     // =========================
+    // EventosController
+    // =========================
+    Route::get('/eventos', [EventosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/eventos/{id}', [EventosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/eventos', [EventosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO']);
+    Route::put('/eventos/{id}', [EventosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO']);
+    Route::delete('/eventos/{id}', [EventosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO']);
+
+    // =========================
+    // DiseniocertificadopdfsController
+    // =========================
+    Route::get('/diseniocertificadopdfs', [DiseniocertificadopdfsController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/diseniocertificadopdfs/{id}', [DiseniocertificadopdfsController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/diseniocertificadopdfs', [DiseniocertificadopdfsController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO']);
+    Route::put('/diseniocertificadopdfs/{id}', [DiseniocertificadopdfsController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO']);
+    Route::delete('/diseniocertificadopdfs/{id}', [DiseniocertificadopdfsController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO']);
+
+    // =========================
+    // EstudianteseventosController
+    // =========================
+    Route::get('/estudianteseventos', [EstudianteseventosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/estudianteseventos/by-evento/{eventoId}', [EstudianteseventosController::class, 'byEvento'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/estudianteseventos/{id}', [EstudianteseventosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/estudianteseventos', [EstudianteseventosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::put('/estudianteseventos/{id}', [EstudianteseventosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::delete('/estudianteseventos/{id}', [EstudianteseventosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/estudianteseventos/{id}/generar-certificado', [EstudianteseventosController::class, 'generarCertificado'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+
+    // =========================
     // PlandeestudiosController
     // =========================
     Route::get('/plandeestudios', [PlandeestudiosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
@@ -296,6 +330,15 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     // =========================
     Route::post('uploadFile', [FileUploadController::class, 'uploadFile'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
     Route::post('deleteFile', [FileUploadController::class, 'deleteFile'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+
+    // =========================
+    // BibliotecaarchivoslcchController (Biblioteca digital por institución)
+    // =========================
+    Route::get('bibliotecaarchivoslcch', [BibliotecaarchivoslcchController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    Route::get('bibliotecaarchivoslcch/{id}', [BibliotecaarchivoslcchController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    Route::post('bibliotecaarchivoslcch', [BibliotecaarchivoslcchController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::put('bibliotecaarchivoslcch/{id}', [BibliotecaarchivoslcchController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::delete('bibliotecaarchivoslcch/{id}', [BibliotecaarchivoslcchController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
 
     // ============================================================
     // RUTAS API PARA EL SISTEMA DE CAPTURA DE ASISTENCIA
@@ -356,6 +399,15 @@ Route::get('/inicios/{id}', [IniciosController::class, 'show']);
 Route::get('/instituciones', [InstitucionesController::class, 'index']);
 Route::get('/instituciones/{id}', [InstitucionesController::class, 'show']);
 Route::get('/controles', [ControlesController::class, 'index']);
+
+// ============================================================
+// RUTAS PÚBLICAS PARA INSCRIPCIÓN A EVENTOS (WEB)
+// ============================================================
+Route::prefix('public')->group(function () {
+    Route::get('/eventos', [PublicEventosController::class, 'index']);
+    Route::get('/eventos/{id}', [PublicEventosController::class, 'show']);
+    Route::post('/eventos/{eventoId}/inscripcion', [PublicEventosController::class, 'inscribir']);
+});
 
 // ============================================================
 // RUTAS API PUBLICAS PARA RECOGER FOTOS DESDE EL CELULAR

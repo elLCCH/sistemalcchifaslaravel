@@ -58,6 +58,23 @@ class FileUploadController extends Controller
             case 'pagoslcchcomprobantes':
                 $path = $base . '/pagoslcch/comprobantes';
                 break;
+
+            case 'bibliotecaPdf':
+                // PDFs para biblioteca digital (por institución)
+                $ext = strtolower((string) $file->getClientOriginalExtension());
+                if ($ext !== 'pdf') {
+                    return response()->json(['error' => 'Solo se permite PDF'], 422);
+                }
+                $path = $base . '/biblioteca/pdf';
+                break;
+            case 'certificadoPdf':
+                // PDF base para diseños de certificados (por institución)
+                $ext = strtolower((string) $file->getClientOriginalExtension());
+                if ($ext !== 'pdf') {
+                    return response()->json(['error' => 'Solo se permite PDF'], 422);
+                }
+                $path = $base . '/eventos/certificados/disenos';
+                break;
             default:
                 return response()->json(['error' => 'Tipo de archivo no válido'], 400);
         }
