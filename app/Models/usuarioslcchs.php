@@ -12,12 +12,24 @@ class Usuarioslcchs extends Authenticatable
     //
      use HasApiTokens, HasFactory;
     protected $table = 'usuarioslcchs';
+
+    protected $hidden = [
+        'google2fa_secret',
+    ];
+
+    protected $casts = [
+        'google2fa_enabled' => 'boolean',
+        'google2fa_confirmed_at' => 'datetime',
+    ];
     // Lista de atributos asignables
     protected $fillable = [
         'Nombres',
         'Apellidos',
         'Usuario',
         'Contrasenia',
+        'google2fa_secret',
+        'google2fa_enabled',
+        'google2fa_confirmed_at',
         'CelularTrabajo',
         'Foto',
         'Estado',

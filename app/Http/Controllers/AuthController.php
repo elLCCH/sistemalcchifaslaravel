@@ -11,8 +11,47 @@ use App\Models\Usuarioslcchs;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
+use Illuminate\Support\Str;
+
 class AuthController extends Controller
 {
+    private function isHashedPassword(?string $value): bool
+    {
+        $v = (string) ($value ?? '');
+        if ($v === '') {
+            return false;
+        }
+
+        return Str::startsWith($v, ['$2y$', '$2a$', '$argon2', '$bcrypt$']);
+    }
+
+    private function passwordMatches(string $plain, ?string $stored): bool
+    {
+        $stored = (string) ($stored ?? '');
+        if ($stored === '') {
+            return false;
+        }
+
+        if ($this->isHashedPassword($stored)) {
+            return Hash::check($plain, $stored);
+        }
+
+        return hash_equals($stored, $plain);
+    }
+
+    private function upgradePasswordIfNeeded($model, string $plain): void
+    {
+        try {
+            $stored = (string) ($model->Contrasenia ?? '');
+            if ($stored !== '' && !$this->isHashedPassword($stored)) {
+                $model->Contrasenia = Hash::make($plain);
+                $model->save();
+            }
+        } catch (\Throwable $e) {
+            // noop
+        }
+    }
+
     // public function login(Request $request)
     // {
     //     // validar
@@ -72,10 +111,11 @@ class AuthController extends Controller
         $sesion = Usuarioslcchs::where('Usuario','=', $user)->first();
         try {
             if ($sesion->Estado == 'ACTIVO') {
-                if (Hash::check($pass, $sesion->Contrasenia)) {
+                if ($this->passwordMatches($pass, $sesion->Contrasenia)) {
                     // INICIO DE SESION CORRECTO COMO ADMINISTRADOR
                     $login =true;
                     $tipoSesion = 'usuarioslcchs'; // es un super lcch
+                    $this->upgradePasswordIfNeeded($sesion, $pass);
                 }
                 else
                 {
@@ -97,10 +137,11 @@ class AuthController extends Controller
             $sesion = Planteladministrativos::where('Usuario','=', $user)->first();
             try {
                 if ($sesion->Estado == 'ACTIVO') {
-                    if (Hash::check($pass, $sesion->Contrasenia)) {
+                    if ($this->passwordMatches($pass, $sesion->Contrasenia)) {
                         // INICIO DE SESION CORRECTO COMO ADMINISTRATIVO
                         $login =true;
                         $tipoSesion = 'planteladministrativos'; // es un ADMINISTRATIVO DEL PLANTEL
+                        $this->upgradePasswordIfNeeded($sesion, $pass);
                     }
                     else
                     {
@@ -120,10 +161,11 @@ class AuthController extends Controller
             $sesion = Planteldocentes::where('Usuario','=', $user)->first();
             try {
                 if ($sesion->Estado == 'ACTIVO') {
-                    if (Hash::check($pass, $sesion->Contrasenia)) {
+                    if ($this->passwordMatches($pass, $sesion->Contrasenia)) {
                         // INICIO DE SESION CORRECTO COMO DOCENTE
                         $login =true;
                         $tipoSesion = 'planteldocentes'; // es un DOCENTE
+                        $this->upgradePasswordIfNeeded($sesion, $pass);
                     }
                     else
                     {
@@ -143,10 +185,11 @@ class AuthController extends Controller
             $sesion = Estudiantesifas::where('Usuario','=', $user)->first();
             try {
                 if ($sesion->Estado == 'ACTIVO') {
-                    if (Hash::check($pass, $sesion->Contrasenia)) {
+                    if ($this->passwordMatches($pass, $sesion->Contrasenia)) {
                         // INICIO DE SESION CORRECTO COMO ESTUDIANTE
                         $login =true;
                         $tipoSesion = 'estudiantesifas'; // es un ESTUDIANTE
+                        $this->upgradePasswordIfNeeded($sesion, $pass);
                     }
                     else
                     {
@@ -432,13 +475,15 @@ class AuthController extends Controller
             return response()->json(['message' => 'No autenticado.'], 401);
         }
 
-        // Verificar clave actual
-        if (!Hash::check($request->input('claveActual'), $user->contrasenia)) {
+        $stored = (string) ($user->Contrasenia ?? $user->contrasenia ?? '');
+
+        // Verificar clave actual (soporta legado en texto plano)
+        if (!$this->passwordMatches((string) $request->input('claveActual'), $stored)) {
             return response()->json(['message' => 'La clave actual es incorrecta.'], 400);
         }
 
         // Actualizar la contraseña
-        $user->contrasenia = Hash::make($request->input('nuevaClave'));
+        $user->Contrasenia = Hash::make($request->input('nuevaClave'));
         $user->save();
 
         return response()->json(['message' => 'Contraseña actualizada correctamente.']);

@@ -10,6 +10,15 @@ class Planteladministrativos extends Authenticatable
 {
     use HasApiTokens;
     protected $table = 'planteladministrativos';
+
+    protected $hidden = [
+        'google2fa_secret',
+    ];
+
+    protected $casts = [
+        'google2fa_enabled' => 'boolean',
+        'google2fa_confirmed_at' => 'datetime',
+    ];
     // Lista de atributos asignables
     protected $fillable = [
         'instituciones_id',
@@ -19,6 +28,9 @@ class Planteladministrativos extends Authenticatable
         'FechaNac',
         'Usuario',
         'Contrasenia',
+        'google2fa_secret',
+        'google2fa_enabled',
+        'google2fa_confirmed_at',
         'Celular',
         'CelularTrabajo',
         'Carnet',

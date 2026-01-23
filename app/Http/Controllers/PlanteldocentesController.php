@@ -87,11 +87,11 @@ class PlanteldocentesController extends Controller
         $requestData = $request->all();
 
         if ($request->has('Contrasenia')) {
-            // Si se envió la contraseña
-            if (Hash::needsRehash($request->Contrasenia)) {
-            $requestData['Contrasenia'] = Hash::make($request->Contrasenia);
+            $raw = (string) $request->input('Contrasenia');
+            if (trim($raw) !== '') {
+                $requestData['Contrasenia'] = Hash::make($raw);
             } else {
-            $requestData['Contrasenia'] = $request->Contrasenia;
+                $requestData['Contrasenia'] = $planteldocentes->Contrasenia;
             }
         } else {
             // No se envió la contraseña, mantener la actual

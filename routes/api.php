@@ -40,6 +40,8 @@ use App\Http\Controllers\BrandingController;
 use App\Http\Controllers\PublicHorariosController;
 use App\Http\Controllers\PerfilController;
 use App\Http\Controllers\BibliotecaarchivoslcchController;
+use App\Http\Controllers\TwoFactorController;
+use App\Http\Controllers\PasswordRecoveryController;
 use App\Http\Middleware\AuditMiddleware;
 
 // ============================================================
@@ -63,6 +65,26 @@ Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como e
     // Route::post('/update-profile', [AuthController::class, 'updateProfile']); //v1/auth/update-profile
     Route::post('/cambiar-clave', [AuthController::class, 'cambiarClave'])->middleware('auth:sanctum'); //cambiar clave de usuario ESTO SUELE SER PARA PERMITIR EL AUTORIZADO
     Route::get('/user', [AuthController::class, 'getUser'])->middleware('auth:sanctum'); //v1/auth/user
+});
+
+// ============================================================
+// Seguridad: Google Authenticator (TOTP)
+// Vinculación/desvinculación para el usuario autenticado
+// ============================================================
+Route::prefix('v1/security')->middleware('auth:sanctum')->group(function () {
+    Route::get('/2fa/status', [TwoFactorController::class, 'status']);
+    Route::post('/2fa/enroll/start', [TwoFactorController::class, 'enrollStart']);
+    Route::post('/2fa/enroll/confirm', [TwoFactorController::class, 'enrollConfirm']);
+    Route::post('/2fa/disable', [TwoFactorController::class, 'disable']);
+});
+
+// ============================================================
+// Recuperación de contraseña (público) usando código TOTP
+// Nota: Google Authenticator NO recibe códigos; el usuario ingresa su TOTP.
+// ============================================================
+Route::prefix('v1/password-recovery')->group(function () {
+    Route::post('/start', [PasswordRecoveryController::class, 'start']);
+    Route::post('/reset', [PasswordRecoveryController::class, 'reset']);
 });
 
 Route::prefix('v1/perfil')->middleware('auth:sanctum')->group(function () {
