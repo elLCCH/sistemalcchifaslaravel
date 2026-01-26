@@ -14,7 +14,9 @@ class PlanteldocentesController extends Controller
     {
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
-    //controllerPHPlcch planteldocentes, $
+
+    
+
     //#region Inicio Controller de Crud PHP de planteldocentes
     public function index()
     {

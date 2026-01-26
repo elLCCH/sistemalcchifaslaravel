@@ -42,16 +42,10 @@ use App\Http\Controllers\PerfilController;
 use App\Http\Controllers\BibliotecaarchivoslcchController;
 use App\Http\Controllers\TwoFactorController;
 use App\Http\Controllers\PasswordRecoveryController;
+use App\Http\Controllers\PeticionesPrivadas;
+use App\Http\Controllers\PeticionesPublicas;
 use App\Http\Middleware\AuditMiddleware;
 
-// ============================================================
-// ENDPOINTS PÚBLICOS (legacy/publicos)
-// Usados por componentes públicos: horarios/paralelos
-// ============================================================
-Route::get('/Anio', [PublicHorariosController::class, 'anios']);
-Route::post('/HorariosCursos', [PublicHorariosController::class, 'cursos']);
-Route::post('/ListaEstudiantesCurso', [PublicHorariosController::class, 'estudiantesCurso']);
-Route::post('/ListaEstudiantesGestion', [PublicHorariosController::class, 'estudiantesGestion']);
 Route::post('/verify-token', [TokenController::class, 'verify']);
 Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como el routing de angular: v1/auth/login
     Route::post('/login', [AuthController::class, "login"]); //EJECUTAR LA FUNCION login desde el authcontroller
@@ -116,7 +110,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     // =========================
     // AniosController
     // =========================
-    Route::get('/anios', [AniosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
+    
     Route::get('/anios/{id}', [AniosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),DOCENTE,INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_EVENTOS,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE,DOCENTE_DE_TALLER']);
     Route::post('/anios', [AniosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR']);
     Route::put('/anios/{id}', [AniosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO']);
@@ -414,8 +408,30 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::post('/califhistorias', [CalifhistoriasController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
     Route::put('/califhistorias/{id}', [CalifhistoriasController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
     Route::delete('/califhistorias/{id}', [CalifhistoriasController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
+
+
+    //PETICIONES RANDOM
+    
+    Route::post('/CargarEstudiantesMateriaPrivado', [PeticionesPrivadas::class, 'CargarEstudiantesMateriaPrivado'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::post('/CargarEstudiantesMezcladosMateriasPrivado', [PeticionesPrivadas::class, 'CargarEstudiantesMezcladosMateriasPrivado'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::post('/CargarInfoPlanesAniosCarrerasInstitucionesPrivado', [PeticionesPrivadas::class, 'CargarInfoPlanesAniosCarrerasInstitucionesPrivado'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+
 });
+
+
+Route::post('/HorariosCursos', [PublicHorariosController::class, 'cursos']);
+Route::post('/CargarEstudiantesMateriaPublico', [PeticionesPublicas::class, 'CargarEstudiantesMateriaPublico']);
+Route::get('/CargarInfoPublicaDocentes', [PeticionesPublicas::class, 'CargarInfoPublicaDocentes']);
+Route::get('/CargarInfoPublicaAdministrativos', [PeticionesPublicas::class, 'CargarInfoPublicaAdministrativos']);
+Route::post('/CargarEstudiantesMezcladosMateriasPublico', [PeticionesPublicas::class, 'CargarEstudiantesMezcladosMateriasPublico']);
+Route::post('/CargarMateriasEstudiantesMultiInstitucionPublico', [PeticionesPublicas::class, 'CargarMateriasEstudiantesMultiInstitucionPublico']);
+
+
+Route::post('/ListaEstudiantesCurso', [PublicHorariosController::class, 'estudiantesCurso']);
+Route::post('/ListaEstudiantesGestion', [PublicHorariosController::class, 'estudiantesGestion']);
 // RUTAS API PUBLICAS DE CARGA SIN INICIAR SESION
+
+Route::get('/anios', [AniosController::class, 'index']);
 Route::get('/inicios', [IniciosController::class, 'index']);
 Route::get('/inicios/{id}', [IniciosController::class, 'show']);
 Route::get('/instituciones', [InstitucionesController::class, 'index']);

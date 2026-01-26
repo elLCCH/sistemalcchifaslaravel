@@ -11,7 +11,8 @@ class AniosController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class])
+        ->except(['index']);
     }
     //#region Inicio Controller de Crud PHP de anios
     public function index()

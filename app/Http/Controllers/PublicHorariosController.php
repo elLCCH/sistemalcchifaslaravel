@@ -8,15 +8,11 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
+
 class PublicHorariosController extends Controller
 {
-    public function anios()
-    {
-        return Anios::query()
-            ->select(['id', 'Anio', 'Estado', 'Visibilidad', 'Predeterminado'])
-            ->orderBy('id', 'desc')
-            ->get();
-    }
+    
+
 
     /**
      * Cursos para la gestión (anio_id) agrupados por (LvlCurso, Paralelo, Turno)
@@ -105,20 +101,26 @@ class PublicHorariosController extends Controller
             return response()->json(['message' => 'Anio_id, LvlCurso, Paralelo y Turno son requeridos'], 422);
         }
 
-        $q = $this->buildEstudiantesQuery()
-            ->where('plandeestudios.anio_id', '=', $anioId)
-            ->where('plandeestudios.LvlCurso', '=', $lvlCurso)
-            ->where('materias.Paralelo', '=', $paralelo)
-            ->where('materias.Turno', '=', $turno)
+       $q = $this->buildEstudiantesQuery()
+
+            ->where('plandeestudios.anio_id', 1)
+
+            ->where('plandeestudios.LvlCurso', $lvlCurso)
+
+            ->where('infoestudiantesifas.Turno', $turno)
+
+            ->where('infoestudiantesifas.Paralelo_Solicitado', $paralelo)
+
             ->orderBy('estudiantesifas.Ap_Paterno')
             ->orderBy('estudiantesifas.Ap_Materno')
             ->orderBy('estudiantesifas.Nombre');
 
         if ($institucionId) {
-            $q->where('carreras.instituciones_id', '=', $institucionId);
+            $q->where('carreras.instituciones_id', $institucionId);
         }
 
         return $q->get();
+
     }
 
     /**
@@ -145,45 +147,64 @@ class PublicHorariosController extends Controller
         return $q->get();
     }
 
-    private function buildEstudiantesQuery()
+   private function buildEstudiantesQuery()
     {
-        // Se usa groupBy para evitar repetidos por múltiples materias en calificaciones.
-        return Calificaciones::query()
-            ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
-            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
-            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
-            ->join('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
-            ->leftJoin('planteldocentes as docE', 'infoestudiantesifas.planteldocadmins_id', '=', 'docE.id')
-            ->leftJoin('planteldocentes as docPC', 'infoestudiantesifas.planteldocadmins_idPC', '=', 'docPC.id')
+        return \App\Models\InfoEstudiantesIfas::query()
+
+            // ===== RELACIÓN ESTUDIANTE =====
+            ->join('estudiantesifas', 
+                'infoestudiantesifas.estudiantesifas_id', 
+                '=', 
+                'estudiantesifas.id'
+            )
+
+            // ===== CALIFICACIONES (OPCIONAL) =====
+            ->leftJoin('calificaciones', 
+                'infoestudiantesifas.id', 
+                '=', 
+                'calificaciones.infoestudiantesifas_id'
+            )
+
+            // ===== MATERIAS =====
+            ->leftJoin('materias', 
+                'calificaciones.materias_id', 
+                '=', 
+                'materias.id'
+            )
+
+            // ===== PLAN DE ESTUDIOS =====
+            ->leftJoin('plandeestudios', 
+                'materias.plandeestudios_id', 
+                '=', 
+                'plandeestudios.id'
+            )
+
+            // ===== CARRERAS =====
+            ->leftJoin('carreras', 
+                'plandeestudios.carreras_id', 
+                '=', 
+                'carreras.id'
+            )
+
+            // ===== ADMINISTRATIVOS =====
+            ->leftJoin('planteldocentes as docE', 
+                'infoestudiantesifas.planteldocadmins_id', 
+                '=', 
+                'docE.id'
+            )
+
+            ->leftJoin('planteldocentes as docPC', 
+                'infoestudiantesifas.planteldocadmins_idPC', 
+                '=', 
+                'docPC.id'
+            )
+
+            // ===== CAMPOS =====
             ->select([
+
                 'infoestudiantesifas.id as id',
-                'estudiantesifas.Ap_Paterno',
-                'estudiantesifas.Ap_Materno',
-                'estudiantesifas.Nombre',
-                'estudiantesifas.CI',
-                'estudiantesifas.Sexo',
-                'estudiantesifas.Celular',
-                'estudiantesifas.FechaNac as FechNac',
-                'infoestudiantesifas.Turno',
-                'infoestudiantesifas.Categoria',
-                'infoestudiantesifas.Observacion',
-                'infoestudiantesifas.planteldocadmins_id as Admin_id',
-                'infoestudiantesifas.planteldocadmins_idPC as Admin_idPC',
-                'infoestudiantesifas.InstrumentoMusical as Especialidad',
-                'docE.Nombre as NombreAdmin',
-                'docE.Apellidos as Ap_PAdmin',
-                DB::raw("'' as Ap_MAdmin"),
-                'docE.CelularTrabajo as CelularTrabajo',
-                'docPC.Nombre as NombreAdminPC',
-                'docPC.Apellidos as Ap_PAdminPC',
-                DB::raw("'' as Ap_MAdminPC"),
-                'docPC.CelularTrabajo as CelularTrabajoPC',
-                DB::raw("'REGULAR' as Arrastre"),
-                DB::raw("TIMESTAMPDIFF(YEAR, estudiantesifas.FechaNac, CURDATE()) as Edad"),
-            ])
-            ->groupBy([
-                'infoestudiantesifas.id',
+
+                // DATOS ESTUDIANTE
                 'estudiantesifas.Ap_Paterno',
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre',
@@ -191,18 +212,38 @@ class PublicHorariosController extends Controller
                 'estudiantesifas.Sexo',
                 'estudiantesifas.Celular',
                 'estudiantesifas.FechaNac',
+
+                // INFO MATRÍCULA
                 'infoestudiantesifas.Turno',
                 'infoestudiantesifas.Categoria',
                 'infoestudiantesifas.Observacion',
-                'infoestudiantesifas.planteldocadmins_id',
-                'infoestudiantesifas.planteldocadmins_idPC',
-                'infoestudiantesifas.InstrumentoMusical',
-                'docE.Nombre',
-                'docE.Apellidos',
-                'docE.CelularTrabajo',
-                'docPC.Nombre',
-                'docPC.Apellidos',
-                'docPC.CelularTrabajo',
-            ]);
+                'infoestudiantesifas.Paralelo_Solicitado',
+                'infoestudiantesifas.InstrumentoMusical as Especialidad',
+
+                // ADMINISTRADOR
+                'docE.Nombres as NombreAdmin',
+                'docE.Apellidos as Ap_Admin',
+                'docE.CelularTrabajo as CelularAdmin',
+
+                // ADMIN PC
+                'docPC.Nombres as NombreAdminPC',
+                'docPC.Apellidos as Ap_AdminPC',
+                'docPC.CelularTrabajo as CelularAdminPC',
+
+                // CAMPOS CALCULADOS
+                // \DB::raw("'REGULAR' as Arrastre"),
+
+                // \DB::raw("
+                //     TIMESTAMPDIFF(
+                //         YEAR,
+                //         estudiantesifas.FechaNac,
+                //         CURDATE()
+                //     ) as Edad
+                // ")
+            ])
+
+            // evita duplicados por múltiples materias
+            ->distinct();
     }
+
 }
