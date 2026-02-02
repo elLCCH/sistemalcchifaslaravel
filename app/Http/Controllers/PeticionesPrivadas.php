@@ -150,4 +150,274 @@ class PeticionesPrivadas extends Controller
         }
         return response()->json(['data' => $consulta]);
     }
+
+    function CargarInformacionCuadroInscripciones(Request $request)
+    {
+        $user = $request->user();
+        // Endpoint es POST. Aceptamos también query params por compatibilidad.
+        $anioId = (int) $request->input('anio_id', $request->query('anio_id', 0));
+        if ($anioId <= 0) {
+            return response()->json(['message' => 'anio_id es requerido'], 422);
+        }
+
+        $includeSinAsignar = filter_var(
+            $request->input('include_sin_asignar', $request->query('include_sin_asignar', '0')),
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        // "nivel" es el nombre histórico; "curso_solicitado" se acepta por compatibilidad.
+        $cursoSolicitado = $request->input('nivel', $request->input('curso_solicitado', $request->query('nivel', $request->query('curso_solicitado', 'MIXTO'))));
+
+        $institucionId = (int) ($user?->instituciones_id ?? 0);
+        if ($institucionId <= 0) {
+            $institucionId = (int) $request->input('instituciones_id', 0);
+        }
+        if ($institucionId <= 0) {
+            return response()->json(['message' => 'instituciones_id es requerido'], 403);
+        }
+
+        $anioValor = trim((string) (DB::table('anios')->where('id', $anioId)->value('Anio') ?? ''));
+        if ($anioValor === '') {
+            return response()->json(['message' => 'Año inválido'], 422);
+        }
+
+        // Subquery coherente con lo que se muestra en la tabla de inscripciones.
+        $anioLabelSubquery = "COALESCE((
+            SELECT MAX(a.Anio)
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+        ), 'SIN ASIGNAR')";
+
+        $carreraSubquery = "(
+            SELECT ca.NombreCarrera
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN carreras ca ON ca.id = p.carreras_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+            ORDER BY a.Anio DESC, p.id DESC
+            LIMIT 1
+        )";
+
+        $areaSubquery = "(
+            SELECT ca.Area
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN carreras ca ON ca.id = p.carreras_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+            ORDER BY a.Anio DESC, p.id DESC
+            LIMIT 1
+        )";
+
+        $resolucionSubquery = "(
+            SELECT ca.Resolucion
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN carreras ca ON ca.id = p.carreras_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+            ORDER BY a.Anio DESC, p.id DESC
+            LIMIT 1
+        )";
+
+        $q = DB::table('infoestudiantesifas')
+            ->join('estudiantesifas', 'estudiantesifas.id', '=', 'infoestudiantesifas.estudiantesifas_id')
+            ->where('infoestudiantesifas.instituciones_id', $institucionId)
+            ->select([
+                'estudiantesifas.Ap_Paterno',
+                'estudiantesifas.Ap_Materno',
+                'estudiantesifas.Nombre',
+                'estudiantesifas.CI',
+                DB::raw('estudiantesifas.FechaNac as FechNac'),
+                'estudiantesifas.Sexo',
+                'estudiantesifas.Direccion',
+                'estudiantesifas.Edad',
+                'infoestudiantesifas.Curso_Solicitado',
+                'infoestudiantesifas.Turno',
+                'infoestudiantesifas.Matricula',
+                'infoestudiantesifas.Categoria',
+                'infoestudiantesifas.FechInsc',
+                DB::raw($anioLabelSubquery . ' as Anio'),
+                DB::raw($areaSubquery . ' as Area'),
+                DB::raw($carreraSubquery . ' as Carrera'),
+                DB::raw($resolucionSubquery . ' as Malla'),
+                DB::raw("(CASE WHEN UPPER(TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado,''))) LIKE '%SUPERIOR%' THEN 'TECNICO SUPERIOR' ELSE 'CAPACITACIÓN' END) as Nivel"),
+            ]);
+
+        // Filtro por nivel/curso (opcional)
+        $cursoSolicitadoStr = trim((string) ($cursoSolicitado ?? ''));
+        $cursoSolicitadoUp = mb_strtoupper($cursoSolicitadoStr, 'UTF-8');
+        if ($cursoSolicitadoStr !== '' && $cursoSolicitadoUp !== 'MIXTO') {
+            if (str_contains($cursoSolicitadoUp, 'SUPERIOR')) {
+                $q->where('infoestudiantesifas.Curso_Solicitado', 'like', '%SUPERIOR%');
+            } elseif (str_contains($cursoSolicitadoUp, 'CAPACITACIÓN') || str_contains($cursoSolicitadoUp, 'CAPACITACION')) {
+                $q->where('infoestudiantesifas.Curso_Solicitado', 'not like', '%SUPERIOR%');
+            } else {
+                $q->where('infoestudiantesifas.Curso_Solicitado', $cursoSolicitadoStr);
+            }
+        }
+
+        // Filtro por año (exacto) + opción de incluir SIN ASIGNAR
+        if ($includeSinAsignar) {
+            $q->where(function ($outer) use ($anioLabelSubquery, $anioValor) {
+                $outer
+                    ->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
+                    ->orWhereNotExists(function ($qq) {
+                        $qq->select(DB::raw(1))
+                            ->from('calificaciones as c')
+                            ->whereRaw('c.infoestudiantesifas_id = infoestudiantesifas.id');
+                    });
+            });
+        } else {
+            $q->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+        }
+
+        $rows = $q
+            ->orderBy('estudiantesifas.Ap_Paterno')
+            ->orderBy('estudiantesifas.Ap_Materno')
+            ->orderBy('estudiantesifas.Nombre')
+            ->get();
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'anio_id' => $anioId,
+                'anio' => $anioValor,
+                'include_sin_asignar' => $includeSinAsignar ? 1 : 0,
+                'instituciones_id' => $institucionId,
+                'nivel' => $cursoSolicitadoStr,
+                'total' => (int) $rows->count(),
+            ],
+        ]);
+    }
+
+    function CargarListaPreliminarAlumnos2026(Request $request)
+    {
+        $user = $request->user();
+
+        $anioId = (int) $request->input('anio_id', $request->query('anio_id', 0));
+        if ($anioId <= 0) {
+            return response()->json(['message' => 'anio_id es requerido'], 422);
+        }
+
+        $includeSinAsignar = filter_var(
+            $request->input('include_sin_asignar', $request->query('include_sin_asignar', '0')),
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        $institucionId = (int) ($user?->instituciones_id ?? 0);
+        if ($institucionId <= 0) {
+            $institucionId = (int) $request->input('instituciones_id', 0);
+        }
+        if ($institucionId <= 0) {
+            return response()->json(['message' => 'instituciones_id es requerido'], 403);
+        }
+
+        $anioValor = trim((string) (DB::table('anios')->where('id', $anioId)->value('Anio') ?? ''));
+        if ($anioValor === '') {
+            return response()->json(['message' => 'Año inválido'], 422);
+        }
+
+        $cursos = $request->input('cursos', []);
+        if (!is_array($cursos) || count($cursos) === 0) {
+            return response()->json(['message' => 'cursos es requerido'], 422);
+        }
+
+        $pairs = [];
+        foreach ($cursos as $c) {
+            $curso = trim((string) ($c['curso'] ?? $c['LvlCurso'] ?? $c['Curso_Solicitado'] ?? ''));
+            $paralelo = trim((string) ($c['paralelo'] ?? $c['Paralelo'] ?? $c['Paralelo_Solicitado'] ?? ''));
+            if ($curso === '') continue;
+            // paralelo puede venir vacío para representar "SIN DETERMINAR"
+            $pairs[] = ['curso' => $curso, 'paralelo' => $paralelo];
+        }
+        if (count($pairs) === 0) {
+            return response()->json(['message' => 'cursos inválido'], 422);
+        }
+
+        // Subquery coherente con lo que se muestra en la tabla de inscripciones.
+        $anioLabelSubquery = "COALESCE((
+            SELECT MAX(a.Anio)
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+        ), 'SIN ASIGNAR')";
+
+        $q = DB::table('infoestudiantesifas')
+            ->join('estudiantesifas', 'estudiantesifas.id', '=', 'infoestudiantesifas.estudiantesifas_id')
+            ->where('infoestudiantesifas.instituciones_id', $institucionId)
+            ->select([
+                'estudiantesifas.Ap_Paterno',
+                'estudiantesifas.Ap_Materno',
+                'estudiantesifas.Nombre',
+                'infoestudiantesifas.InstrumentoMusical',
+                'infoestudiantesifas.InstrumentoMusicalSecundario',
+                'infoestudiantesifas.Curso_Solicitado',
+                'infoestudiantesifas.Paralelo_Solicitado',
+                DB::raw($anioLabelSubquery . ' as Anio'),
+            ]);
+
+        // Filtrar por curso/paralelo seleccionados
+        // Si paralelo es vacío, se interpreta como "SIN DETERMINAR" (NULL o '')
+        $q->where(function ($outer) use ($pairs) {
+            foreach ($pairs as $p) {
+                $outer->orWhere(function ($w) use ($p) {
+                    $w->where('infoestudiantesifas.Curso_Solicitado', $p['curso']);
+
+                    if (trim((string) ($p['paralelo'] ?? '')) === '') {
+                        $w->whereRaw("TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, '')) = ''");
+                    } else {
+                        $w->whereRaw("TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, '')) = ?", [$p['paralelo']]);
+                    }
+                });
+            }
+        });
+
+        // Filtro por año (exacto) + opción de incluir SIN ASIGNAR
+        if ($includeSinAsignar) {
+            $q->where(function ($outer) use ($anioLabelSubquery, $anioValor) {
+                $outer
+                    ->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
+                    ->orWhereNotExists(function ($qq) {
+                        $qq->select(DB::raw(1))
+                            ->from('calificaciones as c')
+                            ->whereRaw('c.infoestudiantesifas_id = infoestudiantesifas.id');
+                    });
+            });
+        } else {
+            $q->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+        }
+
+        $rows = $q
+            ->orderBy('infoestudiantesifas.Curso_Solicitado')
+            ->orderBy('infoestudiantesifas.Paralelo_Solicitado')
+            ->orderBy('estudiantesifas.Ap_Paterno')
+            ->orderBy('estudiantesifas.Ap_Materno')
+            ->orderBy('estudiantesifas.Nombre')
+            ->get();
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'anio_id' => $anioId,
+                'anio' => $anioValor,
+                'include_sin_asignar' => $includeSinAsignar ? 1 : 0,
+                'instituciones_id' => $institucionId,
+                'total' => (int) $rows->count(),
+            ],
+        ]);
+    }
+
+
+
+    
 }

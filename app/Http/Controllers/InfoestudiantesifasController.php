@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Anios;
 use App\Models\Infoestudiantesifas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,13 +25,10 @@ class InfoestudiantesifasController extends Controller
         }
 
         if ($anioScope === 'unassigned') {
-            // Solo SIN ASIGNAR: no tiene ningún año asignado (sin calificaciones)
-            // Nota: este filtro no requiere anio_id.
+            // Solo SIN ASIGNAR: no tiene ninguna calificación (independiente del plan/año)
             $q->whereNotExists(function ($qq) {
                 $qq->select(DB::raw(1))
                     ->from('calificaciones as c')
-                    ->join('materias as m', 'm.id', '=', 'c.materias_id')
-                    ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
                     ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id');
             });
             return;
@@ -38,46 +36,41 @@ class InfoestudiantesifasController extends Controller
 
         if ($anioIdInt <= 0) return;
 
+        // Filtramos por el mismo "Anio" que se muestra en la tabla (MAX(a.Anio)).
+        // Esto evita que al seleccionar "2026" se cuelen registros cuyo máximo sea "2026/2".
+        $anioValor = trim((string) (Anios::query()->where('id', $anioIdInt)->value('Anio') ?? ''));
+        if ($anioValor === '') {
+            return;
+        }
+
+        $anioLabelSubquery = "COALESCE((
+            SELECT MAX(a.Anio)
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = p.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+        ), 'SIN ASIGNAR')";
+
         if ($anioScope === 'assigned') {
-            // Solo ASIGNADOS al año
-            $q->whereExists(function ($qq) use ($anioIdInt) {
-                $qq->select(DB::raw(1))
-                    ->from('calificaciones as c')
-                    ->join('materias as m', 'm.id', '=', 'c.materias_id')
-                    ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
-                    ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id')
-                    ->where('p.anio_id', $anioIdInt);
-            });
+            // Solo ASIGNADOS cuyo "Anio" calculado coincide EXACTAMENTE con el año seleccionado.
+            $q->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
             return;
         }
 
         if ($includeSinAsignar) {
-            $q->where(function ($outer) use ($anioIdInt) {
-                $outer->whereExists(function ($qq) use ($anioIdInt) {
-                    $qq->select(DB::raw(1))
-                        ->from('calificaciones as c')
-                        ->join('materias as m', 'm.id', '=', 'c.materias_id')
-                        ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
-                        ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id')
-                        ->where('p.anio_id', $anioIdInt);
-                })
-                ->orWhereNotExists(function ($qq) {
-                    $qq->select(DB::raw(1))
-                        ->from('calificaciones as c')
-                        ->join('materias as m', 'm.id', '=', 'c.materias_id')
-                        ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
-                        ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id');
-                });
+            $q->where(function ($outer) use ($anioLabelSubquery, $anioValor) {
+                $outer
+                    ->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
+                    // O los que NO tienen ninguna asignación (sin calificaciones)
+                    ->orWhereNotExists(function ($qq) {
+                        $qq->select(DB::raw(1))
+                            ->from('calificaciones as c')
+                            ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id');
+                    });
             });
         } else {
-            $q->whereExists(function ($qq) use ($anioIdInt) {
-                $qq->select(DB::raw(1))
-                    ->from('calificaciones as c')
-                    ->join('materias as m', 'm.id', '=', 'c.materias_id')
-                    ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
-                    ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id')
-                    ->where('p.anio_id', $anioIdInt);
-            });
+            $q->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
         }
     }
 
@@ -148,11 +141,18 @@ class InfoestudiantesifasController extends Controller
         $user = request()->user();
         $isSuperAdmin = empty($user?->instituciones_id);
 
+        $institucionId = (int) $request->query('instituciones_id', 0);
+
         $base = Infoestudiantesifas::query()
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
             ->when(!$isSuperAdmin && !empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
             });
+
+        // Para superadmin, permitir filtrar por institución cuando se envía el parámetro.
+        if ($isSuperAdmin && $institucionId > 0) {
+            $base->where('infoestudiantesifas.instituciones_id', $institucionId);
+        }
 
         $this->aplicarFiltroAnio($base, $anioId, $includeSinAsignar, $anioScope);
 
@@ -189,33 +189,34 @@ class InfoestudiantesifasController extends Controller
             ->get();
 
         // =============================
-        // Por Curso_Solicitado + Paralelo_Solicitado (solo donde hay paralelo)
+        // Por Curso_Solicitado + Paralelo_Solicitado
+        // Nota: Paralelo puede ser NULL/vacío (lo tratamos como "SIN DETERMINAR")
         // =============================
-        $basePar = (clone $base)->whereRaw("TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, '')) <> ''");
+        $basePar = (clone $base);
 
         $cursoPar = (clone $basePar)
-            ->selectRaw('infoestudiantesifas.Curso_Solicitado as curso, TRIM(infoestudiantesifas.Paralelo_Solicitado) as paralelo, COUNT(*) as total')
-            ->groupBy('infoestudiantesifas.Curso_Solicitado', DB::raw('TRIM(infoestudiantesifas.Paralelo_Solicitado)'))
+            ->selectRaw('infoestudiantesifas.Curso_Solicitado as curso, TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\')) as paralelo, COUNT(*) as total')
+            ->groupBy('infoestudiantesifas.Curso_Solicitado', DB::raw('TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\'))'))
             ->orderByDesc('total')
             ->get();
 
         $cursoParSexo = (clone $basePar)
-            ->selectRaw('infoestudiantesifas.Curso_Solicitado as curso, TRIM(infoestudiantesifas.Paralelo_Solicitado) as paralelo, UPPER(TRIM(COALESCE(estudiantesifas.Sexo, \'\'))) as sexo, COUNT(*) as total')
-            ->groupBy('infoestudiantesifas.Curso_Solicitado', DB::raw('TRIM(infoestudiantesifas.Paralelo_Solicitado)'), DB::raw('UPPER(TRIM(COALESCE(estudiantesifas.Sexo, \'\')))'))
+            ->selectRaw('infoestudiantesifas.Curso_Solicitado as curso, TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\')) as paralelo, UPPER(TRIM(COALESCE(estudiantesifas.Sexo, \'\'))) as sexo, COUNT(*) as total')
+            ->groupBy('infoestudiantesifas.Curso_Solicitado', DB::raw('TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\'))'), DB::raw('UPPER(TRIM(COALESCE(estudiantesifas.Sexo, \'\')))'))
             ->get();
 
         $cursoParEdad = (clone $basePar)
             ->whereNotNull('estudiantesifas.Edad')
             ->whereRaw('TRIM(COALESCE(estudiantesifas.Edad, \'\')) <> \'\'')
-            ->selectRaw('infoestudiantesifas.Curso_Solicitado as curso, TRIM(infoestudiantesifas.Paralelo_Solicitado) as paralelo, CAST(estudiantesifas.Edad AS UNSIGNED) as edad, COUNT(*) as total')
-            ->groupBy('infoestudiantesifas.Curso_Solicitado', DB::raw('TRIM(infoestudiantesifas.Paralelo_Solicitado)'), DB::raw('CAST(estudiantesifas.Edad AS UNSIGNED)'))
+            ->selectRaw('infoestudiantesifas.Curso_Solicitado as curso, TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\')) as paralelo, CAST(estudiantesifas.Edad AS UNSIGNED) as edad, COUNT(*) as total')
+            ->groupBy('infoestudiantesifas.Curso_Solicitado', DB::raw('TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\'))'), DB::raw('CAST(estudiantesifas.Edad AS UNSIGNED)'))
             ->orderBy(DB::raw('CAST(estudiantesifas.Edad AS UNSIGNED)'))
             ->get();
 
         $cursoParInstrumento = (clone $basePar)
             ->whereRaw("TRIM(COALESCE(infoestudiantesifas.InstrumentoMusical, '')) <> ''")
-            ->selectRaw('infoestudiantesifas.Curso_Solicitado as curso, TRIM(infoestudiantesifas.Paralelo_Solicitado) as paralelo, TRIM(infoestudiantesifas.InstrumentoMusical) as instrumento, COUNT(*) as total')
-            ->groupBy('infoestudiantesifas.Curso_Solicitado', DB::raw('TRIM(infoestudiantesifas.Paralelo_Solicitado)'), DB::raw('TRIM(infoestudiantesifas.InstrumentoMusical)'))
+            ->selectRaw('infoestudiantesifas.Curso_Solicitado as curso, TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\')) as paralelo, TRIM(infoestudiantesifas.InstrumentoMusical) as instrumento, COUNT(*) as total')
+            ->groupBy('infoestudiantesifas.Curso_Solicitado', DB::raw('TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\'))'), DB::raw('TRIM(infoestudiantesifas.InstrumentoMusical)'))
             ->orderByDesc('total')
             ->get();
 
@@ -280,12 +281,13 @@ class InfoestudiantesifasController extends Controller
         $porCursoPar = [];
         foreach ($cursoPar as $row) {
             $cursoKey = $this->normalizarKey($row->curso, '(SIN CURSO)');
-            $parKey = $this->normalizarKey($row->paralelo, '');
-            if ($parKey === '') continue;
-            $key = $cursoKey . '||' . $parKey;
+            $parValue = $this->normalizarKey($row->paralelo, '');
+            $parLabel = $parValue !== '' ? $parValue : 'SIN DETERMINAR';
+            $key = $cursoKey . '||' . $parLabel;
             $porCursoPar[$key] = [
                 'curso' => $cursoKey,
-                'paralelo' => $parKey,
+                'paralelo' => $parValue,
+                'paralelo_label' => $parLabel,
                 'tipo' => $this->cursoEsTecnicoSuperior($cursoKey) ? 'TECNICO_SUPERIOR' : 'OTRO',
                 'total' => (int) $row->total,
                 'sexo' => [],
@@ -296,9 +298,9 @@ class InfoestudiantesifasController extends Controller
 
         foreach ($cursoParSexo as $row) {
             $cursoKey = $this->normalizarKey($row->curso, '(SIN CURSO)');
-            $parKey = $this->normalizarKey($row->paralelo, '');
-            if ($parKey === '') continue;
-            $key = $cursoKey . '||' . $parKey;
+            $parValue = $this->normalizarKey($row->paralelo, '');
+            $parLabel = $parValue !== '' ? $parValue : 'SIN DETERMINAR';
+            $key = $cursoKey . '||' . $parLabel;
             if (!isset($porCursoPar[$key])) continue;
             $sexoKey = $this->normalizarKey($row->sexo, 'SIN DATO');
             $porCursoPar[$key]['sexo'][$sexoKey] = (int) $row->total;
@@ -306,9 +308,9 @@ class InfoestudiantesifasController extends Controller
 
         foreach ($cursoParEdad as $row) {
             $cursoKey = $this->normalizarKey($row->curso, '(SIN CURSO)');
-            $parKey = $this->normalizarKey($row->paralelo, '');
-            if ($parKey === '') continue;
-            $key = $cursoKey . '||' . $parKey;
+            $parValue = $this->normalizarKey($row->paralelo, '');
+            $parLabel = $parValue !== '' ? $parValue : 'SIN DETERMINAR';
+            $key = $cursoKey . '||' . $parLabel;
             if (!isset($porCursoPar[$key])) continue;
             $porCursoPar[$key]['edades'][] = [
                 'edad' => (int) $row->edad,
@@ -318,9 +320,9 @@ class InfoestudiantesifasController extends Controller
 
         foreach ($cursoParInstrumento as $row) {
             $cursoKey = $this->normalizarKey($row->curso, '(SIN CURSO)');
-            $parKey = $this->normalizarKey($row->paralelo, '');
-            if ($parKey === '') continue;
-            $key = $cursoKey . '||' . $parKey;
+            $parValue = $this->normalizarKey($row->paralelo, '');
+            $parLabel = $parValue !== '' ? $parValue : 'SIN DETERMINAR';
+            $key = $cursoKey . '||' . $parLabel;
             if (!isset($porCursoPar[$key])) continue;
             $inst = $this->normalizarKey($row->instrumento, '');
             if ($inst === '') continue;
@@ -369,6 +371,34 @@ class InfoestudiantesifasController extends Controller
         $includeSinAsignar = filter_var($request->query('include_sin_asignar', '0'), FILTER_VALIDATE_BOOLEAN);
         $institucionId = $request->query('instituciones_id');
 
+        $docenteId = $request->query('planteldocadmins_id');
+        $docenteIdPC = $request->query('planteldocadmins_idPC');
+        $docenteIdOtros = $request->query('planteldocadmins_idOtros');
+        $includeSinDocente = filter_var($request->query('include_sin_docente', '0'), FILTER_VALIDATE_BOOLEAN);
+
+        $instrumentoMusical = trim((string) $request->query('InstrumentoMusical', ''));
+        $instrumentoMusicalSecundario = trim((string) $request->query('InstrumentoMusicalSecundario', ''));
+
+        $cursoSolicitadoFiltro = trim((string) $request->query('Curso_Solicitado', ''));
+        $paraleloSolicitadoFiltro = trim((string) $request->query('Paralelo_Solicitado', ''));
+        $cursoAsignadoFiltro = trim((string) $request->query('CursoAsignado', ''));
+        $paraleloAsignadoFiltro = trim((string) $request->query('ParaleloAsignado', ''));
+
+        // Elegimos el campo de docente a filtrar según el parámetro recibido.
+        // Prioridad: PC -> Otros -> Especialidad.
+        $docenteCampo = null;
+        $docenteFiltro = null;
+        if ($docenteIdPC !== null && $docenteIdPC !== '') {
+            $docenteCampo = 'infoestudiantesifas.planteldocadmins_idPC';
+            $docenteFiltro = $docenteIdPC;
+        } elseif ($docenteIdOtros !== null && $docenteIdOtros !== '') {
+            $docenteCampo = 'infoestudiantesifas.planteldocadmins_idOtros';
+            $docenteFiltro = $docenteIdOtros;
+        } elseif ($docenteId !== null && $docenteId !== '') {
+            $docenteCampo = 'infoestudiantesifas.planteldocadmins_id';
+            $docenteFiltro = $docenteId;
+        }
+
         // Campos permitidos para ordenar (alias "Anio" se maneja con orderByRaw)
         $allowedSort = [
             'id',
@@ -377,10 +407,12 @@ class InfoestudiantesifasController extends Controller
             'Ap_Paterno',
             'Ap_Materno',
             'Nombre',
+            'NombreEstudiante',
             'Anio',
             'Categoria',
             'Curso_Solicitado',
             'Paralelo_Solicitado',
+            'CursoAsignado',
             'CantidadMateriasAsignadas',
             'Observacion',
             'Verificacion',
@@ -426,6 +458,28 @@ class InfoestudiantesifasController extends Controller
             LIMIT 1
         )";
 
+        $cursoAsignadoSubquery = "(
+            SELECT pe.LvlCurso
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios pe ON pe.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = pe.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+            ORDER BY a.Anio DESC, pe.id DESC
+            LIMIT 1
+        )";
+
+        $paraleloAsignadoSubquery = "(
+            SELECT m.Paralelo
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios pe ON pe.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = pe.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+            ORDER BY a.Anio DESC, pe.id DESC
+            LIMIT 1
+        )";
+
         $query = Infoestudiantesifas::query()
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
@@ -436,9 +490,15 @@ class InfoestudiantesifasController extends Controller
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre',
                 'estudiantesifas.CI',
+                'estudiantesifas.Sexo',
+                'estudiantesifas.Celular',
+                'estudiantesifas.NumCelP',
+                'estudiantesifas.NumCelM',
                 DB::raw($anioSubquery . " as Anio"),
                 DB::raw($carreraSubquery . " as NombreCarrera"),
                 DB::raw($resolucionSubquery . " as Resolucion"),
+                DB::raw($cursoAsignadoSubquery . " as CursoAsignado"),
+                DB::raw($paraleloAsignadoSubquery . " as ParaleloAsignado"),
             ])
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
@@ -448,6 +508,42 @@ class InfoestudiantesifasController extends Controller
             })
             ->when($estudianteId !== null && $estudianteId !== '' && (int) $estudianteId > 0, function ($q) use ($estudianteId) {
                 $q->where('infoestudiantesifas.estudiantesifas_id', (int) $estudianteId);
+            })
+            ->when($cursoSolicitadoFiltro !== '', function ($q) use ($cursoSolicitadoFiltro) {
+                $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado, \'\')) = ?', [$cursoSolicitadoFiltro]);
+            })
+            ->when($paraleloSolicitadoFiltro !== '', function ($q) use ($paraleloSolicitadoFiltro) {
+                $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\')) = ?', [$paraleloSolicitadoFiltro]);
+            })
+            ->when($instrumentoMusical !== '', function ($q) use ($instrumentoMusical) {
+                $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.InstrumentoMusical, \'\')) = ?', [$instrumentoMusical]);
+            })
+            ->when($cursoAsignadoFiltro !== '', function ($q) use ($cursoAsignadoFiltro, $cursoAsignadoSubquery) {
+                $q->whereRaw('TRIM(COALESCE(' . $cursoAsignadoSubquery . ", '')) = ?", [$cursoAsignadoFiltro]);
+            })
+            ->when($paraleloAsignadoFiltro !== '', function ($q) use ($paraleloAsignadoFiltro, $paraleloAsignadoSubquery) {
+                $q->whereRaw('TRIM(COALESCE(' . $paraleloAsignadoSubquery . ", '')) = ?", [$paraleloAsignadoFiltro]);
+            })
+            ->when($instrumentoMusicalSecundario !== '', function ($q) use ($instrumentoMusicalSecundario) {
+                $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.InstrumentoMusicalSecundario, \'\')) = ?', [$instrumentoMusicalSecundario]);
+            })
+            ->when($docenteCampo !== null && $docenteFiltro !== null && $docenteFiltro !== '' && (int) $docenteFiltro > 0, function ($q) use ($docenteCampo, $docenteFiltro, $includeSinDocente) {
+                $docId = (int) $docenteFiltro;
+                if ($includeSinDocente) {
+                    $q->where(function ($w) use ($docenteCampo, $docId) {
+                        $w->where($docenteCampo, $docId)
+                          ->orWhereNull($docenteCampo)
+                          ->orWhere($docenteCampo, 0);
+                    });
+                } else {
+                    $q->where($docenteCampo, $docId);
+                }
+            })
+            ->when($docenteCampo !== null && ($docenteFiltro === '0' || (is_numeric($docenteFiltro) && (int) $docenteFiltro === 0)) && $includeSinDocente, function ($q) use ($docenteCampo) {
+                $q->where(function ($w) use ($docenteCampo) {
+                    $w->whereNull($docenteCampo)
+                      ->orWhere($docenteCampo, 0);
+                });
             })
             ->when($search !== '', function ($q) use ($search, $searchMode) {
                 $tokens = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
@@ -592,8 +688,24 @@ class InfoestudiantesifasController extends Controller
             $query->orderBy('estudiantesifas.Ap_Materno', $sortDir);
         } elseif ($sortBy === 'Nombre') {
             $query->orderBy('estudiantesifas.Nombre', $sortDir);
+        } elseif ($sortBy === 'NombreEstudiante') {
+            $apPat = "TRIM(COALESCE(estudiantesifas.Ap_Paterno,''))";
+            $apMat = "TRIM(COALESCE(estudiantesifas.Ap_Materno,''))";
+            $nom = "TRIM(COALESCE(estudiantesifas.Nombre,''))";
+
+            // Vacíos arriba, luego orden paterno -> materno -> nombre.
+            $query->orderByRaw("({$apPat} = '') DESC");
+            $query->orderByRaw("{$apPat} {$sortDir}");
+            $query->orderByRaw("({$apMat} = '') DESC");
+            $query->orderByRaw("{$apMat} {$sortDir}");
+            $query->orderByRaw("({$nom} = '') DESC");
+            $query->orderByRaw("{$nom} {$sortDir}");
         } elseif ($sortBy === 'Anio') {
             $query->orderByRaw($anioSubquery . ' ' . $sortDir);
+        } elseif ($sortBy === 'CursoAsignado') {
+            $expr = 'TRIM(COALESCE(' . $cursoAsignadoSubquery . ", ''))";
+            $query->orderByRaw("({$expr} = '') DESC");
+            $query->orderByRaw("{$expr} {$sortDir}");
         } else {
             $query->orderBy('infoestudiantesifas.' . $sortBy, $sortDir);
         }
@@ -614,6 +726,148 @@ class InfoestudiantesifasController extends Controller
                 'last_page' => $paginator->lastPage(),
                 'from' => $paginator->firstItem(),
                 'to' => $paginator->lastItem(),
+            ],
+        ]);
+    }
+
+
+    public function conteoDocentes(Request $request)
+    {
+        $anioId = $request->query('anio_id');
+        $anioScope = (string) $request->query('anio_scope', 'default');
+        $includeSinAsignar = filter_var($request->query('include_sin_asignar', '0'), FILTER_VALIDATE_BOOLEAN);
+        $institucionId = $request->query('instituciones_id');
+
+        $instrumentoMusical = trim((string) $request->query('InstrumentoMusical', ''));
+        $instrumentoMusicalSecundario = trim((string) $request->query('InstrumentoMusicalSecundario', ''));
+
+        $docenteField = trim((string) $request->query('docente_field', 'planteldocadmins_id'));
+        $allowed = ['planteldocadmins_id', 'planteldocadmins_idPC', 'planteldocadmins_idOtros'];
+        if (!in_array($docenteField, $allowed, true)) {
+            $docenteField = 'planteldocadmins_id';
+        }
+        $docenteCampo = 'infoestudiantesifas.' . $docenteField;
+
+        $user = request()->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
+
+        $base = Infoestudiantesifas::query()
+            ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
+            ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            })
+            ->when($isSuperAdmin && $institucionId !== null && $institucionId !== '' && (int) $institucionId > 0, function ($q) use ($institucionId) {
+                $q->where('infoestudiantesifas.instituciones_id', (int) $institucionId);
+            })
+            ->when($instrumentoMusical !== '', function ($q) use ($instrumentoMusical) {
+                $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.InstrumentoMusical, \'\')) = ?', [$instrumentoMusical]);
+            })
+            ->when($instrumentoMusicalSecundario !== '', function ($q) use ($instrumentoMusicalSecundario) {
+                $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.InstrumentoMusicalSecundario, \'\')) = ?', [$instrumentoMusicalSecundario]);
+            });
+
+        $anioIdInt = (int) ($anioId ?? 0);
+        $this->aplicarFiltroAnio($base, $anioIdInt, $includeSinAsignar, $anioScope);
+
+        $rows = (clone $base)
+            ->whereNotNull($docenteCampo)
+            ->where($docenteCampo, '<>', 0)
+            ->selectRaw("{$docenteCampo} as docente_id, COUNT(*) as total")
+            ->groupBy($docenteCampo)
+            ->get();
+
+        return response()->json([
+            'data' => $rows,
+        ]);
+    }
+
+    public function optionsCursosDocente(Request $request)
+    {
+        $anioId = $request->query('anio_id');
+        $anioScope = (string) $request->query('anio_scope', 'default');
+        $includeSinAsignar = filter_var($request->query('include_sin_asignar', '0'), FILTER_VALIDATE_BOOLEAN);
+        $institucionId = $request->query('instituciones_id');
+
+        $docenteId = $request->query('planteldocadmins_id');
+        $docenteIdPC = $request->query('planteldocadmins_idPC');
+        $docenteIdOtros = $request->query('planteldocadmins_idOtros');
+
+        $instrumentoMusical = trim((string) $request->query('InstrumentoMusical', ''));
+        $instrumentoMusicalSecundario = trim((string) $request->query('InstrumentoMusicalSecundario', ''));
+
+        // Elegimos el campo de docente a filtrar según el parámetro recibido.
+        $docenteCampo = null;
+        $docenteFiltro = null;
+        if ($docenteIdPC !== null && $docenteIdPC !== '') {
+            $docenteCampo = 'infoestudiantesifas.planteldocadmins_idPC';
+            $docenteFiltro = $docenteIdPC;
+        } elseif ($docenteIdOtros !== null && $docenteIdOtros !== '') {
+            $docenteCampo = 'infoestudiantesifas.planteldocadmins_idOtros';
+            $docenteFiltro = $docenteIdOtros;
+        } elseif ($docenteId !== null && $docenteId !== '') {
+            $docenteCampo = 'infoestudiantesifas.planteldocadmins_id';
+            $docenteFiltro = $docenteId;
+        }
+
+        $cursoAsignadoSubquery = "(
+            SELECT pe.LvlCurso
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios pe ON pe.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = pe.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+            ORDER BY a.Anio DESC, pe.id DESC
+            LIMIT 1
+        )";
+
+        $user = request()->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
+
+        $base = Infoestudiantesifas::query()
+            ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
+            ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            })
+            ->when($isSuperAdmin && $institucionId !== null && $institucionId !== '' && (int) $institucionId > 0, function ($q) use ($institucionId) {
+                $q->where('infoestudiantesifas.instituciones_id', (int) $institucionId);
+            })
+            ->when($instrumentoMusical !== '', function ($q) use ($instrumentoMusical) {
+                $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.InstrumentoMusical, \'\')) = ?', [$instrumentoMusical]);
+            })
+            ->when($instrumentoMusicalSecundario !== '', function ($q) use ($instrumentoMusicalSecundario) {
+                $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.InstrumentoMusicalSecundario, \'\')) = ?', [$instrumentoMusicalSecundario]);
+            });
+
+        if ($docenteCampo !== null && $docenteFiltro !== null && $docenteFiltro !== '' && (int) $docenteFiltro > 0) {
+            $base->where($docenteCampo, (int) $docenteFiltro);
+        }
+
+        $anioIdInt = (int) ($anioId ?? 0);
+        $this->aplicarFiltroAnio($base, $anioIdInt, $includeSinAsignar, $anioScope);
+
+        $cursoSolicitado = (clone $base)
+            ->selectRaw("TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado, '')) as curso")
+            ->whereRaw("TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado, '')) <> ''")
+            ->groupByRaw("TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado, ''))")
+            ->orderByRaw("TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado, ''))")
+            ->pluck('curso')
+            ->values();
+
+        $exprAsignado = "TRIM(COALESCE({$cursoAsignadoSubquery}, ''))";
+        $cursoAsignado = (clone $base)
+            ->selectRaw("{$exprAsignado} as curso")
+            ->whereRaw("{$exprAsignado} <> ''")
+            ->groupByRaw($exprAsignado)
+            ->orderByRaw($exprAsignado)
+            ->pluck('curso')
+            ->values();
+
+        return response()->json([
+            'data' => [
+                'Curso_Solicitado' => $cursoSolicitado,
+                'CursoAsignado' => $cursoAsignado,
             ],
         ]);
     }
@@ -893,5 +1147,25 @@ class InfoestudiantesifasController extends Controller
         $row->delete();
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
+
+
+    function CargarInformacionInscripcione1s(Request $request) {
+        $user = $request->user(); //$user?->instituciones_id
+        //Ap_Paterno,Ap_Materno,Nombre,CI,FechNac,Sexo,Direccion,Edad,  Area,Carrera,Malla, Curso_Solicitado,Nivel,Turno, Matricula,Categoria, created_at,updated_at,FechInsc
+        // $data = DB::select('SELECT estudiantesifas.Ap_Paterno,estudiantesifas.Ap_Materno,estudiantesifas.Nombre,estudiantesifas.CI,estudiantesifas.FechaNac,estudiantesifas.Sexo,estudiantesifas.Direccion,estudiantesifas.Edad,
+        //     infoestudiantesifas.Curso_Solicitado,infoestudiantesifas.Turno, infoestudiantesifas.Matricula,infoestudiantesifas.Categoria, infoestudiantesifas.FechInsc,
+        //     carreras.Area,carreras.NombreCarrera,carreras.Resolucion
+        //     FROM infoestudiantesifas
+        //     INNER JOIN estudiantesifas ON estudiantesifas.id = infoestudiantesifas.estudiantesifas_id
+        //     INNER JOIN instituciones ON instituciones.id = infoestudiantesifas.instituciones_id
+        //     INNER JOIN carreras ON carreras.instituciones_id = instituciones.id
+        //     INNER JOIN plandeestudios ON plandeestudios.carreras_id = carreras.id
+        //     WHERE infoestudiantesifas.instituciones_id = '.$user?->instituciones_id.' AND 
+        // ');
+        
+
+    }
+    
+
     //#endregion Fin Controller de Crud PHP de infoestudiantesifas
 }
