@@ -63,7 +63,7 @@ CREATE TABLE `instituciones` (
     PlataformaEducativa VARCHAR(100) NULL,
     Historia TEXT NULL,
     Funciones VARCHAR(250) NULL,
-    Caractisticas VARCHAR(50) NULL,
+    Caractisticas VARCHAR(200) NULL,
     ColorInstitucional VARCHAR(20) NULL,
     ColorFuerte VARCHAR(20) NULL,
     ColorMedio VARCHAR(20) NULL,
