@@ -44,6 +44,7 @@ use App\Http\Controllers\TwoFactorController;
 use App\Http\Controllers\PasswordRecoveryController;
 use App\Http\Controllers\PeticionesPrivadas;
 use App\Http\Controllers\PeticionesPublicas;
+use App\Http\Controllers\EstadisticasAsignacionesController;
 use App\Http\Middleware\AuditMiddleware;
 
 Route::post('/verify-token', [TokenController::class, 'verify']);
@@ -162,6 +163,12 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::post('calificaciones/unassign-all', [CalificacionesController::class, 'unassignAll'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
 
     // =========================
+    // Estadísticas (Asignaciones por materias)
+    // =========================
+    Route::get('estadisticas/asignaciones/materias', [EstadisticasAsignacionesController::class, 'porMaterias'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::get('estadisticas/asignaciones/materias/estudiantes', [EstadisticasAsignacionesController::class, 'estudiantesAsignados'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+
+    // =========================
     // CarrerasController
     // =========================
     Route::get('/carreras', [CarrerasController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A)']);
@@ -216,9 +223,10 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     // =========================
     // Route::get('/inicios', [IniciosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     
-    Route::post('/inicios', [IniciosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
-    Route::put('/inicios/{id}', [IniciosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
-    Route::delete('/inicios/{id}', [IniciosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    // Solo plantel administrativo (y super) debería publicar información en inicios
+    Route::post('/inicios', [IniciosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::put('/inicios/{id}', [IniciosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::delete('/inicios/{id}', [IniciosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
 
     // =========================
     // MateriasController
@@ -449,6 +457,9 @@ Route::prefix('public')->group(function () {
     Route::get('/eventos', [PublicEventosController::class, 'index']);
     Route::get('/eventos/{id}', [PublicEventosController::class, 'show']);
     Route::post('/eventos/{eventoId}/inscripcion', [PublicEventosController::class, 'inscribir']);
+
+    // Horarios (tabla inicios, categoria=HORARIO)
+    Route::get('/horarios', [IniciosController::class, 'horariosPublicos']);
 });
 
 // ============================================================

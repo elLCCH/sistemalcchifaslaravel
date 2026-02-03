@@ -51,6 +51,16 @@ class FileUploadController extends Controller
             case 'iniciospublicaciones':
                 $path = 'archivos/compartidosifas/inicios/publicaciones';
                 break;
+
+            case 'inicioshorarios':
+                // Horarios públicos por institución (PDF o imagen)
+                $ext = strtolower((string) $file->getClientOriginalExtension());
+                $allowed = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
+                if (!in_array($ext, $allowed, true)) {
+                    return response()->json(['error' => 'Solo se permite PDF o imagen (png/jpg/jpeg/webp)'], 422);
+                }
+                $path = 'archivos/compartidosifas/inicios/horarios';
+                break;
                 
             case 'pagosAnualesUnicos':
                 $path = $base . '/pagoslcch/pagosunicosgestiones';
