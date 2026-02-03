@@ -181,6 +181,14 @@ class PeticionesPrivadas extends Controller
             return response()->json(['message' => 'Año inválido'], 422);
         }
 
+        // Si se selecciona una gestión base (ej. "2026"), incluir también sus sub-gestiones ("2026/1", "2026/2", ...)
+        // para que no se excluyan estudiantes ya asignados a un subperiodo.
+        $anioBase = null;
+        if (preg_match('/^(\d{4})/', $anioValor, $m)) {
+            $anioBase = (int) $m[1];
+        }
+        $anioEsBase = !str_contains($anioValor, '/');
+
         // Subquery coherente con lo que se muestra en la tabla de inscripciones.
         $anioLabelSubquery = "COALESCE((
             SELECT MAX(a.Anio)
@@ -266,17 +274,42 @@ class PeticionesPrivadas extends Controller
 
         // Filtro por año (exacto) + opción de incluir SIN ASIGNAR
         if ($includeSinAsignar) {
-            $q->where(function ($outer) use ($anioLabelSubquery, $anioValor) {
-                $outer
-                    ->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
-                    ->orWhereNotExists(function ($qq) {
+            $q->where(function ($outer) use ($anioLabelSubquery, $anioValor, $anioEsBase, $anioBase) {
+                // Asignados (por calificaciones) en la gestión seleccionada.
+                $outer->where(function ($w) use ($anioLabelSubquery, $anioValor, $anioEsBase) {
+                    if ($anioEsBase) {
+                        $w->where(function ($ww) use ($anioLabelSubquery, $anioValor) {
+                            $ww->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
+                               ->orWhereRaw($anioLabelSubquery . ' LIKE ?', [$anioValor . '/%']);
+                        });
+                    } else {
+                        $w->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+                    }
+                });
+
+                // SIN ASIGNAR (sin calificaciones) pero acotado al año base por fecha de inscripción.
+                $outer->orWhere(function ($w) use ($anioBase) {
+                    $w->whereNotExists(function ($qq) {
                         $qq->select(DB::raw(1))
                             ->from('calificaciones as c')
                             ->whereRaw('c.infoestudiantesifas_id = infoestudiantesifas.id');
                     });
+                    if (!empty($anioBase)) {
+                        $w->whereRaw('YEAR(COALESCE(infoestudiantesifas.FechInsc, infoestudiantesifas.created_at)) = ?', [$anioBase]);
+                    }
+                });
             });
         } else {
-            $q->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+            $q->where(function ($w) use ($anioLabelSubquery, $anioValor, $anioEsBase) {
+                if ($anioEsBase) {
+                    $w->where(function ($ww) use ($anioLabelSubquery, $anioValor) {
+                        $ww->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
+                           ->orWhereRaw($anioLabelSubquery . ' LIKE ?', [$anioValor . '/%']);
+                    });
+                } else {
+                    $w->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+                }
+            });
         }
 
         $rows = $q
@@ -324,6 +357,13 @@ class PeticionesPrivadas extends Controller
         if ($anioValor === '') {
             return response()->json(['message' => 'Año inválido'], 422);
         }
+
+        // Si se selecciona una gestión base (ej. "2026"), incluir también sub-gestiones ("2026/1", ...)
+        $anioBase = null;
+        if (preg_match('/^(\d{4})/', $anioValor, $m)) {
+            $anioBase = (int) $m[1];
+        }
+        $anioEsBase = !str_contains($anioValor, '/');
 
         $cursos = $request->input('cursos', []);
         if (!is_array($cursos) || count($cursos) === 0) {
@@ -384,17 +424,40 @@ class PeticionesPrivadas extends Controller
 
         // Filtro por año (exacto) + opción de incluir SIN ASIGNAR
         if ($includeSinAsignar) {
-            $q->where(function ($outer) use ($anioLabelSubquery, $anioValor) {
-                $outer
-                    ->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
-                    ->orWhereNotExists(function ($qq) {
+            $q->where(function ($outer) use ($anioLabelSubquery, $anioValor, $anioEsBase, $anioBase) {
+                $outer->where(function ($w) use ($anioLabelSubquery, $anioValor, $anioEsBase) {
+                    if ($anioEsBase) {
+                        $w->where(function ($ww) use ($anioLabelSubquery, $anioValor) {
+                            $ww->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
+                               ->orWhereRaw($anioLabelSubquery . ' LIKE ?', [$anioValor . '/%']);
+                        });
+                    } else {
+                        $w->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+                    }
+                });
+
+                $outer->orWhere(function ($w) use ($anioBase) {
+                    $w->whereNotExists(function ($qq) {
                         $qq->select(DB::raw(1))
                             ->from('calificaciones as c')
                             ->whereRaw('c.infoestudiantesifas_id = infoestudiantesifas.id');
                     });
+                    if (!empty($anioBase)) {
+                        $w->whereRaw('YEAR(COALESCE(infoestudiantesifas.FechInsc, infoestudiantesifas.created_at)) = ?', [$anioBase]);
+                    }
+                });
             });
         } else {
-            $q->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+            $q->where(function ($w) use ($anioLabelSubquery, $anioValor, $anioEsBase) {
+                if ($anioEsBase) {
+                    $w->where(function ($ww) use ($anioLabelSubquery, $anioValor) {
+                        $ww->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
+                           ->orWhereRaw($anioLabelSubquery . ' LIKE ?', [$anioValor . '/%']);
+                    });
+                } else {
+                    $w->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+                }
+            });
         }
 
         $rows = $q

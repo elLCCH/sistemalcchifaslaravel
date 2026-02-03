@@ -20,28 +20,33 @@ class InfoestudiantesifasController extends Controller
     private function aplicarFiltroAnio($q, int $anioIdInt, bool $includeSinAsignar, string $anioScope = 'default'): void
     {
         $anioScope = strtolower(trim($anioScope));
-        if (!in_array($anioScope, ['default', 'assigned', 'unassigned'], true)) {
+        if (!in_array($anioScope, ['default', 'assigned', 'unassigned', 'both'], true)) {
             $anioScope = 'default';
         }
 
-        if ($anioScope === 'unassigned') {
-            // Solo SIN ASIGNAR: no tiene ninguna calificación (independiente del plan/año)
-            $q->whereNotExists(function ($qq) {
-                $qq->select(DB::raw(1))
-                    ->from('calificaciones as c')
-                    ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id');
-            });
-            return;
+        // Nuevo modo: siempre mezclar ASIGNADOS del año + SIN ASIGNAR del año
+        // (ignora el check include_sin_asignar del frontend).
+        if ($anioScope === 'both') {
+            $includeSinAsignar = true;
+            $anioScope = 'default';
         }
 
         if ($anioIdInt <= 0) return;
 
         // Filtramos por el mismo "Anio" que se muestra en la tabla (MAX(a.Anio)).
-        // Esto evita que al seleccionar "2026" se cuelen registros cuyo máximo sea "2026/2".
+        // A partir de 2026 se requiere que al seleccionar una gestión base (ej. "2026")
+        // se incluyan también sus subgestiones ("2026/1", "2026/2", ...),
+        // para que no se excluyan estudiantes ya asignados a un subperiodo.
         $anioValor = trim((string) (Anios::query()->where('id', $anioIdInt)->value('Anio') ?? ''));
         if ($anioValor === '') {
             return;
         }
+
+        $anioBase = null;
+        if (preg_match('/^(\d{4})/', $anioValor, $m)) {
+            $anioBase = (int) $m[1];
+        }
+        $anioEsBase = !str_contains($anioValor, '/');
 
         $anioLabelSubquery = "COALESCE((
             SELECT MAX(a.Anio)
@@ -52,25 +57,62 @@ class InfoestudiantesifasController extends Controller
             WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
         ), 'SIN ASIGNAR')";
 
+        $aplicarMatchGestion = function ($builder) use ($anioLabelSubquery, $anioValor, $anioEsBase) {
+            if ($anioEsBase) {
+                $builder->where(function ($ww) use ($anioLabelSubquery, $anioValor) {
+                    $ww->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
+                       ->orWhereRaw($anioLabelSubquery . ' LIKE ?', [$anioValor . '/%']);
+                });
+            } else {
+                $builder->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+            }
+        };
+
+        if ($anioScope === 'unassigned') {
+            // Solo SIN ASIGNAR: no tiene ninguna calificación.
+            // Se acota al año base por fecha de inscripción para que al filtrar por 2026
+            // no aparezcan "SIN ASIGNAR" de otros años.
+            $q->whereNotExists(function ($qq) {
+                $qq->select(DB::raw(1))
+                    ->from('calificaciones as c')
+                    ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id');
+            });
+            if (!empty($anioBase)) {
+                $q->whereRaw('YEAR(COALESCE(infoestudiantesifas.FechInsc, infoestudiantesifas.created_at)) = ?', [$anioBase]);
+            }
+            return;
+        }
+
         if ($anioScope === 'assigned') {
-            // Solo ASIGNADOS cuyo "Anio" calculado coincide EXACTAMENTE con el año seleccionado.
-            $q->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+            // Solo ASIGNADOS cuyo "Anio" calculado coincide con la gestión seleccionada.
+            // Si la gestión es base (2026) se incluye también 2026/1, 2026/2, ...
+            $q->where(function ($w) use ($aplicarMatchGestion) {
+                $aplicarMatchGestion($w);
+            });
             return;
         }
 
         if ($includeSinAsignar) {
-            $q->where(function ($outer) use ($anioLabelSubquery, $anioValor) {
-                $outer
-                    ->whereRaw($anioLabelSubquery . ' = ?', [$anioValor])
-                    // O los que NO tienen ninguna asignación (sin calificaciones)
-                    ->orWhereNotExists(function ($qq) {
+            $q->where(function ($outer) use ($aplicarMatchGestion, $anioBase) {
+                $outer->where(function ($w) use ($aplicarMatchGestion) {
+                    $aplicarMatchGestion($w);
+                });
+
+                $outer->orWhere(function ($w) use ($anioBase) {
+                    $w->whereNotExists(function ($qq) {
                         $qq->select(DB::raw(1))
                             ->from('calificaciones as c')
                             ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id');
                     });
+                    if (!empty($anioBase)) {
+                        $w->whereRaw('YEAR(COALESCE(infoestudiantesifas.FechInsc, infoestudiantesifas.created_at)) = ?', [$anioBase]);
+                    }
+                });
             });
         } else {
-            $q->whereRaw($anioLabelSubquery . ' = ?', [$anioValor]);
+            $q->where(function ($w) use ($aplicarMatchGestion) {
+                $aplicarMatchGestion($w);
+            });
         }
     }
 
@@ -343,6 +385,99 @@ class InfoestudiantesifasController extends Controller
             ],
             'por_curso' => $porCursoOut,
             'por_curso_paralelo' => $porCursoParOut,
+        ]);
+    }
+
+    public function estadisticasDetalle(Request $request)
+    {
+        $anioId = (int) $request->query('anio_id', 0);
+        if ($anioId <= 0) {
+            return response()->json(['message' => 'anio_id es requerido'], 422);
+        }
+
+        $curso = trim((string) $request->query('curso', ''));
+        if ($curso === '') {
+            return response()->json(['message' => 'curso es requerido'], 422);
+        }
+
+        // paralelo: puede ser "" para representar SIN DETERMINAR
+        $paralelo = (string) $request->query('paralelo', '');
+        $paralelo = trim($paralelo);
+        $usarParalelo = filter_var($request->query('usar_paralelo', '0'), FILTER_VALIDATE_BOOLEAN);
+
+        $sexoFiltro = strtoupper(trim((string) $request->query('sexo', '')));
+        // Valores esperados: MASCULINO, FEMENINO, OTROS (o vacío)
+
+        $edadFiltro = $request->query('edad', null);
+        $edadFiltro = ($edadFiltro === null || $edadFiltro === '') ? null : (int) $edadFiltro;
+
+        $includeSinAsignar = filter_var($request->query('include_sin_asignar', '0'), FILTER_VALIDATE_BOOLEAN);
+        $anioScope = (string) $request->query('anio_scope', 'default');
+
+        $user = request()->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
+
+        $institucionId = (int) $request->query('instituciones_id', 0);
+
+        $base = Infoestudiantesifas::query()
+            ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
+            ->when(!$isSuperAdmin && !empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            });
+
+        if ($isSuperAdmin && $institucionId > 0) {
+            $base->where('infoestudiantesifas.instituciones_id', $institucionId);
+        }
+
+        $this->aplicarFiltroAnio($base, $anioId, $includeSinAsignar, $anioScope);
+
+        $base->where('infoestudiantesifas.Curso_Solicitado', $curso);
+
+        if ($usarParalelo) {
+            if ($paralelo === '') {
+                $base->whereRaw("TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, '')) = ''");
+            } else {
+                $base->whereRaw("TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, '')) = ?", [$paralelo]);
+            }
+        }
+
+        if ($sexoFiltro === 'MASCULINO' || $sexoFiltro === 'FEMENINO') {
+            $base->whereRaw("UPPER(TRIM(COALESCE(estudiantesifas.Sexo, ''))) = ?", [$sexoFiltro]);
+        } elseif ($sexoFiltro === 'OTROS') {
+            $base->whereRaw("UPPER(TRIM(COALESCE(estudiantesifas.Sexo, ''))) NOT IN ('MASCULINO','FEMENINO')");
+        }
+
+        if (!empty($edadFiltro) && $edadFiltro > 0) {
+            // Edad viene como string en algunos registros; normalizamos a unsigned para comparar.
+            $base->whereNotNull('estudiantesifas.Edad')
+                ->whereRaw("TRIM(COALESCE(estudiantesifas.Edad, '')) <> ''")
+                ->whereRaw("CAST(estudiantesifas.Edad AS UNSIGNED) = ?", [$edadFiltro]);
+        }
+
+        $rows = $base
+            ->select([
+                'estudiantesifas.Ap_Paterno',
+                'estudiantesifas.Ap_Materno',
+                'estudiantesifas.Nombre',
+                'estudiantesifas.CI',
+                'estudiantesifas.Sexo',
+                'estudiantesifas.Edad',
+            ])
+            ->orderBy('estudiantesifas.Ap_Paterno')
+            ->orderBy('estudiantesifas.Ap_Materno')
+            ->orderBy('estudiantesifas.Nombre')
+            ->get();
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'anio_id' => $anioId,
+                'curso' => $curso,
+                'paralelo' => $usarParalelo ? $paralelo : null,
+                'sexo' => $sexoFiltro !== '' ? $sexoFiltro : null,
+                'edad' => $edadFiltro,
+                'total' => (int) $rows->count(),
+            ],
         ]);
     }
     //controllerPHPlcch infoestudiantesifas, $
