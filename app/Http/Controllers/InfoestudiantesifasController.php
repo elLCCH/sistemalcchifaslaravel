@@ -411,6 +411,9 @@ class InfoestudiantesifasController extends Controller
         $edadFiltro = $request->query('edad', null);
         $edadFiltro = ($edadFiltro === null || $edadFiltro === '') ? null : (int) $edadFiltro;
 
+        $instrumentoFiltro = trim((string) $request->query('instrumento', ''));
+        $instrumentoFiltroUpper = $instrumentoFiltro !== '' ? mb_strtoupper($instrumentoFiltro, 'UTF-8') : '';
+
         $includeSinAsignar = filter_var($request->query('include_sin_asignar', '0'), FILTER_VALIDATE_BOOLEAN);
         $anioScope = (string) $request->query('anio_scope', 'default');
 
@@ -454,6 +457,10 @@ class InfoestudiantesifasController extends Controller
                 ->whereRaw("CAST(estudiantesifas.Edad AS UNSIGNED) = ?", [$edadFiltro]);
         }
 
+        if ($instrumentoFiltroUpper !== '') {
+            $base->whereRaw("UPPER(TRIM(COALESCE(infoestudiantesifas.InstrumentoMusical, ''))) = ?", [$instrumentoFiltroUpper]);
+        }
+
         $rows = $base
             ->select([
                 'estudiantesifas.Ap_Paterno',
@@ -476,6 +483,7 @@ class InfoestudiantesifasController extends Controller
                 'paralelo' => $usarParalelo ? $paralelo : null,
                 'sexo' => $sexoFiltro !== '' ? $sexoFiltro : null,
                 'edad' => $edadFiltro,
+                'instrumento' => $instrumentoFiltroUpper !== '' ? $instrumentoFiltroUpper : null,
                 'total' => (int) $rows->count(),
             ],
         ]);
