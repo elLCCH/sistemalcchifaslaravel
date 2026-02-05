@@ -13,6 +13,7 @@ class PeticionesPrivadas extends Controller
         $consulta = DB::select("SELECT estudiantesifas.Ap_Paterno,estudiantesifas.Ap_Materno,estudiantesifas.Nombre,infoestudiantesifas.InstrumentoMusical,infoestudiantesifas.InstrumentoMusicalSecundario,
         estudiantesifas.Celular,estudiantesifas.Edad, estudiantesifas.CI, estudiantesifas.Nombre_Padre,estudiantesifas.Nombre_Madre,estudiantesifas.NumCelP,estudiantesifas.NumCelM, estudiantesifas.Sexo,
         infoestudiantesifas.Categoria,infoestudiantesifas.CantidadMateriasAsignadas,infoestudiantesifas.id,
+        infoestudiantesifas.planteldocadmins_id,infoestudiantesifas.planteldocadmins_idPC,infoestudiantesifas.planteldocadmins_idOtros,
         Docente_Especialidad.Apellidos AS Docente_Especialidad_Apellidos,Docente_Especialidad.Nombres AS Docente_Especialidad_Nombres,Docente_Especialidad.CelularTrabajo AS Docente_Especialidad_CelularTrabajo,Docente_Especialidad.Foto AS Docente_Especialidad_Foto,
         Docente_Practica_Conjuntos.Apellidos AS Docente_Practica_Conjuntos_Apellidos,Docente_Practica_Conjuntos.Nombres AS Docente_Practica_Conjuntos_Nombres,Docente_Practica_Conjuntos.CelularTrabajo AS Docente_Practica_Conjuntos_CelularTrabajo,Docente_Practica_Conjuntos.Foto AS Docente_Practica_Conjuntos_Foto,
         Docente_Instrumento_Complementario.Apellidos AS Docente_Instrumento_Complementario_Apellidos,Docente_Instrumento_Complementario.Nombres AS Docente_Instrumento_Complementario_Nombres,Docente_Instrumento_Complementario.CelularTrabajo AS Docente_Instrumento_Complementario_CelularTrabajo,Docente_Instrumento_Complementario.Foto AS Docente_Instrumento_Complementario_Foto
@@ -44,6 +45,9 @@ class PeticionesPrivadas extends Controller
         $consulta = DB::select("SELECT DISTINCT
 
                 infoestudiantesifas.id AS info_id,
+                infoestudiantesifas.planteldocadmins_id,
+                infoestudiantesifas.planteldocadmins_idPC,
+                infoestudiantesifas.planteldocadmins_idOtros,
 
                 estudiantesifas.Ap_Paterno,
                 estudiantesifas.Ap_Materno,
@@ -60,12 +64,12 @@ class PeticionesPrivadas extends Controller
                 Docente_Especialidad.Nombres AS Docente_Especialidad_Nombres,
                 Docente_Especialidad.CelularTrabajo AS Docente_Especialidad_CelularTrabajo,
 
-                Docente_Practica_Conjuntos.Apellidos AS Docente_Practica_Apellidos,
-                Docente_Practica_Conjuntos.Nombres AS Docente_Practica_Nombres,
+                Docente_Practica_Conjuntos.Apellidos AS Docente_Practica_Conjuntos_Apellidos,
+                Docente_Practica_Conjuntos.Nombres AS Docente_Practica_Conjuntos_Nombres,
                 Docente_Practica_Conjuntos.CelularTrabajo AS Docente_Practica_Conjuntos_CelularTrabajo,
 
-                Docente_Instrumento_Complementario.Apellidos AS Docente_Complementario_Apellidos,
-                Docente_Instrumento_Complementario.Nombres AS Docente_Complementario_Nombres,
+                Docente_Instrumento_Complementario.Apellidos AS Docente_Instrumento_Complementario_Apellidos,
+                Docente_Instrumento_Complementario.Nombres AS Docente_Instrumento_Complementario_Nombres,
                 Docente_Instrumento_Complementario.CelularTrabajo AS Docente_Instrumento_Complementario_CelularTrabajo
 
             FROM calificaciones
