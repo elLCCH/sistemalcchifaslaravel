@@ -170,6 +170,34 @@ class InfoestudiantesifasController extends Controller
         ];
     }
 
+    private function validarDocentesMismaInstitucion(array $payload, int $institucionId): ?\Illuminate\Http\JsonResponse
+    {
+        if ($institucionId <= 0) return null;
+
+        $fields = ['planteldocadmins_id', 'planteldocadmins_idPC', 'planteldocadmins_idOtros'];
+        foreach ($fields as $field) {
+            if (!array_key_exists($field, $payload)) continue;
+            if ($payload[$field] === null || $payload[$field] === '' || (int) $payload[$field] === 0) continue;
+
+            $docenteId = (int) $payload[$field];
+            $ok = DB::table('planteldocentes')
+                ->where('id', $docenteId)
+                ->where('instituciones_id', $institucionId)
+                ->exists();
+
+            if (!$ok) {
+                return response()->json([
+                    'message' => 'Docente no pertenece a la institución del registro.',
+                    'field' => $field,
+                    'docente_id' => $docenteId,
+                    'instituciones_id' => $institucionId,
+                ], 422);
+            }
+        }
+
+        return null;
+    }
+
     public function estadisticas(Request $request)
     {
         $anioId = (int) $request->query('anio_id', 0);
@@ -1190,6 +1218,10 @@ class InfoestudiantesifasController extends Controller
         }
         $data['instituciones_id'] = $institucionId;
 
+        if ($resp = $this->validarDocentesMismaInstitucion($data, $institucionId)) {
+            return $resp;
+        }
+
         $anio = Carbon::now()->year;
         $force = filter_var($request->query('force', $request->input('force', '0')), FILTER_VALIDATE_BOOLEAN);
 
@@ -1262,6 +1294,10 @@ class InfoestudiantesifasController extends Controller
         $instId = (int) ($payload['instituciones_id'] ?? $row->instituciones_id);
         $anio = Carbon::now()->year;
 
+        if ($resp = $this->validarDocentesMismaInstitucion($payload, $instId)) {
+            return $resp;
+        }
+
         $force = filter_var($request->query('force', $request->input('force', '0')), FILTER_VALIDATE_BOOLEAN);
         $dup = $this->existeInscripcionMismaInstMismoAnio($estudianteId, $instId, $anio, (int) $row->id);
         if ($dup && !$force) {
@@ -1275,6 +1311,53 @@ class InfoestudiantesifasController extends Controller
 
         $row->update($payload);
         return response()->json(['data' => $row]);
+    }
+
+    public function bulkUpdateDocente(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'min:1'],
+            'field' => ['required', 'in:planteldocadmins_id,planteldocadmins_idPC,planteldocadmins_idOtros'],
+            'docente_id' => ['required', 'integer', 'min:1'],
+            'instituciones_id' => ['nullable', 'integer'],
+        ]);
+
+        $institucionId = $this->getInstitucionIdFromRequest($request, $user);
+        if ($institucionId <= 0) {
+            return response()->json(['message' => 'instituciones_id es requerido'], 422);
+        }
+
+        $docenteId = (int) $validated['docente_id'];
+        $okDoc = DB::table('planteldocentes')
+            ->where('id', $docenteId)
+            ->where('instituciones_id', $institucionId)
+            ->exists();
+        if (!$okDoc) {
+            return response()->json([
+                'message' => 'Docente no pertenece a la institución.',
+                'docente_id' => $docenteId,
+                'instituciones_id' => $institucionId,
+            ], 422);
+        }
+
+        $field = (string) $validated['field'];
+        $ids = array_values(array_unique(array_map('intval', $validated['ids'] ?? [])));
+
+        $affected = Infoestudiantesifas::query()
+            ->where('instituciones_id', $institucionId)
+            ->whereIn('id', $ids)
+            ->update([$field => $docenteId]);
+
+        return response()->json([
+            'success' => true,
+            'affected' => (int) $affected,
+            'field' => $field,
+            'docente_id' => $docenteId,
+            'instituciones_id' => $institucionId,
+        ]);
     }
     
     public function destroy($id)

@@ -2,14 +2,40 @@
 
 namespace App\Http\Controllers;
 use Illuminate\Support\Facades\DB;
+use App\Models\Usuarioslcchs;
 
 use Illuminate\Http\Request;
 
 class PeticionesPrivadas extends Controller
 {
+    private function getInstitucionIdPrivado(Request $request): int
+    {
+        $user = $request->user();
+
+        $instUser = (int) ($user?->instituciones_id ?? 0);
+        if ($instUser > 0) return $instUser;
+
+        // Super LCCH puede consultar por institución explícita.
+        if ($user instanceof Usuarioslcchs) {
+            $inst = (int) $request->input('institucionId', $request->input('instituciones_id', 0));
+            return $inst;
+        }
+
+        return 0;
+    }
+
     function CargarEstudiantesMateriaPrivado(Request $request) {
-        $materiaId=$request->input('materiaId');
-        $anioId=$request->input('anioId');
+        $materiaId = (int) $request->input('materiaId', 0);
+        $anioId = (int) $request->input('anioId', 0);
+        if ($materiaId <= 0 || $anioId <= 0) {
+            return response()->json(['error' => 'materiaId y anioId son obligatorios'], 422);
+        }
+
+        $institucionId = $this->getInstitucionIdPrivado($request);
+        if ($institucionId <= 0) {
+            return response()->json(['message' => 'instituciones_id es requerido'], 403);
+        }
+
                 $consulta = DB::select("SELECT estudiantesifas.Ap_Paterno,estudiantesifas.Ap_Materno,estudiantesifas.Nombre,infoestudiantesifas.InstrumentoMusical,infoestudiantesifas.InstrumentoMusicalSecundario,
         estudiantesifas.Celular,estudiantesifas.Edad, estudiantesifas.CI, estudiantesifas.Nombre_Padre,estudiantesifas.Nombre_Madre,estudiantesifas.NumCelP,estudiantesifas.NumCelM, estudiantesifas.Sexo,
         infoestudiantesifas.Categoria,infoestudiantesifas.CantidadMateriasAsignadas,infoestudiantesifas.id,
@@ -67,7 +93,9 @@ class PeticionesPrivadas extends Controller
         LEFT JOIN estudiantesifas ON estudiantesifas.id = infoestudiantesifas.estudiantesifas_id
         LEFT JOIN plandeestudios ON plandeestudios.id = materias.plandeestudios_id
                 LEFT JOIN carreras ON carreras.id = plandeestudios.carreras_id
-        WHERE calificaciones.materias_id = $materiaId AND plandeestudios.anio_id = $anioId;");
+    WHERE calificaciones.materias_id = ?
+      AND plandeestudios.anio_id = ?
+      AND carreras.instituciones_id = ?;", [$materiaId, $anioId, $institucionId]);
         return response()->json(['data' => $consulta]);
         
     }
@@ -76,12 +104,16 @@ class PeticionesPrivadas extends Controller
         $anioId   = $request->input('anioId');
         $lvlCurso = $request->input('LvlCurso');
         $paralelo = $request->input('Paralelo');
-        $institucionId = $request->input('institucionId');
+        $institucionId = $this->getInstitucionIdPrivado($request);
 
         if (!$anioId || !$lvlCurso || !$paralelo) {
             return response()->json([
                 'error' => 'anioId, LvlCurso y Paralelo son obligatorios'
             ], 422);
+        }
+
+        if (!$institucionId) {
+            return response()->json(['message' => 'instituciones_id es requerido'], 403);
         }
 
         $consulta = DB::select("SELECT DISTINCT
@@ -198,9 +230,13 @@ class PeticionesPrivadas extends Controller
         $anioId   = $request->input('anioId');
         $lvlCurso = $request->input('LvlCurso');
         $paralelo = $request->input('Paralelo');
-        $institucionId = $request->input('institucionId');
+        $institucionId = $this->getInstitucionIdPrivado($request);
         $modo = $request->input('Modo');
         $materiaId   = $request->input('materiaId');
+
+        if (!$institucionId) {
+            return response()->json(['message' => 'instituciones_id es requerido'], 403);
+        }
         if ($modo=='xMATERIA') {
             
             $consulta = DB::select("SELECT DISTINCT
@@ -213,7 +249,7 @@ class PeticionesPrivadas extends Controller
                 INNER JOIN carreras ON carreras.id = plandeestudios.carreras_id
                 INNER JOIN instituciones ON instituciones.id = carreras.instituciones_id
 
-                WHERE calificaciones.materias_id = $materiaId AND plandeestudios.anio_id = $anioId LIMIT 1;");
+                WHERE calificaciones.materias_id = ? AND plandeestudios.anio_id = ? AND carreras.instituciones_id = ? LIMIT 1;", [$materiaId, $anioId, $institucionId]);
 
             
         }else{

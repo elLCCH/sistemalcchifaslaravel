@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\PersonalAccessToken;
+use Illuminate\Support\Facades\Auth;
 
 class CheckAbilities
 {
@@ -23,6 +24,15 @@ class CheckAbilities
         $cliente = $personalAccessToken->tokenable;
         if (!$cliente) {
             return response()->json(['message' => 'Usuario no encontrado'], 401);
+        }
+
+        // Exponer el tokenable como usuario autenticado para que $request->user() funcione
+        // en controladores que dependen de auth:sanctum, aunque aquí validemos manualmente el token.
+        try {
+            $request->setUserResolver(fn () => $cliente);
+            Auth::setUser($cliente);
+        } catch (\Throwable $e) {
+            // noop
         }
 
         $hasAbility = false;
