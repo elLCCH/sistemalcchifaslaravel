@@ -342,7 +342,7 @@ class AuthController extends Controller
                     $estudiantesifas = $sesion->Tipo;
                     switch ($estudiantesifas) {
                         default:
-                            $tokenResult = $sesion->createPersonalizedToken('ESTUDIANTE', ['NO_TIENE_TIPO'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'estudiantes']);
+                            $tokenResult = $sesion->createPersonalizedToken('ESTUDIANTE', ['ESTUDIANTE'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'estudiantes']);
                             $token = $tokenResult->plainTextToken;
                             break;
                     }

@@ -405,4 +405,288 @@ class EstadisticasAsignacionesController extends Controller
 
         return response()->json(['data' => $q->get()]);
     }
+
+    public function opcionesResolucionNivel(Request $request)
+    {
+        $validated = $request->validate([
+            'anio_id' => ['required', 'integer', 'min:1'],
+            'instituciones_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $user = $request->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
+
+        $anioId = (int) $validated['anio_id'];
+        $institucionId = $isSuperAdmin
+            ? (int) ($validated['instituciones_id'] ?? 0)
+            : (int) ($user->instituciones_id ?? 0);
+
+        if ($isSuperAdmin && $institucionId <= 0) {
+            return response()->json(['message' => 'instituciones_id es requerido para superadmin'], 422);
+        }
+
+        $rows = DB::table('plandeestudios as p')
+            ->join('carreras as ca', 'p.carreras_id', '=', 'ca.id')
+            ->where('p.anio_id', $anioId)
+            ->when($institucionId > 0, function ($q) use ($institucionId) {
+                $q->where('ca.instituciones_id', $institucionId);
+            })
+            ->selectRaw("TRIM(COALESCE(ca.Resolucion, 'SIN RESOLUCION')) as Resolucion")
+            ->selectRaw("TRIM(COALESCE(ca.Nivel, 'SIN NIVEL')) as Nivel")
+            ->groupBy([
+                DB::raw("TRIM(COALESCE(ca.Resolucion, 'SIN RESOLUCION'))"),
+                DB::raw("TRIM(COALESCE(ca.Nivel, 'SIN NIVEL'))"),
+            ])
+            ->orderBy('Nivel')
+            ->orderBy('Resolucion')
+            ->get();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    private function basePorEstudianteConFlags(int $anioId, int $institucionId, string $resolucion)
+    {
+        $edadExpr = "COALESCE(e.Edad, CASE WHEN e.FechaNac IS NULL OR e.FechaNac='' THEN NULL ELSE TIMESTAMPDIFF(YEAR, e.FechaNac, CURDATE()) END)";
+
+        // Un registro por estudiante (infoestudiantesifas), con flags por ModoMateria dentro del filtro.
+        return DB::table('calificaciones as c')
+            ->join('materias as m', 'c.materias_id', '=', 'm.id')
+            ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+            ->join('carreras as ca', 'p.carreras_id', '=', 'ca.id')
+            ->join('infoestudiantesifas as ie', 'ie.id', '=', 'c.infoestudiantesifas_id')
+            ->join('estudiantesifas as e', 'ie.estudiantesifas_id', '=', 'e.id')
+            ->where('p.anio_id', $anioId)
+            ->whereRaw("TRIM(COALESCE(ca.Resolucion, '')) = ?", [$resolucion])
+            ->when($institucionId > 0, function ($q) use ($institucionId) {
+                $q->where('ca.instituciones_id', $institucionId)
+                  ->where('ie.instituciones_id', $institucionId);
+            })
+            ->selectRaw('ie.id as InfoId')
+            ->selectRaw("TRIM(COALESCE(e.Ap_Paterno, '')) as Ap_Paterno")
+            ->selectRaw("TRIM(COALESCE(e.Ap_Materno, '')) as Ap_Materno")
+            ->selectRaw("TRIM(COALESCE(e.Nombre, '')) as Nombre")
+            ->selectRaw("TRIM(COALESCE(e.CI, '')) as CI")
+            ->selectRaw("MAX({$edadExpr}) as Edad")
+            ->selectRaw("MAX(TRIM(COALESCE(e.Sexo, ''))) as Sexo")
+            ->selectRaw("MAX(TRIM(COALESCE(p.LvlCurso, ''))) as Curso")
+            ->selectRaw("MAX(TRIM(COALESCE(m.Paralelo, ''))) as Paralelo")
+            ->selectRaw("MAX(TRIM(COALESCE(m.Turno, ''))) as Turno")
+            ->selectRaw("MAX(TRIM(COALESCE(ie.InstrumentoMusical, ''))) as InstrumentoMusical")
+            ->selectRaw("MAX(TRIM(COALESCE(ie.InstrumentoMusicalSecundario, ''))) as InstrumentoMusicalSecundario")
+            ->selectRaw('ie.planteldocadmins_id as planteldocadmins_id')
+            ->selectRaw('ie.planteldocadmins_idPC as planteldocadmins_idPC')
+            ->selectRaw('ie.planteldocadmins_idOtros as planteldocadmins_idOtros')
+            ->selectRaw("MAX(CASE WHEN p.ModoMateria = 'MODO INSTRUMENTOS DE ESPECIALIDAD' THEN 1 ELSE 0 END) as TieneModoEspecialidad")
+            ->selectRaw("MAX(CASE WHEN p.ModoMateria IN ('MODO PRÁCTICA DE CONJUNTOS', 'MODO PRACTICA DE CONJUNTOS') THEN 1 ELSE 0 END) as TieneModoPracticaConjuntos")
+            ->selectRaw("MAX(CASE WHEN p.ModoMateria = 'MODO INSTRUMENTO COMPLEMENTARIO' THEN 1 ELSE 0 END) as TieneModoInstrumentoComplementario")
+            ->groupBy([
+                'ie.id',
+                'e.Ap_Paterno',
+                'e.Ap_Materno',
+                'e.Nombre',
+                'e.CI',
+                'ie.planteldocadmins_id',
+                'ie.planteldocadmins_idPC',
+                'ie.planteldocadmins_idOtros',
+            ]);
+    }
+
+    public function docentesAsignados(Request $request)
+    {
+        $validated = $request->validate([
+            'anio_id' => ['required', 'integer', 'min:1'],
+            'instituciones_id' => ['nullable', 'integer', 'min:1'],
+            'resolucion' => ['required', 'string'],
+        ]);
+
+        $user = $request->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
+
+        $anioId = (int) $validated['anio_id'];
+        $institucionId = $isSuperAdmin
+            ? (int) ($validated['instituciones_id'] ?? 0)
+            : (int) ($user->instituciones_id ?? 0);
+
+        if ($isSuperAdmin && $institucionId <= 0) {
+            return response()->json(['message' => 'instituciones_id es requerido para superadmin'], 422);
+        }
+
+        $resolucion = trim((string) $validated['resolucion']);
+        if ($resolucion === '') {
+            return response()->json(['message' => 'resolucion es requerida'], 422);
+        }
+
+        $perStudent = $this->basePorEstudianteConFlags($anioId, $institucionId, $resolucion);
+
+        $mapEspecialidad = DB::query()
+            ->fromSub($perStudent, 's')
+            ->whereNotNull('s.planteldocadmins_id')
+            ->where('s.planteldocadmins_id', '<>', 0)
+            ->selectRaw('s.planteldocadmins_id as docente_id')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN s.TieneModoEspecialidad=1 THEN 1 ELSE 0 END) as ok")
+            ->selectRaw("SUM(CASE WHEN s.TieneModoEspecialidad=0 THEN 1 ELSE 0 END) as sin_modo")
+            ->groupBy('s.planteldocadmins_id')
+            ->get()
+            ->keyBy('docente_id');
+
+        $mapPractica = DB::query()
+            ->fromSub($perStudent, 's')
+            ->whereNotNull('s.planteldocadmins_idPC')
+            ->where('s.planteldocadmins_idPC', '<>', 0)
+            ->selectRaw('s.planteldocadmins_idPC as docente_id')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN s.TieneModoPracticaConjuntos=1 THEN 1 ELSE 0 END) as ok")
+            ->selectRaw("SUM(CASE WHEN s.TieneModoPracticaConjuntos=0 THEN 1 ELSE 0 END) as sin_modo")
+            ->groupBy('s.planteldocadmins_idPC')
+            ->get()
+            ->keyBy('docente_id');
+
+        $mapComplementario = DB::query()
+            ->fromSub($perStudent, 's')
+            ->whereNotNull('s.planteldocadmins_idOtros')
+            ->where('s.planteldocadmins_idOtros', '<>', 0)
+            ->selectRaw('s.planteldocadmins_idOtros as docente_id')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN s.TieneModoInstrumentoComplementario=1 THEN 1 ELSE 0 END) as ok")
+            ->selectRaw("SUM(CASE WHEN s.TieneModoInstrumentoComplementario=0 THEN 1 ELSE 0 END) as sin_modo")
+            ->groupBy('s.planteldocadmins_idOtros')
+            ->get()
+            ->keyBy('docente_id');
+
+        $docentes = DB::table('planteldocentes as d')
+            ->when($institucionId > 0, function ($q) use ($institucionId) {
+                $q->where('d.instituciones_id', $institucionId);
+            })
+            ->whereRaw("UPPER(TRIM(COALESCE(d.Visibilidad, ''))) <> 'OCULTO'")
+            ->select([
+                'd.id',
+                'd.Nombres',
+                'd.Apellidos',
+                'd.CelularTrabajo',
+                'd.Estado',
+            ])
+            ->orderBy('d.Apellidos')
+            ->orderBy('d.Nombres')
+            ->get();
+
+        $out = [];
+        foreach ($docentes as $d) {
+            $id = (int) $d->id;
+            $esp = $mapEspecialidad->get($id);
+            $pc = $mapPractica->get($id);
+            $comp = $mapComplementario->get($id);
+
+            $out[] = [
+                'id' => $id,
+                'Nombres' => $d->Nombres,
+                'Apellidos' => $d->Apellidos,
+                'CelularTrabajo' => $d->CelularTrabajo,
+                'Estado' => $d->Estado,
+
+                'Especialidad_OK' => (int) ($esp?->ok ?? 0),
+                'Especialidad_SinModo' => (int) ($esp?->sin_modo ?? 0),
+
+                'PracticaConjuntos_OK' => (int) ($pc?->ok ?? 0),
+                'PracticaConjuntos_SinModo' => (int) ($pc?->sin_modo ?? 0),
+
+                'InstrumentoComplementario_OK' => (int) ($comp?->ok ?? 0),
+                'InstrumentoComplementario_SinModo' => (int) ($comp?->sin_modo ?? 0),
+            ];
+        }
+
+        return response()->json(['data' => $out]);
+    }
+
+    public function docentesAsignadosEstudiantes(Request $request)
+    {
+        $validated = $request->validate([
+            'anio_id' => ['required', 'integer', 'min:1'],
+            'instituciones_id' => ['nullable', 'integer', 'min:1'],
+            'resolucion' => ['required', 'string'],
+            'docente_id' => ['required', 'integer', 'min:1'],
+            'campo' => ['required', 'string'],
+            'tipo' => ['required', 'string'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:5000'],
+        ]);
+
+        $user = $request->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
+
+        $anioId = (int) $validated['anio_id'];
+        $institucionId = $isSuperAdmin
+            ? (int) ($validated['instituciones_id'] ?? 0)
+            : (int) ($user->instituciones_id ?? 0);
+
+        if ($isSuperAdmin && $institucionId <= 0) {
+            return response()->json(['message' => 'instituciones_id es requerido para superadmin'], 422);
+        }
+
+        $resolucion = trim((string) $validated['resolucion']);
+        $docenteId = (int) $validated['docente_id'];
+        $campo = trim((string) $validated['campo']);
+        $tipo = strtoupper(trim((string) $validated['tipo']));
+        $limit = (int) ($validated['limit'] ?? 2000);
+
+        $allowedCampos = ['planteldocadmins_id', 'planteldocadmins_idPC', 'planteldocadmins_idOtros'];
+        if (!in_array($campo, $allowedCampos, true)) {
+            return response()->json(['message' => 'campo inválido'], 422);
+        }
+        if (!in_array($tipo, ['OK', 'SIN_MODO'], true)) {
+            return response()->json(['message' => 'tipo inválido'], 422);
+        }
+
+        $perStudent = $this->basePorEstudianteConFlags($anioId, $institucionId, $resolucion);
+        $q = DB::query()->fromSub($perStudent, 's')
+            ->where($campo, $docenteId);
+
+        if ($campo === 'planteldocadmins_id') {
+            $q->whereRaw($tipo === 'OK' ? 's.TieneModoEspecialidad=1' : 's.TieneModoEspecialidad=0');
+        } elseif ($campo === 'planteldocadmins_idPC') {
+            $q->whereRaw($tipo === 'OK' ? 's.TieneModoPracticaConjuntos=1' : 's.TieneModoPracticaConjuntos=0');
+        } else {
+            $q->whereRaw($tipo === 'OK' ? 's.TieneModoInstrumentoComplementario=1' : 's.TieneModoInstrumentoComplementario=0');
+        }
+
+        $rows = $q
+            ->select([
+                's.InfoId as InfoId',
+                's.Ap_Paterno as Ap_Paterno',
+                's.Ap_Materno as Ap_Materno',
+                's.Nombre as Nombre',
+                's.CI as CI',
+                's.Edad as Edad',
+                's.Sexo as Sexo',
+                's.Curso as Curso',
+                's.Paralelo as Paralelo',
+                's.Turno as Turno',
+                's.InstrumentoMusical as InstrumentoMusical',
+                's.InstrumentoMusicalSecundario as InstrumentoMusicalSecundario',
+            ])
+            ->orderBy('s.Ap_Paterno')
+            ->orderBy('s.Ap_Materno')
+            ->orderBy('s.Nombre')
+            ->limit($limit)
+            ->get()
+            ->map(function ($r) {
+                $nombreCompleto = trim(trim((string) ($r->Ap_Paterno ?? '')) . ' ' . trim((string) ($r->Ap_Materno ?? '')) . ' ' . trim((string) ($r->Nombre ?? '')));
+                $edadRaw = $r->Edad ?? null;
+                $edad = ($edadRaw === null || $edadRaw === '') ? null : (int) $edadRaw;
+
+                return [
+                    'InfoId' => (int) ($r->InfoId ?? 0),
+                    'Nombre' => $nombreCompleto,
+                    'CI' => (string) ($r->CI ?? ''),
+                    'Edad' => $edad,
+                    'Sexo' => (string) ($r->Sexo ?? ''),
+                    'Curso' => (string) ($r->Curso ?? ''),
+                    'Paralelo' => (string) ($r->Paralelo ?? ''),
+                    'Turno' => (string) ($r->Turno ?? ''),
+                    'InstrumentoMusical' => (string) ($r->InstrumentoMusical ?? ''),
+                    'InstrumentoMusicalSecundario' => (string) ($r->InstrumentoMusicalSecundario ?? ''),
+                ];
+            });
+
+        return response()->json(['data' => $rows]);
+    }
 }

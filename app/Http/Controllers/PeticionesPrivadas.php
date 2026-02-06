@@ -10,9 +10,50 @@ class PeticionesPrivadas extends Controller
     function CargarEstudiantesMateriaPrivado(Request $request) {
         $materiaId=$request->input('materiaId');
         $anioId=$request->input('anioId');
-        $consulta = DB::select("SELECT estudiantesifas.Ap_Paterno,estudiantesifas.Ap_Materno,estudiantesifas.Nombre,infoestudiantesifas.InstrumentoMusical,infoestudiantesifas.InstrumentoMusicalSecundario,
+                $consulta = DB::select("SELECT estudiantesifas.Ap_Paterno,estudiantesifas.Ap_Materno,estudiantesifas.Nombre,infoestudiantesifas.InstrumentoMusical,infoestudiantesifas.InstrumentoMusicalSecundario,
         estudiantesifas.Celular,estudiantesifas.Edad, estudiantesifas.CI, estudiantesifas.Nombre_Padre,estudiantesifas.Nombre_Madre,estudiantesifas.NumCelP,estudiantesifas.NumCelM, estudiantesifas.Sexo,
         infoestudiantesifas.Categoria,infoestudiantesifas.CantidadMateriasAsignadas,infoestudiantesifas.id,
+
+                EXISTS(
+                        SELECT 1
+                        FROM calificaciones c2
+                        INNER JOIN materias m2 ON m2.id = c2.materias_id
+                        INNER JOIN plandeestudios p2 ON p2.id = m2.plandeestudios_id
+                        INNER JOIN carreras ca2 ON ca2.id = p2.carreras_id
+                        WHERE c2.infoestudiantesifas_id = infoestudiantesifas.id
+                            AND p2.anio_id = plandeestudios.anio_id
+                            AND p2.LvlCurso = plandeestudios.LvlCurso
+                            AND m2.Paralelo = materias.Paralelo
+                            AND ca2.instituciones_id = carreras.instituciones_id
+                            AND p2.ModoMateria = 'MODO INSTRUMENTOS DE ESPECIALIDAD'
+                ) AS TieneModoEspecialidad,
+                EXISTS(
+                        SELECT 1
+                        FROM calificaciones c2
+                        INNER JOIN materias m2 ON m2.id = c2.materias_id
+                        INNER JOIN plandeestudios p2 ON p2.id = m2.plandeestudios_id
+                        INNER JOIN carreras ca2 ON ca2.id = p2.carreras_id
+                        WHERE c2.infoestudiantesifas_id = infoestudiantesifas.id
+                            AND p2.anio_id = plandeestudios.anio_id
+                            AND p2.LvlCurso = plandeestudios.LvlCurso
+                            AND m2.Paralelo = materias.Paralelo
+                            AND ca2.instituciones_id = carreras.instituciones_id
+                            AND p2.ModoMateria = 'MODO PRÁCTICA DE CONJUNTOS'
+                ) AS TieneModoPracticaConjuntos,
+                EXISTS(
+                        SELECT 1
+                        FROM calificaciones c2
+                        INNER JOIN materias m2 ON m2.id = c2.materias_id
+                        INNER JOIN plandeestudios p2 ON p2.id = m2.plandeestudios_id
+                        INNER JOIN carreras ca2 ON ca2.id = p2.carreras_id
+                        WHERE c2.infoestudiantesifas_id = infoestudiantesifas.id
+                            AND p2.anio_id = plandeestudios.anio_id
+                            AND p2.LvlCurso = plandeestudios.LvlCurso
+                            AND m2.Paralelo = materias.Paralelo
+                            AND ca2.instituciones_id = carreras.instituciones_id
+                            AND p2.ModoMateria = 'MODO INSTRUMENTO COMPLEMENTARIO'
+                ) AS TieneModoInstrumentoComplementario,
+
         infoestudiantesifas.planteldocadmins_id,infoestudiantesifas.planteldocadmins_idPC,infoestudiantesifas.planteldocadmins_idOtros,
         Docente_Especialidad.Apellidos AS Docente_Especialidad_Apellidos,Docente_Especialidad.Nombres AS Docente_Especialidad_Nombres,Docente_Especialidad.CelularTrabajo AS Docente_Especialidad_CelularTrabajo,Docente_Especialidad.Foto AS Docente_Especialidad_Foto,
         Docente_Practica_Conjuntos.Apellidos AS Docente_Practica_Conjuntos_Apellidos,Docente_Practica_Conjuntos.Nombres AS Docente_Practica_Conjuntos_Nombres,Docente_Practica_Conjuntos.CelularTrabajo AS Docente_Practica_Conjuntos_CelularTrabajo,Docente_Practica_Conjuntos.Foto AS Docente_Practica_Conjuntos_Foto,
@@ -25,6 +66,7 @@ class PeticionesPrivadas extends Controller
         LEFT JOIN planteldocentes AS Docente_Instrumento_Complementario ON Docente_Instrumento_Complementario.id = infoestudiantesifas.planteldocadmins_idOtros
         LEFT JOIN estudiantesifas ON estudiantesifas.id = infoestudiantesifas.estudiantesifas_id
         LEFT JOIN plandeestudios ON plandeestudios.id = materias.plandeestudios_id
+                LEFT JOIN carreras ON carreras.id = plandeestudios.carreras_id
         WHERE calificaciones.materias_id = $materiaId AND plandeestudios.anio_id = $anioId;");
         return response()->json(['data' => $consulta]);
         
@@ -56,6 +98,46 @@ class PeticionesPrivadas extends Controller
 
                 infoestudiantesifas.InstrumentoMusical,
                 infoestudiantesifas.InstrumentoMusicalSecundario,
+
+                                EXISTS(
+                                        SELECT 1
+                                        FROM calificaciones c2
+                                        INNER JOIN materias m2 ON m2.id = c2.materias_id
+                                        INNER JOIN plandeestudios p2 ON p2.id = m2.plandeestudios_id
+                                        INNER JOIN carreras ca2 ON ca2.id = p2.carreras_id
+                                        WHERE c2.infoestudiantesifas_id = infoestudiantesifas.id
+                                            AND p2.anio_id = plandeestudios.anio_id
+                                            AND p2.LvlCurso = plandeestudios.LvlCurso
+                                            AND m2.Paralelo = materias.Paralelo
+                                            AND ca2.instituciones_id = carreras.instituciones_id
+                                            AND p2.ModoMateria = 'MODO INSTRUMENTOS DE ESPECIALIDAD'
+                                ) AS TieneModoEspecialidad,
+                                EXISTS(
+                                        SELECT 1
+                                        FROM calificaciones c2
+                                        INNER JOIN materias m2 ON m2.id = c2.materias_id
+                                        INNER JOIN plandeestudios p2 ON p2.id = m2.plandeestudios_id
+                                        INNER JOIN carreras ca2 ON ca2.id = p2.carreras_id
+                                        WHERE c2.infoestudiantesifas_id = infoestudiantesifas.id
+                                            AND p2.anio_id = plandeestudios.anio_id
+                                            AND p2.LvlCurso = plandeestudios.LvlCurso
+                                            AND m2.Paralelo = materias.Paralelo
+                                            AND ca2.instituciones_id = carreras.instituciones_id
+                                            AND p2.ModoMateria = 'MODO PRÁCTICA DE CONJUNTOS'
+                                ) AS TieneModoPracticaConjuntos,
+                                EXISTS(
+                                        SELECT 1
+                                        FROM calificaciones c2
+                                        INNER JOIN materias m2 ON m2.id = c2.materias_id
+                                        INNER JOIN plandeestudios p2 ON p2.id = m2.plandeestudios_id
+                                        INNER JOIN carreras ca2 ON ca2.id = p2.carreras_id
+                                        WHERE c2.infoestudiantesifas_id = infoestudiantesifas.id
+                                            AND p2.anio_id = plandeestudios.anio_id
+                                            AND p2.LvlCurso = plandeestudios.LvlCurso
+                                            AND m2.Paralelo = materias.Paralelo
+                                            AND ca2.instituciones_id = carreras.instituciones_id
+                                            AND p2.ModoMateria = 'MODO INSTRUMENTO COMPLEMENTARIO'
+                                ) AS TieneModoInstrumentoComplementario,
                 
                 estudiantesifas.Celular,estudiantesifas.Edad, estudiantesifas.CI, estudiantesifas.Nombre_Padre,estudiantesifas.Nombre_Madre,estudiantesifas.NumCelP,estudiantesifas.NumCelM, estudiantesifas.Sexo,
                 infoestudiantesifas.Categoria,infoestudiantesifas.CantidadMateriasAsignadas,infoestudiantesifas.id,
