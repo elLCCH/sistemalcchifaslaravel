@@ -183,3 +183,97 @@ CREATE TABLE IF NOT EXISTS asistencias_auditoria (
   INDEX idx_asist_aud_actor (actor_tipo, actor_id),
   INDEX idx_asist_aud_fecha (fecha)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================
+-- ACTUALIZACIONES (sin migraciones)
+-- Nota: estas sentencias se ejecutan manualmente si ya existe la tabla.
+-- ============================================================
+
+-- A) Control docente de inicio/detención del QR (1 sola vez)
+-- Si tu MySQL no soporta IF NOT EXISTS en ADD COLUMN, ejecuta a mano los ADD COLUMN.
+ALTER TABLE asistencias_sesiones
+  ADD COLUMN qr_iniciado_at DATETIME NULL AFTER hora_ingreso,
+  ADD COLUMN qr_detenido_at DATETIME NULL AFTER qr_iniciado_at;
+
+
+-- B) Nueva tabla de licencias (reemplaza/normaliza permisos de asistencia)
+CREATE TABLE IF NOT EXISTS licenciasestudiantesifas (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+
+  instituciones_id INT NOT NULL COMMENT 'Institución',
+  anios_id INT NOT NULL COMMENT 'Gestión/Año',
+  infoestudiantesifas_id INT NOT NULL COMMENT 'Estudiante inscrito',
+
+  fecha_inicio DATE NOT NULL COMMENT 'Inicio de la licencia',
+  fecha_fin DATE NOT NULL COMMENT 'Fin de la licencia (inclusive)',
+
+  motivo VARCHAR(255) NULL COMMENT 'Motivo',
+  registrado_por VARCHAR(80) NULL COMMENT 'Secretaría/administrativo',
+
+  estado VARCHAR(15) NULL COMMENT 'ACTIVO/INACTIVO',
+  visibilidad VARCHAR(15) NULL COMMENT 'VISIBLE/OCULTO',
+
+  created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  CONSTRAINT fk_lic_est_inst
+    FOREIGN KEY (instituciones_id) REFERENCES instituciones(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  CONSTRAINT fk_lic_est_anio
+    FOREIGN KEY (anios_id) REFERENCES anios(id)
+    ON UPDATE CASCADE ON DELETE RESTRICT,
+
+  CONSTRAINT fk_lic_est_est
+    FOREIGN KEY (infoestudiantesifas_id) REFERENCES infoestudiantesifas(id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+
+  INDEX idx_lic_inst_anio_est (instituciones_id, anios_id, infoestudiantesifas_id),
+  INDEX idx_lic_rango (fecha_inicio, fecha_fin),
+  INDEX idx_lic_anio (anios_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- C) Ajuste de licencias (si la tabla ya existe): agregar anios_id y quitar aula
+-- Nota: MySQL no soporta IF NOT EXISTS en ADD COLUMN en todas las versiones.
+-- Este bloque es idempotente (no falla si ya existe la columna).
+SET @__col_anios := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'licenciasestudiantesifas'
+    AND COLUMN_NAME = 'anios_id'
+);
+
+SET @__sql_add_anios := IF(
+  @__col_anios = 0,
+  'ALTER TABLE licenciasestudiantesifas ADD COLUMN anios_id INT NULL AFTER instituciones_id',
+  'SELECT \'SKIP: anios_id ya existe\''
+);
+PREPARE stmt FROM @__sql_add_anios;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Si existía el campo por aula, ya no se usa.
+SET @__col_aula := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'licenciasestudiantesifas'
+    AND COLUMN_NAME = 'aulas_virtuales_id'
+);
+
+SET @__sql_drop_aula := IF(
+  @__col_aula = 1,
+  'ALTER TABLE licenciasestudiantesifas DROP COLUMN aulas_virtuales_id',
+  'SELECT \'SKIP: aulas_virtuales_id no existe\''
+);
+PREPARE stmt2 FROM @__sql_drop_aula;
+EXECUTE stmt2;
+DEALLOCATE PREPARE stmt2;
+
+-- Índices sugeridos
+-- (si ya existen, MySQL dará error; ejecutar manualmente según corresponda)
+-- CREATE INDEX idx_lic_anio ON licenciasestudiantesifas(anios_id);
+-- CREATE INDEX idx_lic_inst_anio_est ON licenciasestudiantesifas(instituciones_id, anios_id, infoestudiantesifas_id);

@@ -14,6 +14,8 @@ class AsistenciaSesion extends Model
         'planteldocentes_id',
         'fecha',
         'hora_ingreso',
+        'qr_iniciado_at',
+        'qr_detenido_at',
         'tiempo_espera_minutos',
         'minutos_falta',
         'gps_requerido',
@@ -25,6 +27,8 @@ class AsistenciaSesion extends Model
     protected $casts = [
         'gps_requerido' => 'boolean',
         'hora_ingreso' => 'datetime',
+        'qr_iniciado_at' => 'datetime',
+        'qr_detenido_at' => 'datetime',
         'fecha' => 'date',
     ];
 }

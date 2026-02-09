@@ -7,5 +7,5 @@ use Illuminate\Support\Facades\Route;
 //     return view('welcome');
 // });
 
-Route::any('/{any}', [AngularController::class, 'index'])->where('any', '^(?!api|assets|build|archivos|attachments|favicon\.ico|robots\.txt).*$');
+Route::any('/{any}', [AngularController::class, 'index'])->where('any', '^(?!\/?(api|assets|build|archivos|attachments|favicon\.ico|robots\.txt)).*$');
 
