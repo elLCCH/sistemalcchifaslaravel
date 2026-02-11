@@ -334,10 +334,19 @@ class AsignarMateriasPorHistorialService
                     // Aprobados por sigla (Promedio o Recuperación >= 61)
                     $aprobadas = [];
                     $reproboAlgoPlan = false;
+                    $encontroAlgunaSiglaDelPlanEnHistorial = false;
                     // (1) Sistema anterior: califhistorias
                     foreach ($histRows as $r) {
                         $sig = $this->normUpper($r->Sigla ?? '');
                         if ($sig === '') continue;
+
+                        // En el sistema anterior pueden venir siglas de otros planes (p.ej. capacitación).
+                        // Solo nos interesa lo que pertenece al plan seleccionado.
+                        if (!isset($planSiglasAll[$sig])) {
+                            continue;
+                        }
+
+                        $encontroAlgunaSiglaDelPlanEnHistorial = true;
 
                         $prom = $this->intOrNull($r->Promedio);
                         $rec = $this->intOrNull($r->PruebaRecuperacion);
@@ -347,7 +356,7 @@ class AsignarMateriasPorHistorialService
                             $aprobadas[$sig] = true;
                         } else {
                             // En modo capacitación: si reprueba una materia del plan, repite TODO.
-                            if ($modo === 'capacitacion' && isset($planSiglasAll[$sig])) {
+                            if ($modo === 'capacitacion') {
                                 $reproboAlgoPlan = true;
                             }
                         }
@@ -364,6 +373,8 @@ class AsignarMateriasPorHistorialService
                             continue;
                         }
 
+                        $encontroAlgunaSiglaDelPlanEnHistorial = true;
+
                         $prom = $this->intOrNull($r->Promedio);
                         $rec = $this->intOrNull($r->PruebaRecuperacion);
 
@@ -377,19 +388,46 @@ class AsignarMateriasPorHistorialService
                         }
                     }
 
-                    // Si hay materias aprobadas en el historial que NO existen en el plan seleccionado,
-                    // entonces no se asigna nada y se deja anotado el detalle.
-                    $siglasNoCoinciden = [];
-                    foreach ($aprobadas as $sig => $_) {
-                        if (!isset($planSiglasAll[$sig])) {
-                            $siglasNoCoinciden[] = $sig;
+                    // Si NO aparece ninguna sigla del plan en el historial (viejo o nuevo), entonces el historial no sirve
+                    // para decidir el curso. En 1er nivel se puede tratar como nuevo; en niveles superiores se falla.
+                    if (!$encontroAlgunaSiglaDelPlanEnHistorial) {
+                        $siglasPlan = array_keys($planSiglasAll);
+                        sort($siglasPlan);
+                        if (count($siglasPlan) > 25) {
+                            $siglasPlan = array_slice($siglasPlan, 0, 25);
+                            $siglasPlan[] = '...';
                         }
-                    }
-                    if (count($siglasNoCoinciden) > 0) {
-                        sort($siglasNoCoinciden);
-                        $newNotas = 'MATERIAS DEL HISTORIAL NO COINCIDEN CON EL PLAN SELECCIONADO: ' . implode(', ', $siglasNoCoinciden);
-                        $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, $newNotas, self::VERIF_FAIL);
-                        $stats['total_anotados']++;
+
+                        if ($requestedRank > 1) {
+                            $newNotas = 'NO SE ENCONTRÓ HISTORIAL CON SIGLAS DEL PLAN SELECCIONADO. SIGLAS DEL PLAN (MUESTRA): ' . implode(', ', $siglasPlan);
+                            $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, $newNotas, self::VERIF_FAIL);
+                            $stats['total_anotados']++;
+                            continue;
+                        }
+
+                        // Primer nivel: tratar como nuevo, pero dejando constancia de que sí había historial no relacionado.
+                        $result = $this->asignarCursoDesdePlan(
+                            $uuid,
+                            $infoId,
+                            $cursoSolicitado,
+                            $parSolicitado,
+                            $anioId,
+                            $carrerasIds->all(),
+                            [],
+                            true,
+                            $modo,
+                            false,
+                            'HISTORIAL SIN COINCIDENCIAS CON EL PLAN, SE TRATA COMO NUEVO'
+                        );
+
+                        if (($result['created'] ?? 0) <= 0) {
+                            $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, 'HISTORIAL SIN COINCIDENCIAS CON EL PLAN, PERO NO SE CREÓ NINGUNA ASIGNACIÓN', self::VERIF_FAIL);
+                            $stats['total_anotados']++;
+                        }
+
+                        $stats['total_creadas'] += $result['created'];
+                        if ($result['created'] > 0) $stats['total_estudiantes_con_asignacion']++;
+                        if ($result['note_written']) $stats['total_anotados']++;
                         continue;
                     }
 
@@ -526,7 +564,8 @@ class AsignarMateriasPorHistorialService
         array $siglasAprobadas,
         bool $sinHistorial,
         string $modo,
-        bool $reproboAlgoPlan
+        bool $reproboAlgoPlan,
+        ?string $sinHistorialMensaje = null
     ): array {
         $noteWritten = false;
         $siglasCreadas = [];
@@ -647,7 +686,9 @@ class AsignarMateriasPorHistorialService
             }
 
             $extra = $sinHistorial
-                ? 'ESTUDIANTE SIN HISTORIAL, POR LO TANTO NUEVO'
+                ? (trim((string) ($sinHistorialMensaje ?? '')) !== ''
+                    ? trim((string) $sinHistorialMensaje)
+                    : 'ESTUDIANTE SIN HISTORIAL, POR LO TANTO NUEVO')
                 : 'AUTOASIGNADO SIN NOVEDAD';
 
             $newNotas = $baseHtml
