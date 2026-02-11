@@ -10,6 +10,9 @@ use Carbon\Carbon;
 
 use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
+use App\Models\Planteladministrativos;
+use App\Services\AccionesGrupales\AsignarMateriasPorHistorialService;
+use App\Services\AccionesGrupales\RollbackAsignacionesLoteService;
 class InfoestudiantesifasController extends Controller
 {
     public function __construct()
@@ -416,6 +419,58 @@ class InfoestudiantesifasController extends Controller
         ]);
     }
 
+    // =============================
+    // Acciones grupales: asignación automática por historial
+    // =============================
+    public function accionesGrupalesAsignarMaterias(Request $request, AsignarMateriasPorHistorialService $svc)
+    {
+        $validated = $request->validate([
+            'anio_id' => ['required', 'integer'],
+            'instituciones_id' => ['nullable', 'integer'],
+            'resolucion' => ['required', 'string', 'max:100'],
+            'nivel' => ['required', 'string', 'max:100'],
+            'modo' => ['nullable', 'string', 'max:20'],
+            'cursos' => ['required', 'array', 'min:1', 'max:200'],
+            'cursos.*.curso' => ['required', 'string', 'max:60'],
+            'cursos.*.paralelo' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $user = $request->user();
+
+        if (!($user instanceof Planteladministrativos)) {
+            return response()->json(['message' => 'Solo planteladministrativos pueden ejecutar acciones grupales.'], 403);
+        }
+
+        $res = $svc->ejecutar($validated, $user);
+
+        if (!($res['ok'] ?? false)) {
+            return response()->json(['message' => $res['message'] ?? 'No se pudo ejecutar la acción'], 422);
+        }
+
+        return response()->json($res);
+    }
+
+    public function accionesGrupalesRollbackAsignacion(Request $request, RollbackAsignacionesLoteService $svc)
+    {
+        $validated = $request->validate([
+            'uuid' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        $user = $request->user();
+
+        if (!($user instanceof Planteladministrativos)) {
+            return response()->json(['message' => 'Solo planteladministrativos pueden ejecutar acciones grupales.'], 403);
+        }
+
+        $res = $svc->ejecutar($validated, $user);
+
+        if (!($res['ok'] ?? false)) {
+            return response()->json(['message' => $res['message'] ?? 'No se pudo revertir la acción'], 422);
+        }
+
+        return response()->json($res);
+    }
+
     public function estadisticasDetalle(Request $request)
     {
         $anioId = (int) $request->query('anio_id', 0);
@@ -717,13 +772,23 @@ class InfoestudiantesifasController extends Controller
                 });
             })
             ->when($search !== '', function ($q) use ($search, $searchMode) {
-                $tokens = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                // Soporte de frases exactas entre comillas: "NO SE PUDO AUTOASIGNAR"
+                $phrases = [];
+                if (preg_match_all('/"([^"]+)"/', $search, $mm)) {
+                    foreach (($mm[1] ?? []) as $ph) {
+                        $ph = trim((string) $ph);
+                        if ($ph !== '') $phrases[] = $ph;
+                    }
+                }
+                $searchWithoutPhrases = trim((string) preg_replace('/"[^"]+"/', ' ', $search));
+
+                $tokens = preg_split('/\s+/', $searchWithoutPhrases, -1, PREG_SPLIT_NO_EMPTY) ?: [];
                 // Ojo: array_filter() sin callback elimina valores "falsy" como "0".
                 // Necesitamos conservar "0" para búsquedas por cantidad de asignaciones.
                 $tokens = array_values(array_filter(array_unique(array_map('trim', $tokens)), function ($t) {
                     return (string) $t !== '';
                 }));
-                if (count($tokens) === 0) return;
+                if (count($tokens) === 0 && count($phrases) === 0) return;
 
                 // Caso especial: si el usuario busca un número corto (1-2 dígitos),
                 // se asume que quiere filtrar por CantidadMateriasAsignadas exacta.
@@ -766,6 +831,17 @@ class InfoestudiantesifasController extends Controller
                         ->orWhereRaw('CAST(infoestudiantesifas.CantidadMateriasAsignadas AS CHAR) LIKE ?', [$like]);
                 };
 
+                // Primero aplicar frases exactas como AND obligatorias.
+                foreach ($phrases as $ph) {
+                    $likePhrase = '%' . $ph . '%';
+                    $q->where(function ($qq) use ($likePhrase, $applyToken) {
+                        $applyToken($qq, $likePhrase, true);
+                    });
+                }
+
+                // Si no quedan tokens, ya quedó filtrado por frases.
+                if (count($tokens) === 0) return;
+
                 if ($searchMode === 'any') {
                     // OR por tokens: cualquier token puede aparecer en cualquiera de los campos.
                     $q->where(function ($outer) use ($tokens, $applyToken) {
@@ -792,8 +868,18 @@ class InfoestudiantesifasController extends Controller
         // Orden por relevancia (mejores coincidencias arriba) cuando se busca.
         // Se activa explícitamente con ?relevance=1 para no interferir con ordenamientos manuales.
         if ($relevance && $search !== '') {
-            $searchNorm = strtoupper($search);
-            $tokensScore = preg_split('/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $searchNorm = strtoupper(trim(str_replace('"', '', $search)));
+            // tokens para score: frases entre comillas + tokens sueltos
+            $tokensScore = [];
+            if (preg_match_all('/"([^"]+)"/', $search, $mm2)) {
+                foreach (($mm2[1] ?? []) as $ph) {
+                    $ph = trim((string) $ph);
+                    if ($ph !== '') $tokensScore[] = $ph;
+                }
+            }
+            $searchWithoutPhrases2 = trim((string) preg_replace('/"[^"]+"/', ' ', $search));
+            $more = preg_split('/\s+/', $searchWithoutPhrases2, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $tokensScore = array_merge($tokensScore, $more);
             $tokensScore = array_values(array_filter(array_map('trim', $tokensScore), function ($t) {
                 return (string) $t !== '';
             }));

@@ -226,6 +226,10 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     // Importante: rutas “especiales” antes que /{id} para evitar colisiones
     Route::put('/infoestudiantesifas/bulk-docente', [InfoestudiantesifasController::class, 'bulkUpdateDocente'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,']);
 
+    // Acciones grupales: asignación automática por historial + rollback
+    Route::post('/infoestudiantesifas/acciones-grupales/asignar-materias', [InfoestudiantesifasController::class, 'accionesGrupalesAsignarMaterias'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::post('/infoestudiantesifas/acciones-grupales/rollback-asignacion', [InfoestudiantesifasController::class, 'accionesGrupalesRollbackAsignacion'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+
     Route::get('/infoestudiantesifas/{id}', [InfoestudiantesifasController::class, 'show'])->whereNumber('id')->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
     Route::put('/infoestudiantesifas/{id}', [InfoestudiantesifasController::class, 'update'])->whereNumber('id')->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,']);
     Route::delete('/infoestudiantesifas/{id}', [InfoestudiantesifasController::class, 'destroy'])->whereNumber('id')->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
