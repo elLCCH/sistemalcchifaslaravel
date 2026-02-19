@@ -38,6 +38,7 @@ class PublicHorariosController extends Controller
                 'plandeestudios.LvlCurso as LvlCurso',
                 'plandeestudios.NombreMateria as NombreMateria',
                 'plandeestudios.SiglaMateria as SiglaMateria',
+                'plandeestudios.ModoMateria as ModoMateria',
                 'plandeestudios.RangoLvlCurso as RangoLvlCurso',
                 'plandeestudios.Rango as Rango',
                 'instituciones.id as instituciones_id',
@@ -80,6 +81,7 @@ class PublicHorariosController extends Controller
                 'materia_id' => (int) $row->materia_id,
                 'NombreMateria' => $row->NombreMateria,
                 'SiglaMateria' => $row->SiglaMateria,
+                'ModoMateria' => $row->ModoMateria,
             ];
         }
 

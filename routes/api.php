@@ -11,6 +11,7 @@ use App\Http\Middleware\CheckAbilities;
 
 use App\Http\Controllers\CarrerasController;
 use App\Http\Controllers\ControlesController;
+use App\Http\Controllers\PlantillasExcelController;
 use App\Http\Controllers\EstudiantesifasController;
 use App\Http\Controllers\HistorialinformacionestudiantesController;
 use App\Http\Controllers\InfoestudiantesifasController;
@@ -194,6 +195,16 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::delete('/controles/{id}', [ControlesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
 
     // =========================
+    // PlantillasExcelController (CRUD independiente; tabla controles)
+    // =========================
+    Route::get('/plantillas-excel', [PlantillasExcelController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::get('/plantillas-excel/{id}', [PlantillasExcelController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::post('/plantillas-excel', [PlantillasExcelController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::put('/plantillas-excel/{id}', [PlantillasExcelController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::delete('/plantillas-excel/{id}', [PlantillasExcelController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
+    Route::post('/plantillas-excel/{id}/generar', [PlantillasExcelController::class, 'generar'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+
+    // =========================
     // EstudiantesifasController
     // =========================
     Route::get('/estudiantesifas', [EstudiantesifasController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,INSCRIPCIÓN_DE_TALLERES,PRACTICANTE']);
@@ -229,6 +240,9 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     // Acciones grupales: asignación automática por historial + rollback
     Route::post('/infoestudiantesifas/acciones-grupales/asignar-materias', [InfoestudiantesifasController::class, 'accionesGrupalesAsignarMaterias'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
     Route::post('/infoestudiantesifas/acciones-grupales/rollback-asignacion', [InfoestudiantesifasController::class, 'accionesGrupalesRollbackAsignacion'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+
+    // Acciones grupales: modificar inscripciones (curso/paralelo/turno + quitar asignaciones)
+    Route::post('/infoestudiantesifas/acciones-grupales/modificar-inscripciones', [InfoestudiantesifasController::class, 'accionesGrupalesModificarInscripciones'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
 
     Route::get('/infoestudiantesifas/{id}', [InfoestudiantesifasController::class, 'show'])->whereNumber('id')->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),CONSERJE,PORTERO(A),PRACTICANTE,OTRO(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
     Route::put('/infoestudiantesifas/{id}', [InfoestudiantesifasController::class, 'update'])->whereNumber('id')->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),INSCRIPCIÓN_GESTIÓN_ACADÉMICA,']);

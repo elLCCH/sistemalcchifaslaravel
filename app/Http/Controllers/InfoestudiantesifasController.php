@@ -12,6 +12,7 @@ use Illuminate\Routing\Controller;
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\Planteladministrativos;
 use App\Services\AccionesGrupales\AsignarMateriasPorHistorialService;
+use App\Services\AccionesGrupales\ModificacionGrupalInscripcionesService;
 use App\Services\AccionesGrupales\RollbackAsignacionesLoteService;
 class InfoestudiantesifasController extends Controller
 {
@@ -471,6 +472,38 @@ class InfoestudiantesifasController extends Controller
         return response()->json($res);
     }
 
+    // =============================
+    // Acciones grupales: modificación de inscripciones (curso/paralelo/turno + quitar asignaciones)
+    // =============================
+    public function accionesGrupalesModificarInscripciones(Request $request, ModificacionGrupalInscripcionesService $svc)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:200'],
+            'ids.*' => ['required', 'integer'],
+
+            'cambiar_curso' => ['nullable', 'boolean'],
+            'nuevo_curso' => ['nullable', 'string', 'max:60'],
+
+            'cambiar_paralelo' => ['nullable', 'boolean'],
+            'nuevo_paralelo' => ['nullable', 'string', 'max:20'],
+
+            'cambiar_turno' => ['nullable', 'boolean'],
+            'nuevo_turno' => ['nullable', 'string', 'max:60'],
+
+            'quitar_asignaciones' => ['nullable', 'boolean'],
+            'anio_id_asignaciones' => ['exclude_unless:quitar_asignaciones,1,true', 'required', 'integer'],
+            'resolucion' => ['exclude_unless:quitar_asignaciones,1,true', 'required', 'string', 'max:100'],
+        ]);
+
+        $res = $svc->ejecutar($validated, $request->user());
+
+        if (!($res['ok'] ?? false)) {
+            return response()->json(['message' => $res['message'] ?? 'No se pudo ejecutar la acción'], 422);
+        }
+
+        return response()->json($res);
+    }
+
     public function estadisticasDetalle(Request $request)
     {
         $anioId = (int) $request->query('anio_id', 0);
@@ -607,6 +640,8 @@ class InfoestudiantesifasController extends Controller
 
         $cursoSolicitadoFiltro = trim((string) $request->query('Curso_Solicitado', ''));
         $paraleloSolicitadoFiltro = trim((string) $request->query('Paralelo_Solicitado', ''));
+        $paraleloSolicitadoEmpty = filter_var($request->query('Paralelo_Solicitado_empty', '0'), FILTER_VALIDATE_BOOLEAN);
+        $turnoFiltro = trim((string) $request->query('Turno', ''));
         $cursoAsignadoFiltro = trim((string) $request->query('CursoAsignado', ''));
         $paraleloAsignadoFiltro = trim((string) $request->query('ParaleloAsignado', ''));
 
@@ -717,6 +752,7 @@ class InfoestudiantesifasController extends Controller
                 'estudiantesifas.Nombre',
                 'estudiantesifas.CI',
                 'estudiantesifas.Sexo',
+                'estudiantesifas.Edad',
                 'estudiantesifas.Celular',
                 'estudiantesifas.NumCelP',
                 'estudiantesifas.NumCelM',
@@ -738,8 +774,14 @@ class InfoestudiantesifasController extends Controller
             ->when($cursoSolicitadoFiltro !== '', function ($q) use ($cursoSolicitadoFiltro) {
                 $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado, \'\')) = ?', [$cursoSolicitadoFiltro]);
             })
-            ->when($paraleloSolicitadoFiltro !== '', function ($q) use ($paraleloSolicitadoFiltro) {
+            ->when($paraleloSolicitadoEmpty, function ($q) {
+                $q->whereRaw("TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, '')) = ''");
+            })
+            ->when(!$paraleloSolicitadoEmpty && $paraleloSolicitadoFiltro !== '', function ($q) use ($paraleloSolicitadoFiltro) {
                 $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.Paralelo_Solicitado, \'\')) = ?', [$paraleloSolicitadoFiltro]);
+            })
+            ->when($turnoFiltro !== '', function ($q) use ($turnoFiltro) {
+                $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.Turno, \'\')) = ?', [$turnoFiltro]);
             })
             ->when($instrumentoMusical !== '', function ($q) use ($instrumentoMusical) {
                 $q->whereRaw('TRIM(COALESCE(infoestudiantesifas.InstrumentoMusical, \'\')) = ?', [$instrumentoMusical]);
@@ -1364,7 +1406,7 @@ class InfoestudiantesifasController extends Controller
             'Categoria' => ['nullable', 'string', 'max:50'],
             'Turno' => ['nullable', 'string', 'max:20'],
             'Curso_Solicitado' => ['nullable', 'string', 'max:60'],
-            'Paralelo_Solicitado' => ['nullable', 'string', 'max:5'],
+            'Paralelo_Solicitado' => ['nullable', 'string', 'max:30'],
             'CantidadMateriasAsignadas' => ['nullable', 'integer'],
             'InstrumentoMusical' => ['nullable', 'string', 'max:100'],
             'InstrumentoMusicalSecundario' => ['nullable', 'string', 'max:100'],

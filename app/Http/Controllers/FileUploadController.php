@@ -61,6 +61,17 @@ class FileUploadController extends Controller
                 }
                 $path = 'archivos/compartidosifas/inicios/horarios';
                 break;
+
+            case 'plantillasexcel':
+                // Plantillas Excel (por institución): xlsx/xlsm/xltx
+                // Se usa para generar registros en la tabla controles (CRUD independiente)
+                $ext = strtolower((string) $file->getClientOriginalExtension());
+                $allowed = ['xlsx', 'xlsm', 'xltx'];
+                if (!in_array($ext, $allowed, true)) {
+                    return response()->json(['error' => 'Solo se permite Excel (xlsx/xlsm/xltx)'], 422);
+                }
+                $path = $base . '/plantillasexcel';
+                break;
                 
             case 'pagosAnualesUnicos':
                 $path = $base . '/pagoslcch/pagosunicosgestiones';

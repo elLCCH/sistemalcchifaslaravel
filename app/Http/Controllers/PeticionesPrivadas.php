@@ -435,6 +435,9 @@ class PeticionesPrivadas extends Controller
         }
 
         $rows = $q
+            // Orden cronológico: primero el que se inscribió primero.
+            // Fallback a created_at si FechInsc viene NULL.
+            ->orderByRaw('COALESCE(infoestudiantesifas.FechInsc, infoestudiantesifas.created_at) ASC')
             ->orderBy('estudiantesifas.Ap_Paterno')
             ->orderBy('estudiantesifas.Ap_Materno')
             ->orderBy('estudiantesifas.Nombre')

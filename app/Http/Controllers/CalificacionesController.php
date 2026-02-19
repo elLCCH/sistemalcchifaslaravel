@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Calificaciones;
 use App\Models\Infoestudiantesifas;
 use App\Models\Materias;
+use App\Models\Planteladministrativos;
+use App\Models\Planteldocentes;
+use App\Models\Usuarioslcchs;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -21,6 +24,70 @@ class CalificacionesController extends Controller
     private function isSuperAdmin($user): bool
     {
         return !empty($user) && empty($user->instituciones_id);
+    }
+
+    private function isAdminUser($user): bool
+    {
+        if (!$user) return false;
+        return $this->isSuperAdmin($user) || ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+    }
+
+    private function isDocenteUser($user): bool
+    {
+        return !empty($user) && ($user instanceof Planteldocentes);
+    }
+
+    private function ensureDocenteAsignado($user, int $materiaId): void
+    {
+        if (!$this->isDocenteUser($user)) return;
+
+        $ok = DB::table('planteldocentesmaterias')
+            ->where('planteldocentes_id', (int) $user->id)
+            ->where('materias_id', $materiaId)
+            ->exists();
+
+        if (!$ok) {
+            abort(404);
+        }
+    }
+
+    private function parseEvalCount($raw): int
+    {
+        $s = trim((string) ($raw ?? ''));
+        if ($s === '') return 4;
+
+        if (preg_match('/(\d+)/', $s, $m)) {
+            $n = (int) $m[1];
+        } else {
+            $n = (int) $raw;
+        }
+
+        if ($n < 1 || $n > 4) return 4;
+        return $n;
+    }
+
+    private function parseEnabledEvaluations($estado, int $evalCountMax): array
+    {
+        $out = [];
+        $raw = trim((string) ($estado ?? ''));
+        if ($raw === '') return $out;
+
+        $s = strtoupper($raw);
+        if (str_contains($s, 'DESHABIL')) return $out;
+
+        if (str_contains($s, 'HABILIT') || str_contains($s, 'TODAS') || str_contains($s, 'TODO')) {
+            for ($i = 1; $i <= max(1, min(4, $evalCountMax)); $i++) $out[] = $i;
+            return $out;
+        }
+
+        if (str_contains($s, 'PRIMERA') || preg_match('/\b1\b/', $s)) $out[] = 1;
+        if (str_contains($s, 'SEGUNDA') || preg_match('/\b2\b/', $s)) $out[] = 2;
+        if (str_contains($s, 'TERCERA') || preg_match('/\b3\b/', $s)) $out[] = 3;
+        if (str_contains($s, 'CUARTA') || preg_match('/\b4\b/', $s)) $out[] = 4;
+
+        $out = array_values(array_unique(array_filter($out, fn ($n) => $n >= 1 && $n <= 4)));
+        sort($out);
+        return $out;
     }
 
     private function getInstitucionIdFromInfo(int $infoId): ?int
@@ -300,11 +367,16 @@ class CalificacionesController extends Controller
             ->select([
                 'materias.id',
                 'materias.Paralelo as MateriaParalelo',
+                'materias.EstadoHabilitacion',
                 'plandeestudios.NombreMateria',
                 'plandeestudios.SiglaMateria',
                 'plandeestudios.LvlCurso',
                 'anios.Anio',
                 'carreras.CantidadEvaluaciones',
+                'carreras.LimiteMaxTeorico',
+                'carreras.LimiteMaxPractico',
+                'carreras.NotaAprobacion',
+                'carreras.NotaMinRevalida',
                 'carreras.instituciones_id as instituciones_id',
             ])
             ->first();
@@ -322,6 +394,8 @@ class CalificacionesController extends Controller
             abort(404);
         }
 
+        $this->ensureDocenteAsignado($user, $materiaId);
+
         $docentes = DB::table('planteldocentesmaterias')
             ->join('planteldocentes', 'planteldocentesmaterias.planteldocentes_id', '=', 'planteldocentes.id')
             ->where('planteldocentesmaterias.materias_id', $materiaId)
@@ -331,8 +405,9 @@ class CalificacionesController extends Controller
                 'planteldocentes.Nombres',
                 'planteldocentes.Apellidos',
             ])
-            ->orderByRaw("(planteldocentes.Apellidos IS NULL) DESC")
+            ->orderByRaw("(planteldocentes.Apellidos IS NULL OR TRIM(planteldocentes.Apellidos)='') DESC")
             ->orderBy('planteldocentes.Apellidos')
+            ->orderByRaw("(planteldocentes.Nombres IS NULL OR TRIM(planteldocentes.Nombres)='') DESC")
             ->orderBy('planteldocentes.Nombres')
             ->get();
 
@@ -352,6 +427,9 @@ class CalificacionesController extends Controller
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre as Nombres',
                 'estudiantesifas.CI',
+                'estudiantesifas.Foto',
+                'infoestudiantesifas.InstrumentoMusical',
+                'infoestudiantesifas.InstrumentoMusicalSecundario',
                 'materias.Paralelo as MateriaParalelo',
                 'plandeestudios.NombreMateria',
                 'plandeestudios.SiglaMateria',
@@ -359,11 +437,11 @@ class CalificacionesController extends Controller
                 'anios.Anio',
                 'carreras.CantidadEvaluaciones',
             ])
-            // Orden requerido: Ap_Paterno, Ap_Materno, Nombres; NULLs primero en Ap_Paterno
-            ->orderByRaw('(estudiantesifas.Ap_Paterno IS NULL) DESC')
+            ->orderByRaw("(estudiantesifas.Ap_Paterno IS NULL OR TRIM(estudiantesifas.Ap_Paterno)='') DESC")
             ->orderBy('estudiantesifas.Ap_Paterno')
-            ->orderByRaw('(estudiantesifas.Ap_Materno IS NULL) DESC')
+            ->orderByRaw("(estudiantesifas.Ap_Materno IS NULL OR TRIM(estudiantesifas.Ap_Materno)='') DESC")
             ->orderBy('estudiantesifas.Ap_Materno')
+            ->orderByRaw("(estudiantesifas.Nombre IS NULL OR TRIM(estudiantesifas.Nombre)='') DESC")
             ->orderBy('estudiantesifas.Nombre')
             ->orderBy('calificaciones.id');
 
@@ -404,6 +482,8 @@ class CalificacionesController extends Controller
         $validated = $request->validate([
             'materias_id' => ['required', 'integer'],
             'avg_eval_count' => ['nullable', 'integer', 'min:1', 'max:4'],
+            'enabled_evals' => ['nullable', 'array', 'size:4'],
+            'enabled_evals.*' => ['nullable', 'boolean'],
             'items' => ['required', 'array', 'min:1', 'max:500'],
             'items.*.id' => ['required', 'integer'],
             'items.*.Teorico1' => ['nullable', 'integer', 'min:0', 'max:100'],
@@ -418,10 +498,7 @@ class CalificacionesController extends Controller
         ]);
 
         $materiaId = (int) $validated['materias_id'];
-        $avgEvalCount = (int) ($validated['avg_eval_count'] ?? 4);
-        if ($avgEvalCount < 1 || $avgEvalCount > 4) {
-            $avgEvalCount = 4;
-        }
+        $this->ensureDocenteAsignado($user, $materiaId);
 
         $materiaInstitucionId = $this->getInstitucionIdFromMateria($materiaId);
         if (!$materiaInstitucionId) {
@@ -429,6 +506,63 @@ class CalificacionesController extends Controller
         }
         if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $materiaInstitucionId) {
             return response()->json(['message' => 'Materia no pertenece a la institución'], 403);
+        }
+
+        $isAdminUser = $this->isAdminUser($user);
+
+        $materiaMeta = DB::table('materias')
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('materias.id', $materiaId)
+            ->select([
+                'materias.EstadoHabilitacion',
+                'carreras.CantidadEvaluaciones',
+                'carreras.LimiteMaxTeorico',
+                'carreras.LimiteMaxPractico',
+            ])
+            ->first();
+
+        if (!$materiaMeta) {
+            return response()->json(['message' => 'Materia no encontrada'], 404);
+        }
+
+        $evalCountMax = $this->parseEvalCount($materiaMeta->CantidadEvaluaciones ?? 4);
+
+        // Límites siempre desde carreras
+        $maxTeo = (int) ($materiaMeta->LimiteMaxTeorico ?? 30);
+        $maxPra = (int) ($materiaMeta->LimiteMaxPractico ?? 70);
+        if ($maxTeo < 0) $maxTeo = 0;
+        if ($maxTeo > 100) $maxTeo = 100;
+        if ($maxPra < 0) $maxPra = 0;
+        if ($maxPra > 100) $maxPra = 100;
+
+        // Promedio: admin puede override (temporal), docente no
+        $avgEvalCount = $evalCountMax;
+        if ($isAdminUser) {
+            $n = (int) ($validated['avg_eval_count'] ?? $evalCountMax);
+            if ($n < 1 || $n > 4) $n = $evalCountMax;
+            if ($n > $evalCountMax) $n = $evalCountMax;
+            $avgEvalCount = $n;
+        }
+
+        // Evaluaciones habilitadas: admin puede override (temporal), docente siempre por EstadoHabilitacion
+        $enabled = $this->parseEnabledEvaluations($materiaMeta->EstadoHabilitacion ?? null, $evalCountMax);
+
+        if ($isAdminUser && is_array($validated['enabled_evals'] ?? null) && count($validated['enabled_evals']) === 4) {
+            $enabled = [];
+            $arr = $validated['enabled_evals'];
+            for ($i = 0; $i < 4; $i++) {
+                $flag = (bool) ($arr[$i] ?? false);
+                $evalNum = $i + 1;
+                if ($evalNum <= $evalCountMax && $flag) $enabled[] = $evalNum;
+            }
+        }
+
+        $enabled = array_values(array_filter($enabled, fn ($n) => $n >= 1 && $n <= $evalCountMax));
+        sort($enabled);
+
+        if (count($enabled) === 0) {
+            return response()->json(['message' => 'Edición deshabilitada para esta materia'], 403);
         }
 
         $items = $validated['items'];
@@ -465,10 +599,37 @@ class CalificacionesController extends Controller
                 $row = $allowed->get($rowId);
                 if (!$row) continue;
 
-                foreach (['Teorico1','Teorico2','Teorico3','Teorico4','Practico1','Practico2','Practico3','Practico4','PruebaRecuperacion'] as $k) {
-                    if (array_key_exists($k, $payload)) {
-                        $row->$k = $payload[$k];
+                // Aplicar solo claves permitidas según evaluaciones habilitadas
+                foreach ([1, 2, 3, 4] as $n) {
+                    if ($n > $evalCountMax) continue;
+                    if (!in_array($n, $enabled, true)) continue;
+
+                    $tk = 'Teorico' . $n;
+                    $pk = 'Practico' . $n;
+
+                    if (array_key_exists($tk, $payload)) {
+                        $v = $payload[$tk];
+                        if ($v !== null) {
+                            $v = (int) $v;
+                            if ($v < 0) $v = 0;
+                            if ($v > $maxTeo) $v = $maxTeo;
+                        }
+                        $row->$tk = $v;
                     }
+
+                    if (array_key_exists($pk, $payload)) {
+                        $v = $payload[$pk];
+                        if ($v !== null) {
+                            $v = (int) $v;
+                            if ($v < 0) $v = 0;
+                            if ($v > $maxPra) $v = $maxPra;
+                        }
+                        $row->$pk = $v;
+                    }
+                }
+
+                if (array_key_exists('PruebaRecuperacion', $payload)) {
+                    $row->PruebaRecuperacion = $payload['PruebaRecuperacion'];
                 }
 
                 $evals = range(1, $avgEvalCount);

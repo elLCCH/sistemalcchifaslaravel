@@ -176,7 +176,6 @@ class AsignarMateriasPorHistorialService
 
         $now = now();
 
-        DB::beginTransaction();
         try {
             DB::table('asignaciones_lotes')->insert([
                 'uuid' => $uuid,
@@ -196,6 +195,7 @@ class AsignarMateriasPorHistorialService
                 'total_estudiantes_con_asignacion' => 0,
                 'total_anotados' => 0,
                 'total_saltados_por_ya_asignado' => 0,
+                'total_errors' => 0,
             ];
 
             foreach ($cursos as $sel) {
@@ -240,6 +240,8 @@ class AsignarMateriasPorHistorialService
 
                     $prevNotas = $info->info_notas;
                     $prevVerif = $info->info_verificacion;
+
+                    try {
 
                     $requestedRank = (int) ($courseRank[$cursoSolicitado] ?? 0);
                     if ($requestedRank <= 0) {
@@ -519,10 +521,20 @@ class AsignarMateriasPorHistorialService
                     $stats['total_creadas'] += $result['created'];
                     if ($result['created'] > 0) $stats['total_estudiantes_con_asignacion']++;
                     if ($result['note_written']) $stats['total_anotados']++;
+
+                    } catch (\Throwable $e) {
+                        $stats['total_errors']++;
+                        $msg = 'ERROR DURANTE AUTOASIGNACIÓN: ' . substr(trim((string) $e->getMessage()), 0, 180);
+                        try {
+                            $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, $msg, self::VERIF_FAIL);
+                            $stats['total_anotados']++;
+                        } catch (\Throwable $e2) {
+                            // noop
+                        }
+                        continue;
+                    }
                 }
             }
-
-            DB::commit();
 
             return [
                 'ok' => true,
@@ -530,7 +542,6 @@ class AsignarMateriasPorHistorialService
                 'stats' => $stats,
             ];
         } catch (\Throwable $e) {
-            DB::rollBack();
             throw $e;
         }
     }
@@ -602,21 +613,84 @@ class AsignarMateriasPorHistorialService
             return ['created' => 0, 'note_written' => true];
         }
 
+        // Modo CAPACITACIÓN: el estudiante lleva TODAS las materias del curso.
+        // Si quedaría incompleto (faltan materias del paralelo o no cumple prerrequisitos de alguna), NO se asigna nada.
+        if ($modo === 'capacitacion') {
+            $faltanMaterias = [];
+            $faltanReq = [];
+
+            foreach ($plan as $p) {
+                $siglaMateria = $this->normUpper($p->SiglaMateria ?? '');
+                if ($siglaMateria === '') continue;
+
+                $materia = $materias->get((int) $p->id);
+                if (!$materia) {
+                    $faltanMaterias[] = $siglaMateria;
+                    continue;
+                }
+
+                $pr = $this->parseSiglasPrerrequisitos((string) ($p->SiglasPrerrequisitos ?? ''));
+                if (count($pr) > 0) {
+                    if ($sinHistorial) {
+                        // Sin historial no podemos garantizar los prerrequisitos.
+                        foreach ($pr as $reqSigla) {
+                            $faltanReq[] = $siglaMateria . '->' . $reqSigla;
+                        }
+                    } else {
+                        foreach ($pr as $reqSigla) {
+                            if (!isset($siglasAprobSet[$reqSigla])) {
+                                $faltanReq[] = $siglaMateria . '->' . $reqSigla;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (count($faltanMaterias) > 0 || count($faltanReq) > 0) {
+                $faltanMaterias = array_values(array_unique($faltanMaterias));
+                sort($faltanMaterias);
+                $faltanReq = array_values(array_unique($faltanReq));
+                sort($faltanReq);
+                if (count($faltanReq) > 20) {
+                    $faltanReq = array_slice($faltanReq, 0, 20);
+                    $faltanReq[] = '...';
+                }
+
+                $msg = 'NO SE PUDO AUTOASIGNAR (CAPACITACIÓN): ASIGNACIÓN INCOMPLETA NO PERMITIDA';
+                if (count($faltanMaterias) > 0) {
+                    $muestra = $faltanMaterias;
+                    if (count($muestra) > 20) {
+                        $muestra = array_slice($muestra, 0, 20);
+                        $muestra[] = '...';
+                    }
+                    $msg .= ' | FALTAN MATERIAS EN PARALELO: ' . implode(', ', $muestra);
+                }
+                if (count($faltanReq) > 0) {
+                    $msg .= ' | PRERREQUISITOS NO CUMPLIDOS: ' . implode(', ', $faltanReq);
+                }
+
+                $info = Infoestudiantesifas::query()->where('id', $infoId)->first();
+                $this->anotarInfo($loteUuid, $infoId, $info?->Notas, $info?->Verificacion, $msg, self::VERIF_FAIL);
+                return ['created' => 0, 'note_written' => true];
+            }
+        }
+
         $created = 0;
 
         foreach ($plan as $p) {
             $siglaMateria = $this->normUpper($p->SiglaMateria ?? '');
             if ($siglaMateria === '') continue;
 
-            // En modo capacitación, si reprobó alguna del plan, repite TODO (no se filtra por aprobadas)
-            if (!($modo === 'capacitacion' && $reproboAlgoPlan)) {
+            // En modo capacitación: se asigna el curso COMPLETO (no se filtra por aprobadas).
+            if ($modo !== 'capacitacion') {
                 // Si ya está aprobada, no se asigna
                 if (isset($siglasAprobSet[$siglaMateria])) {
                     continue;
                 }
             }
 
-            if (!$sinHistorial && !($modo === 'capacitacion' && $reproboAlgoPlan)) {
+            // En modo capacitación no se filtra por prerrequisitos aquí (ya se validó arriba para evitar incompletos).
+            if (!$sinHistorial && $modo !== 'capacitacion') {
                 $pr = $this->parseSiglasPrerrequisitos((string) ($p->SiglasPrerrequisitos ?? ''));
                 $ok = true;
                 foreach ($pr as $reqSigla) {

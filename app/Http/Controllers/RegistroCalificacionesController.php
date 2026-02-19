@@ -53,10 +53,24 @@ class RegistroCalificacionesController extends Controller
             abort(404);
         }
 
-        $avgEvalCount = (int) ($materia->CantidadEvaluaciones ?? 4);
-        if ($avgEvalCount < 1 || $avgEvalCount > 4) $avgEvalCount = 4;
+        $avgEvalCount = $this->parseEvalCount($materia->CantidadEvaluaciones ?? 4);
 
         return [$user, $materia, $avgEvalCount, $institucionId];
+    }
+
+    private function parseEvalCount($raw): int
+    {
+        $s = trim((string) ($raw ?? ''));
+        if ($s === '') return 4;
+
+        if (preg_match('/(\d+)/', $s, $m)) {
+            $n = (int) $m[1];
+        } else {
+            $n = (int) $raw;
+        }
+
+        if ($n < 1 || $n > 4) return 4;
+        return $n;
     }
 
     private function ensureEvaluacion(int $materiaId, int $numeroEval): object
@@ -185,6 +199,9 @@ class RegistroCalificacionesController extends Controller
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre as Nombres',
                 'estudiantesifas.CI',
+                'estudiantesifas.Foto',
+                'infoestudiantesifas.InstrumentoMusical',
+                'infoestudiantesifas.InstrumentoMusicalSecundario',
                 'materias.Paralelo as MateriaParalelo',
                 'plandeestudios.NombreMateria',
                 'plandeestudios.SiglaMateria',
@@ -192,10 +209,11 @@ class RegistroCalificacionesController extends Controller
                 'anios.Anio',
                 'carreras.CantidadEvaluaciones',
             ])
-            ->orderByRaw('(estudiantesifas.Ap_Paterno IS NULL) DESC')
+            ->orderByRaw("(estudiantesifas.Ap_Paterno IS NULL OR TRIM(estudiantesifas.Ap_Paterno)='') DESC")
             ->orderBy('estudiantesifas.Ap_Paterno')
-            ->orderByRaw('(estudiantesifas.Ap_Materno IS NULL) DESC')
+            ->orderByRaw("(estudiantesifas.Ap_Materno IS NULL OR TRIM(estudiantesifas.Ap_Materno)='') DESC")
             ->orderBy('estudiantesifas.Ap_Materno')
+            ->orderByRaw("(estudiantesifas.Nombre IS NULL OR TRIM(estudiantesifas.Nombre)='') DESC")
             ->orderBy('estudiantesifas.Nombre')
             ->orderBy('calificaciones.id');
 

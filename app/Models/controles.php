@@ -15,6 +15,7 @@ class Controles extends Model
         'Estado',
         'Visibilidad',
         'Categoria',
+        'NivelCurso',
         'ParaI',
         'Edades',
     ];
