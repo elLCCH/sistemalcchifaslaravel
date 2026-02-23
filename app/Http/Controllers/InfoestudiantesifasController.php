@@ -473,6 +473,346 @@ class InfoestudiantesifasController extends Controller
     }
 
     // =============================
+    // Verificación masiva: comparar solicitado vs asignación oficial (Año + Resolución/Nivel)
+    // =============================
+    public function accionesGrupalesVerificarAsignacion(Request $request)
+    {
+        $validated = $request->validate([
+            'anio_id' => ['required', 'integer'],
+            'instituciones_id' => ['nullable', 'integer'],
+            // Se ignoran resolución/nivel: verificación solo por Año
+            'estudiante_id' => ['nullable', 'integer'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:500'],
+
+            // Filtros globales (aplican a TODO el año, no solo a la página)
+            'filtro_estado' => ['nullable', 'string', 'in:MIXTO,OK,NO,mixto,ok,no'],
+            'cursos' => ['nullable', 'array', 'max:300'],
+            'cursos.*' => ['nullable', 'string', 'max:60'],
+            'paralelos' => ['nullable', 'array', 'max:300'],
+            'paralelos.*' => ['nullable', 'string', 'max:20'],
+            'turnos' => ['nullable', 'array', 'max:300'],
+            'turnos.*' => ['nullable', 'string', 'max:60'],
+        ]);
+
+        $user = $request->user();
+        if (!($user instanceof Planteladministrativos)) {
+            return response()->json(['message' => 'Solo planteladministrativos pueden ejecutar esta verificación.'], 403);
+        }
+
+        $anioId = (int) ($validated['anio_id'] ?? 0);
+        if ($anioId <= 0) {
+            return response()->json(['message' => 'anio_id es requerido'], 422);
+        }
+
+        // Requisito: esta pantalla verifica SOLO estudiantes ASIGNADOS en el AÑO seleccionado.
+        $page = (int) ($validated['page'] ?? 1);
+        $perPage = (int) ($validated['per_page'] ?? 20);
+        if ($perPage <= 0) $perPage = 20;
+
+        // Etiqueta de gestión (para incluir subgestiones como 2026/1, 2026/2, ...)
+        $anioValor = trim((string) (Anios::query()->where('id', $anioId)->value('Anio') ?? ''));
+        if ($anioValor === '') {
+            return response()->json(['message' => 'No se pudo resolver el año seleccionado'], 422);
+        }
+        $anioEsBase = !str_contains($anioValor, '/');
+
+        $isSuperAdmin = empty($user?->instituciones_id);
+        $institucionId = 0;
+        if (!empty($user?->instituciones_id)) {
+            $institucionId = (int) $user->instituciones_id;
+        } else {
+            $institucionId = (int) ($validated['instituciones_id'] ?? 0);
+        }
+
+        if ($institucionId <= 0) {
+            return response()->json(['message' => 'instituciones_id es requerido'], 422);
+        }
+
+        // Base: traer TODAS las inscripciones asignadas del año (sin paginar), luego filtrar y paginar en memoria.
+        // Motivo: los filtros OK/NO y curso/paralelo/turno deben afectar el total y la paginación.
+        $base = Infoestudiantesifas::query()
+            ->leftJoin('estudiantesifas as est', 'infoestudiantesifas.estudiantesifas_id', '=', 'est.id')
+            ->when(!$isSuperAdmin && !empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
+            });
+
+        // Superadmin: puede filtrar por instituciones_id
+        if ($isSuperAdmin && $institucionId > 0) {
+            $base->where('infoestudiantesifas.instituciones_id', $institucionId);
+        }
+
+        // Solo ASIGNADOS dentro del Año seleccionado.
+        $base->whereExists(function ($qq) use ($anioValor, $anioEsBase) {
+            $qq->select(DB::raw(1))
+                ->from('calificaciones as c')
+                ->join('materias as m', 'm.id', '=', 'c.materias_id')
+                ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
+                ->join('anios as a', 'a.id', '=', 'p.anio_id')
+                ->whereColumn('c.infoestudiantesifas_id', 'infoestudiantesifas.id')
+                ->where(function ($w) use ($anioValor, $anioEsBase) {
+                    if ($anioEsBase) {
+                        $w->where('a.Anio', $anioValor)->orWhere('a.Anio', 'LIKE', $anioValor . '/%');
+                    } else {
+                        $w->where('a.Anio', $anioValor);
+                    }
+                });
+        });
+
+        $estudianteId = (int) ($validated['estudiante_id'] ?? 0);
+        if ($estudianteId > 0) {
+            $base->where('infoestudiantesifas.estudiantesifas_id', $estudianteId);
+        }
+
+        $base->select([
+            'infoestudiantesifas.id as id',
+            'infoestudiantesifas.estudiantesifas_id as estudiantesifas_id',
+            'infoestudiantesifas.Curso_Solicitado as Curso_Solicitado',
+            'infoestudiantesifas.Paralelo_Solicitado as Paralelo_Solicitado',
+            'infoestudiantesifas.Turno as Turno',
+            'infoestudiantesifas.Verificacion as Verificacion',
+            'est.Ap_Paterno as Ap_Paterno',
+            'est.Ap_Materno as Ap_Materno',
+            'est.Nombre as Nombre',
+            'est.CI as CI',
+        ]);
+
+        $allItems = $base->orderBy('est.Ap_Paterno')->orderBy('est.Ap_Materno')->orderBy('est.Nombre')->get();
+        $allCount = $allItems->count();
+
+        $infoIds = [];
+        foreach ($allItems as $it) {
+            $id = (int) ($it->id ?? 0);
+            if ($id > 0) $infoIds[] = $id;
+        }
+        $infoIds = array_values(array_unique($infoIds));
+
+        $asigMap = []; // info_id => ['total' => int, 'cursos' => set, 'paralelos' => set, 'turnos' => set]
+
+        if (count($infoIds) > 0) {
+            $rows = DB::table('calificaciones as c')
+                ->join('materias as m', 'm.id', '=', 'c.materias_id')
+                ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
+                ->join('anios as a', 'a.id', '=', 'p.anio_id')
+                ->whereIn('c.infoestudiantesifas_id', $infoIds)
+                ->where(function ($w) use ($anioValor, $anioEsBase) {
+                    if ($anioEsBase) {
+                        $w->where('a.Anio', $anioValor)->orWhere('a.Anio', 'LIKE', $anioValor . '/%');
+                    } else {
+                        $w->where('a.Anio', $anioValor);
+                    }
+                })
+                ->select([
+                    'c.infoestudiantesifas_id as info_id',
+                    DB::raw("TRIM(COALESCE(p.LvlCurso, '')) as curso"),
+                    DB::raw("TRIM(COALESCE(m.Paralelo, '')) as paralelo"),
+                    DB::raw("TRIM(COALESCE(m.Turno, '')) as turno"),
+                    DB::raw('COUNT(*) as total'),
+                ])
+                ->groupBy('c.infoestudiantesifas_id', 'curso', 'paralelo', 'turno')
+                ->get();
+
+            foreach ($rows as $r) {
+                $iid = (int) ($r->info_id ?? 0);
+                if ($iid <= 0) continue;
+                if (!isset($asigMap[$iid])) {
+                    $asigMap[$iid] = [
+                        'total' => 0,
+                        'cursos' => [],
+                        'paralelos' => [],
+                        'turnos' => [],
+                    ];
+                }
+                $asigMap[$iid]['total'] += (int) ($r->total ?? 0);
+                $curso = trim((string) ($r->curso ?? ''));
+                $paralelo = trim((string) ($r->paralelo ?? ''));
+                $turno = trim((string) ($r->turno ?? ''));
+                if ($curso !== '') $asigMap[$iid]['cursos'][$curso] = true;
+                // paralelo/turno: permitir '' como valor real (SIN DETERMINAR / SIN TURNO)
+                $asigMap[$iid]['paralelos'][$paralelo] = true;
+                $asigMap[$iid]['turnos'][$turno] = true;
+            }
+        }
+
+        $outAll = [];
+
+        // Helpers de normalización (para filtros)
+        $normCurso = function ($v) {
+            return trim((string) ($v ?? ''));
+        };
+        $normParalelo = function ($v) {
+            $p = trim((string) ($v ?? ''));
+            return $p === '' ? 'SIN DETERMINAR' : $p;
+        };
+        $normTurno = function ($v) {
+            $t = trim((string) ($v ?? ''));
+            return $t === '' ? 'SIN DETERMINAR' : $t;
+        };
+
+        // Construir salida completa con ok/oficial
+        foreach ($allItems as $it) {
+            $id = (int) ($it->id ?? 0);
+            $cursoSol = trim((string) ($it->Curso_Solicitado ?? ''));
+            $parSol = trim((string) ($it->Paralelo_Solicitado ?? ''));
+            $turnoSol = trim((string) ($it->Turno ?? ''));
+
+            $asig = $asigMap[$id] ?? null;
+            $ofCurso = '';
+            $ofPar = '';
+            $ofTurno = '';
+            $asigTotal = 0;
+            $detalle = '';
+            $ok = false;
+
+            if (!$asig) {
+                $detalle = 'SIN ASIGNACIONES EN EL AÑO SELECCIONADO';
+            } else {
+                $asigTotal = (int) ($asig['total'] ?? 0);
+
+                $cursosVals = array_keys($asig['cursos'] ?? []);
+                $parVals = array_keys($asig['paralelos'] ?? []);
+                $turnoVals = array_keys($asig['turnos'] ?? []);
+
+                sort($cursosVals);
+                sort($parVals);
+                sort($turnoVals);
+
+                $ofCurso = count($cursosVals) === 1 ? (string) $cursosVals[0] : 'MIXTO';
+                $ofPar = count($parVals) === 1 ? (string) $parVals[0] : 'MIXTO';
+                $ofTurno = count($turnoVals) === 1 ? (string) $turnoVals[0] : 'MIXTO';
+
+                if ($ofCurso === 'MIXTO' || $ofPar === 'MIXTO' || $ofTurno === 'MIXTO') {
+                    $detalle = 'ASIGNACIÓN OFICIAL MIXTA';
+                }
+
+                $ok = ($ofCurso !== 'MIXTO' && $ofPar !== 'MIXTO' && $ofTurno !== 'MIXTO')
+                    && ($cursoSol === trim($ofCurso))
+                    && ($parSol === trim($ofPar))
+                    && ($turnoSol === trim($ofTurno));
+
+                if (!$ok && $detalle === '') {
+                    $detalle = 'NO COINCIDE';
+                }
+            }
+
+            $outAll[] = [
+                'id' => $id,
+                'estudiantesifas_id' => (int) ($it->estudiantesifas_id ?? 0),
+                'Ap_Paterno' => (string) ($it->Ap_Paterno ?? ''),
+                'Ap_Materno' => (string) ($it->Ap_Materno ?? ''),
+                'Nombre' => (string) ($it->Nombre ?? ''),
+                'CI' => (string) ($it->CI ?? ''),
+                'Curso_Solicitado' => $cursoSol,
+                'Paralelo_Solicitado' => $parSol,
+                'Turno' => $turnoSol,
+                'Verificacion' => (string) ($it->Verificacion ?? ''),
+                'oficial' => [
+                    'Curso' => $ofCurso,
+                    'Paralelo' => $ofPar,
+                    'Turno' => $ofTurno,
+                    'asignaciones_count' => $asigTotal,
+                ],
+                'ok' => $ok ? 1 : 0,
+                'detalle' => $detalle,
+
+                // Normalizados (para filtrar sin recalcular en frontend)
+                '_n' => [
+                    'curso' => $normCurso($cursoSol),
+                    'paralelo' => $normParalelo($parSol),
+                    'turno' => $normTurno($turnoSol),
+                ],
+            ];
+        }
+
+        // Opciones de filtros globales (de TODO el año, no de la página)
+        $optCursos = [];
+        $optParalelos = [];
+        $optTurnos = [];
+        foreach ($outAll as $r) {
+            $c = (string) (($r['_n']['curso'] ?? '') ?: '');
+            $p = (string) (($r['_n']['paralelo'] ?? '') ?: '');
+            $t = (string) (($r['_n']['turno'] ?? '') ?: '');
+            if ($c !== '') $optCursos[$c] = true;
+            if ($p !== '') $optParalelos[$p] = true;
+            if ($t !== '') $optTurnos[$t] = true;
+        }
+        $optCursos = array_keys($optCursos);
+        $optParalelos = array_keys($optParalelos);
+        $optTurnos = array_keys($optTurnos);
+        sort($optCursos);
+        sort($optParalelos);
+        sort($optTurnos);
+
+        // Aplicar filtros solicitados
+        $filtroEstado = strtoupper(trim((string) ($validated['filtro_estado'] ?? 'MIXTO')));
+        if (!in_array($filtroEstado, ['MIXTO', 'OK', 'NO'], true)) $filtroEstado = 'MIXTO';
+
+        $selCursos = array_values(array_filter(array_map(function ($x) { return trim((string) $x); }, (array) ($validated['cursos'] ?? [])), function ($x) { return $x !== ''; }));
+        $selParalelos = array_values(array_filter(array_map(function ($x) { return trim((string) $x); }, (array) ($validated['paralelos'] ?? [])), function ($x) { return $x !== ''; }));
+        $selTurnos = array_values(array_filter(array_map(function ($x) { return trim((string) $x); }, (array) ($validated['turnos'] ?? [])), function ($x) { return $x !== ''; }));
+
+        $setCursos = count($selCursos) ? array_fill_keys($selCursos, true) : null;
+        $setParalelos = count($selParalelos) ? array_fill_keys($selParalelos, true) : null;
+        $setTurnos = count($selTurnos) ? array_fill_keys($selTurnos, true) : null;
+
+        $filtered = [];
+        foreach ($outAll as $r) {
+            $ok = (int) ($r['ok'] ?? 0) === 1;
+            if ($filtroEstado === 'OK' && !$ok) continue;
+            if ($filtroEstado === 'NO' && $ok) continue;
+
+            $nc = (string) ($r['_n']['curso'] ?? '');
+            $np = (string) ($r['_n']['paralelo'] ?? '');
+            $nt = (string) ($r['_n']['turno'] ?? '');
+
+            if ($setCursos !== null && !isset($setCursos[$nc])) continue;
+            if ($setParalelos !== null && !isset($setParalelos[$np])) continue;
+            if ($setTurnos !== null && !isset($setTurnos[$nt])) continue;
+
+            // no exponer normalizados
+            unset($r['_n']);
+            $filtered[] = $r;
+        }
+
+        $totalFiltered = count($filtered);
+        $lastPage = (int) max(1, (int) ceil($totalFiltered / $perPage));
+        if ($page > $lastPage) $page = $lastPage;
+        if ($page < 1) $page = 1;
+
+        $offset = ($page - 1) * $perPage;
+        $pageItems = array_slice($filtered, $offset, $perPage);
+
+        return response()->json([
+            'meta' => [
+                'anio_id' => $anioId,
+                'anio_label' => $anioValor,
+                'instituciones_id' => $institucionId,
+                'anio_scope' => 'assigned',
+
+                'filtro_estado' => $filtroEstado,
+                'cursos' => $selCursos,
+                'paralelos' => $selParalelos,
+                'turnos' => $selTurnos,
+
+                'filter_options' => [
+                    'cursos' => $optCursos,
+                    'paralelos' => $optParalelos,
+                    'turnos' => $optTurnos,
+                ],
+
+                'total_year' => (int) $allCount,
+                'current_page' => (int) $page,
+                'last_page' => (int) $lastPage,
+                'per_page' => (int) $perPage,
+                'total' => (int) $totalFiltered,
+                'from' => $totalFiltered > 0 ? (int) ($offset + 1) : 0,
+                'to' => $totalFiltered > 0 ? (int) min($offset + $perPage, $totalFiltered) : 0,
+            ],
+            'data' => $pageItems,
+        ]);
+    }
+
+    // =============================
     // Acciones grupales: modificación de inscripciones (curso/paralelo/turno + quitar asignaciones)
     // =============================
     public function accionesGrupalesModificarInscripciones(Request $request, ModificacionGrupalInscripcionesService $svc)

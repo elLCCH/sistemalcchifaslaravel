@@ -241,6 +241,9 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::post('/infoestudiantesifas/acciones-grupales/asignar-materias', [InfoestudiantesifasController::class, 'accionesGrupalesAsignarMaterias'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
     Route::post('/infoestudiantesifas/acciones-grupales/rollback-asignacion', [InfoestudiantesifasController::class, 'accionesGrupalesRollbackAsignacion'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
 
+    // Verificación masiva: solicitado vs asignación oficial (Año + Resolución/Nivel)
+    Route::post('/infoestudiantesifas/acciones-grupales/verificar-asignacion', [InfoestudiantesifasController::class, 'accionesGrupalesVerificarAsignacion'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+
     // Acciones grupales: modificar inscripciones (curso/paralelo/turno + quitar asignaciones)
     Route::post('/infoestudiantesifas/acciones-grupales/modificar-inscripciones', [InfoestudiantesifasController::class, 'accionesGrupalesModificarInscripciones'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
 

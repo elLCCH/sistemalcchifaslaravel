@@ -225,6 +225,7 @@ class AsignarMateriasPorHistorialService
                     'info.id as info_id',
                     'info.Curso_Solicitado',
                     'info.Paralelo_Solicitado',
+                    'info.Turno as info_turno',
                     'info.Notas as info_notas',
                     'info.Verificacion as info_verificacion',
                     'est.CI as est_ci',
@@ -237,6 +238,7 @@ class AsignarMateriasPorHistorialService
                     $infoId = (int) $info->info_id;
                     $cursoSolicitado = trim((string) ($info->Curso_Solicitado ?? ''));
                     $parSolicitado = trim((string) ($info->Paralelo_Solicitado ?? ''));
+                    $turnoSolicitado = trim((string) ($info->info_turno ?? ''));
 
                     $prevNotas = $info->info_notas;
                     $prevVerif = $info->info_verificacion;
@@ -312,6 +314,7 @@ class AsignarMateriasPorHistorialService
                             $infoId,
                             $cursoSolicitado,
                             $parSolicitado,
+                            $turnoSolicitado,
                             $anioId,
                             $carrerasIds->all(),
                             [],
@@ -337,6 +340,7 @@ class AsignarMateriasPorHistorialService
                     $aprobadas = [];
                     $reproboAlgoPlan = false;
                     $encontroAlgunaSiglaDelPlanEnHistorial = false;
+                    $siglasVistas = [];
                     // (1) Sistema anterior: califhistorias
                     foreach ($histRows as $r) {
                         $sig = $this->normUpper($r->Sigla ?? '');
@@ -349,6 +353,7 @@ class AsignarMateriasPorHistorialService
                         }
 
                         $encontroAlgunaSiglaDelPlanEnHistorial = true;
+                        $siglasVistas[$sig] = true;
 
                         $prom = $this->intOrNull($r->Promedio);
                         $rec = $this->intOrNull($r->PruebaRecuperacion);
@@ -376,6 +381,7 @@ class AsignarMateriasPorHistorialService
                         }
 
                         $encontroAlgunaSiglaDelPlanEnHistorial = true;
+                        $siglasVistas[$sig] = true;
 
                         $prom = $this->intOrNull($r->Promedio);
                         $rec = $this->intOrNull($r->PruebaRecuperacion);
@@ -386,6 +392,96 @@ class AsignarMateriasPorHistorialService
                         } else {
                             if ($modo === 'capacitacion') {
                                 $reproboAlgoPlan = true;
+                            }
+                        }
+                    }
+
+                    // =============================
+                    // Validación por historial (rank esperado vs curso solicitado)
+                    // En modo CAPACITACIÓN NO se usa esta regla: solo se valida prerrequisitos del curso solicitado
+                    // contra plandeestudios (SiglasPrerrequisitos) y disponibilidad del paralelo vía materias.
+                    // =============================
+                    if ($modo !== 'capacitacion') {
+                        $lastRank = 0;
+                        $maxRank = 0;
+                        foreach ($rankSiglas as $rank => $set) {
+                            $maxRank = max($maxRank, (int) $rank);
+                        }
+                        if ($encontroAlgunaSiglaDelPlanEnHistorial && count($siglasVistas) > 0) {
+                            $ranks = array_keys($rankSiglas);
+                            rsort($ranks);
+                            foreach ($ranks as $rk) {
+                                $rk = (int) $rk;
+                                if ($rk <= 0) continue;
+                                $set = $rankSiglas[$rk] ?? [];
+                                $found = false;
+                                foreach ($set as $sigla => $_) {
+                                    if (isset($siglasVistas[$sigla])) {
+                                        $found = true;
+                                        break;
+                                    }
+                                }
+                                if ($found) {
+                                    $lastRank = $rk;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Si hay historial válido pero no pudimos determinar curso (sin ranks), fallar.
+                        if ($encontroAlgunaSiglaDelPlanEnHistorial && $lastRank <= 0 && $requestedRank > 1) {
+                            $newNotas = 'NO SE PUDO AUTOASIGNAR: NO SE PUDO DETERMINAR EL ÚLTIMO CURSO LLEVADO SEGÚN HISTORIAL';
+                            $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, $newNotas, self::VERIF_FAIL);
+                            $stats['total_anotados']++;
+                            continue;
+                        }
+
+                        if ($lastRank > 0) {
+                            $passedAllLast = true;
+                            $faltantesLast = [];
+                            foreach (($rankSiglas[$lastRank] ?? []) as $sigla => $_) {
+                                if (!isset($aprobadas[$sigla])) {
+                                    $passedAllLast = false;
+                                    $faltantesLast[] = $sigla;
+                                }
+                            }
+
+                            $expectedRank = $passedAllLast ? ($lastRank + 1) : $lastRank;
+
+                            // Si aprobó todo el último curso y ya no hay siguiente en el plan, entonces aprobó todo el plan.
+                            if ($expectedRank > $maxRank) {
+                                $allPlanApproved = true;
+                                foreach ($planSiglasAll as $sig => $_) {
+                                    if (!isset($aprobadas[$sig])) {
+                                        $allPlanApproved = false;
+                                        break;
+                                    }
+                                }
+                                if ($allPlanApproved) {
+                                    $newNotas = 'HISTORIAL INDICA QUE EL ESTUDIANTE APROBÓ TODO EL PLAN DE ESTUDIOS. NO SE AUTOASIGNÓ NINGUNA MATERIA.';
+                                    $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, $newNotas, self::VERIF_FAIL);
+                                    $stats['total_anotados']++;
+                                    continue;
+                                }
+                            }
+
+                            // Preferible no autoasignar si no coincide el curso esperado con el curso solicitado.
+                            if ($expectedRank !== $requestedRank) {
+                                $newNotas = 'NO SE PUDO AUTOASIGNAR: NO COINCIDE CURSO SOLICITADO CON EL HISTORIAL';
+                                $newNotas .= ' | ÚLTIMO CURSO (RANK): ' . $lastRank;
+                                $newNotas .= ' | CURSO ESPERADO (RANK): ' . $expectedRank;
+                                $newNotas .= ' | CURSO SOLICITADO: ' . $cursoSolicitado;
+                                if (!$passedAllLast && count($faltantesLast) > 0) {
+                                    sort($faltantesLast);
+                                    if (count($faltantesLast) > 12) {
+                                        $faltantesLast = array_slice($faltantesLast, 0, 12);
+                                        $faltantesLast[] = '...';
+                                    }
+                                    $newNotas .= ' | FALTANTES ÚLTIMO CURSO: ' . implode(', ', $faltantesLast);
+                                }
+                                $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, $newNotas, self::VERIF_FAIL);
+                                $stats['total_anotados']++;
+                                continue;
                             }
                         }
                     }
@@ -413,6 +509,7 @@ class AsignarMateriasPorHistorialService
                             $infoId,
                             $cursoSolicitado,
                             $parSolicitado,
+                            $turnoSolicitado,
                             $anioId,
                             $carrerasIds->all(),
                             [],
@@ -433,80 +530,61 @@ class AsignarMateriasPorHistorialService
                         continue;
                     }
 
-                    // Determinar el primer rank pendiente según el plan
-                    $pendingRank = 0;
-                    $maxRank = 0;
-                    foreach ($rankSiglas as $rank => $set) {
-                        $maxRank = max($maxRank, (int) $rank);
-                        // si falta al menos una sigla de ese rank, es pendiente
-                        foreach ($set as $sigla => $_) {
-                            if (!isset($aprobadas[$sigla])) {
-                                $pendingRank = (int) $rank;
-                                break 2;
-                            }
+                    // Caso especial: aprobó TODO el plan pero se reinscribe a 1ro superior.
+                    // (Se deja aquí como segunda barrera por seguridad.)
+                    $allPlanApproved = true;
+                    foreach ($planSiglasAll as $sig => $_) {
+                        if (!isset($aprobadas[$sig])) {
+                            $allPlanApproved = false;
+                            break;
                         }
                     }
-
-                    if ($pendingRank === 0) {
-                        // Todo aprobado (según plan)
-                        $pendingRank = $maxRank + 1;
-                    }
-
-                    // Caso especial: aprobó todo el plan pero se reinscribe a 1ro superior.
-                    // No se asigna nada y se deja constancia.
-                    if (
-                        $pendingRank === ($maxRank + 1)
-                        && $requestedRank === 1
-                        && stripos($cursoSolicitado, 'SUPERIOR') !== false
-                    ) {
+                    if ($allPlanApproved && $requestedRank === 1 && stripos($cursoSolicitado, 'SUPERIOR') !== false) {
                         $newNotas = 'HISTORIAL INDICA QUE EL ESTUDIANTE APROBÓ TODO EL PLAN DE ESTUDIOS, PERO SE REINSCRIBIÓ A 1RO SUPERIOR. NO SE AUTOASIGNÓ NINGUNA MATERIA.';
                         $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, $newNotas, self::VERIF_FAIL);
                         $stats['total_anotados']++;
                         continue;
                     }
 
-                    if ($pendingRank !== $requestedRank) {
-                        $cursoPendiente = null;
-                        foreach ($courseRank as $c => $rnk) {
-                            if ((int) $rnk === (int) $pendingRank) {
-                                $cursoPendiente = (string) $c;
-                                break;
-                            }
-                        }
-
-                        $faltantes = [];
-                        if (isset($rankSiglas[$pendingRank])) {
-                            foreach ($rankSiglas[$pendingRank] as $sigla => $_) {
+                    // Modo SUPERIOR: como son estudiantes de carrera, se valida "todo lo anterior".
+                    // Se toma el historial viejo (califhistorias) + el nuevo (calificaciones) ya consolidado en $aprobadas,
+                    // y se exige que estén aprobadas TODAS las siglas de cursos anteriores (rank < requestedRank).
+                    if ($modo === 'superior' && $requestedRank > 1) {
+                        $faltantesPrev = [];
+                        foreach ($rankSiglas as $rank => $set) {
+                            $rank = (int) $rank;
+                            if ($rank <= 0 || $rank >= $requestedRank) continue;
+                            foreach ($set as $sigla => $_) {
                                 if (!isset($aprobadas[$sigla])) {
-                                    $faltantes[] = $sigla;
+                                    $faltantesPrev[] = $sigla;
                                 }
                             }
                         }
-                        sort($faltantes);
-                        if (count($faltantes) > 12) {
-                            $faltantes = array_slice($faltantes, 0, 12);
-                            $faltantes[] = '...';
-                        }
 
-                        $newNotas = 'NO COINCIDE EL HISTORIAL CON EL CURSO SOLICITADO';
-                        if (!empty($cursoPendiente)) {
-                            $newNotas .= ' | CURSO PENDIENTE SEGÚN HISTORIAL: ' . $cursoPendiente;
+                        if (count($faltantesPrev) > 0) {
+                            $faltantesPrev = array_values(array_unique($faltantesPrev));
+                            sort($faltantesPrev);
+                            if (count($faltantesPrev) > 25) {
+                                $faltantesPrev = array_slice($faltantesPrev, 0, 25);
+                                $faltantesPrev[] = '...';
+                            }
+
+                            $newNotas = 'NO SE PUDO AUTOASIGNAR (SUPERIOR): HISTORIAL INCOMPLETO PARA EL PLAN SELECCIONADO';
+                            $newNotas .= ' | CURSO SOLICITADO: ' . $cursoSolicitado;
+                            $newNotas .= ' | FALTANTES EN CURSOS ANTERIORES: ' . implode(', ', $faltantesPrev);
+                            $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, $newNotas, self::VERIF_FAIL);
+                            $stats['total_anotados']++;
+                            continue;
                         }
-                        $newNotas .= ' | CURSO SOLICITADO: ' . $cursoSolicitado;
-                        if (count($faltantes) > 0) {
-                            $newNotas .= ' | FALTANTES: ' . implode(', ', $faltantes);
-                        }
-                        $this->anotarInfo($uuid, $infoId, $prevNotas, $prevVerif, $newNotas, self::VERIF_FAIL);
-                        $stats['total_anotados']++;
-                        continue;
                     }
 
-                    // Asignar SOLO materias del curso solicitado, que no estén aprobadas, y cumplan prerrequisitos
+                    // Asignar materias del curso solicitado según prerrequisitos del plan
                     $result = $this->asignarCursoDesdePlan(
                         $uuid,
                         $infoId,
                         $cursoSolicitado,
                         $parSolicitado,
+                        $turnoSolicitado,
                         $anioId,
                         $carrerasIds->all(),
                         array_keys($aprobadas),
@@ -570,6 +648,7 @@ class AsignarMateriasPorHistorialService
         int $infoId,
         string $cursoSolicitado,
         string $paraleloSolicitado,
+        string $turnoSolicitado,
         int $anioId,
         array $carrerasIds,
         array $siglasAprobadas,
@@ -601,14 +680,60 @@ class AsignarMateriasPorHistorialService
 
         $planIds = $plan->pluck('id')->map(fn ($x) => (int) $x)->values();
 
-        $matQ = DB::table('materias')
+        $matQBase = DB::table('materias')
             ->whereIn('plandeestudios_id', $planIds);
-        $this->paraleloWhere($matQ, 'Paralelo', $paraleloSolicitado);
+        $this->paraleloWhere($matQBase, 'Paralelo', $paraleloSolicitado);
+
+        // Validación de turno: el turno solicitado en la inscripción debe coincidir con el turno del curso (materias).
+        $turnoSolicitadoTrim = trim((string) $turnoSolicitado);
+        $turnosDisponibles = (clone $matQBase)
+            ->selectRaw("TRIM(COALESCE(Turno, '')) as Turno")
+            ->distinct()
+            ->pluck('Turno')
+            ->map(fn ($x) => trim((string) $x))
+            ->values()
+            ->all();
+
+        if ($turnoSolicitadoTrim === '') {
+            $msg = 'NO SE PUDO AUTOASIGNAR: INSCRIPCIÓN SIN TURNO';
+            $msg .= ' | CURSO: ' . trim($cursoSolicitado);
+            $msg .= ' | PARALELO: ' . trim($paraleloSolicitado);
+            if (count($turnosDisponibles) > 0) {
+                $muestra = array_slice($turnosDisponibles, 0, 10);
+                $muestra = array_map(fn ($t) => $t === '' ? 'SIN TURNO' : $t, $muestra);
+                if (count($turnosDisponibles) > 10) $muestra[] = '...';
+                $msg .= ' | TURNOS DISPONIBLES EN PARALELO: ' . implode(', ', $muestra);
+            }
+            $info = Infoestudiantesifas::query()->where('id', $infoId)->first();
+            $this->anotarInfo($loteUuid, $infoId, $info?->Notas, $info?->Verificacion, $msg, self::VERIF_FAIL);
+            return ['created' => 0, 'note_written' => true];
+        }
+
+        $matQ = clone $matQBase;
+        $matQ->whereRaw('TRIM(COALESCE(Turno, \'\')) = ?', [$turnoSolicitadoTrim]);
 
         $materias = $matQ->select(['id', 'plandeestudios_id'])->get()->keyBy('plandeestudios_id');
 
         if ($materias->count() === 0) {
+            $baseCount = (clone $matQBase)->count();
             $info = Infoestudiantesifas::query()->where('id', $infoId)->first();
+
+            if ($baseCount > 0) {
+                $msg = 'NO SE PUDO AUTOASIGNAR: TURNO NO COINCIDE CON EL CURSO/PARALELO';
+                $msg .= ' | CURSO: ' . trim($cursoSolicitado);
+                $msg .= ' | PARALELO: ' . trim($paraleloSolicitado);
+                $msg .= ' | TURNO SOLICITADO: ' . $turnoSolicitadoTrim;
+                if (count($turnosDisponibles) > 0) {
+                    $muestra = array_slice($turnosDisponibles, 0, 10);
+                    $muestra = array_map(fn ($t) => $t === '' ? 'SIN TURNO' : $t, $muestra);
+                    if (count($turnosDisponibles) > 10) $muestra[] = '...';
+                    $msg .= ' | TURNOS DISPONIBLES EN PARALELO: ' . implode(', ', $muestra);
+                }
+
+                $this->anotarInfo($loteUuid, $infoId, $info?->Notas, $info?->Verificacion, $msg, self::VERIF_FAIL);
+                return ['created' => 0, 'note_written' => true];
+            }
+
             $this->anotarInfo($loteUuid, $infoId, $info?->Notas, $info?->Verificacion, 'NO EXISTE EL PARALELO PARA ASIGNAR EN ESTE CURSO', self::VERIF_FAIL);
             return ['created' => 0, 'note_written' => true];
         }
