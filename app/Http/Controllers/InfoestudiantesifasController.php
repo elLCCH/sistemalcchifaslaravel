@@ -1673,7 +1673,7 @@ class InfoestudiantesifasController extends Controller
             'Categoria' => ['nullable', 'string', 'max:50'],
             'Turno' => ['nullable', 'string', 'max:20'],
             'Curso_Solicitado' => ['nullable', 'string', 'max:60'],
-            'Paralelo_Solicitado' => ['nullable', 'string', 'max:5'],
+            'Paralelo_Solicitado' => ['nullable', 'string', 'max:30'],
             'CantidadMateriasAsignadas' => ['nullable', 'integer'],
             'InstrumentoMusical' => ['nullable', 'string', 'max:100'],
             'InstrumentoMusicalSecundario' => ['nullable', 'string', 'max:100'],
