@@ -30,5 +30,8 @@ class AsistenciaSesion extends Model
         'qr_iniciado_at' => 'datetime',
         'qr_detenido_at' => 'datetime',
         'fecha' => 'date',
+        'tiempo_espera_minutos' => 'integer',
+        'minutos_falta' => 'integer',
+        'radio_metros' => 'integer',
     ];
 }
