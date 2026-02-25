@@ -217,7 +217,7 @@ class AsistenciaSesionController extends Controller
         $horaIngreso = $payload['hora_ingreso'] ?? date('Y-m-d H:i:s');
         $tiempoEspera = $payload['tiempo_espera_minutos'] ?? 10;
         $gpsRequerido = array_key_exists('gps_requerido', $payload) ? (int) $payload['gps_requerido'] : 1;
-        $radio = $payload['radio_metros'] ?? 15;
+        $radio = $payload['radio_metros'] ?? 150;
 
         // Si existe sesión diaria, devolverla. Si no, crear.
         $sesion = AsistenciaSesion::query()
@@ -411,7 +411,7 @@ class AsistenciaSesionController extends Controller
 
         $tiempoEspera = $payload['tiempo_espera_minutos'] ?? 10;
         $gpsRequerido = array_key_exists('gps_requerido', $payload) ? (int) $payload['gps_requerido'] : 1;
-        $radio = $payload['radio_metros'] ?? 15;
+        $radio = $payload['radio_metros'] ?? 150;
 
         $docenteId = $request->user()->id ?? null;
 
