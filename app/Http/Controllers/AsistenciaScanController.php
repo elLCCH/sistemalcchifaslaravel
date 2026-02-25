@@ -329,7 +329,7 @@ class AsistenciaScanController extends Controller
         }
 
         // Estado por tiempo
-        $minutos = now()->diffInMinutes($sesion->hora_ingreso);
+        $minutos = (int) abs(now()->diffInMinutes($sesion->hora_ingreso));
         $estado = ($minutos <= (int) $sesion->tiempo_espera_minutos) ? 'PRESENTE' : 'ATRASO';
 
         // Validación GPS
