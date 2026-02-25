@@ -53,13 +53,18 @@ class AsistenciaSesionController extends Controller
         $row = DB::table('aulas_virtuales as av')
             ->leftJoin('materias as m', 'm.id', '=', 'av.materias_id')
             ->leftJoin('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
+            ->leftJoin('carreras as c', 'c.id', '=', 'p.carreras_id')
             ->where('av.id', (int) $sesion->aulas_virtuales_id)
             ->first([
                 'av.materias_id as materia_id',
                 'm.ModoAsistencia as materia_modo_asistencia',
+                'm.Paralelo as paralelo',
+                'm.Turno as turno',
                 'p.ModoMateria as plande_modo_materia',
                 'p.NombreMateria as nombre_materia',
                 'p.SiglaMateria as sigla_materia',
+                'p.LvlCurso as lvl_curso',
+                'c.NombreCarrera as nombre_carrera',
             ]);
 
         $modo = $this->normModoAsistencia($row->materia_modo_asistencia ?? null);
@@ -70,6 +75,10 @@ class AsistenciaSesionController extends Controller
             'plande_modo_materia' => $row?->plande_modo_materia,
             'nombre_materia' => $row?->nombre_materia,
             'sigla_materia' => $row?->sigla_materia,
+            'paralelo' => $row?->paralelo,
+            'turno' => $row?->turno,
+            'lvl_curso' => $row?->lvl_curso,
+            'nombre_carrera' => $row?->nombre_carrera,
         ];
     }
 
@@ -205,7 +214,7 @@ class AsistenciaSesionController extends Controller
         $horaIngreso = $payload['hora_ingreso'] ?? date('Y-m-d H:i:s');
         $tiempoEspera = $payload['tiempo_espera_minutos'] ?? 10;
         $gpsRequerido = array_key_exists('gps_requerido', $payload) ? (int) $payload['gps_requerido'] : 1;
-        $radio = $payload['radio_metros'] ?? 150;
+        $radio = $payload['radio_metros'] ?? 10;
 
         // Si existe sesión diaria, devolverla. Si no, crear.
         $sesion = AsistenciaSesion::query()
@@ -262,6 +271,118 @@ class AsistenciaSesionController extends Controller
         ]);
     }
 
+    /**
+     * Lista todas las sesiones de asistencia de una materia específica (para el docente).
+     * Incluye conteos de estados y nombre de la materia.
+     */
+    public function listByMateria(Request $request, $materiaId)
+    {
+        $user = $request->user();
+        if (!$user || !($user instanceof Planteldocentes)) {
+            return response()->json(['ok' => false, 'message' => 'Solo docentes pueden consultar sesiones por materia.'], 403);
+        }
+
+        $materiaId = (int) $materiaId;
+        if ($materiaId <= 0) {
+            return response()->json(['ok' => false, 'message' => 'Materia inválida.'], 422);
+        }
+
+        // Obtener info de la materia
+        $mat = DB::table('materias as m')
+            ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+            ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+            ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+            ->where('m.id', $materiaId)
+            ->first([
+                'm.id as materia_id',
+                'm.ModoAsistencia as materia_modo_asistencia',
+                'm.Paralelo as paralelo',
+                'm.Turno as turno',
+                'p.ModoMateria as plande_modo_materia',
+                'p.NombreMateria as nombre_materia',
+                'p.SiglaMateria as sigla_materia',
+                'p.LvlCurso as lvl_curso',
+                'c.NombreCarrera as nombre_carrera',
+                'i.id as instituciones_id',
+            ]);
+
+        if (!$mat) {
+            return response()->json(['ok' => false, 'message' => 'Materia no encontrada.'], 404);
+        }
+
+        // Verificar que el docente pertenezca a la misma institución
+        $institucionId = (int) ($mat->instituciones_id ?? 0);
+        if ($institucionId <= 0 || (int) $user->instituciones_id !== $institucionId) {
+            return response()->json(['ok' => false, 'message' => 'No tienes acceso a esta materia.'], 403);
+        }
+
+        // Buscar aula(s) vinculadas a la materia
+        $aulas = AulaVirtual::query()
+            ->where('instituciones_id', $institucionId)
+            ->where('materias_id', $materiaId)
+            ->pluck('id');
+
+        $materiaInfo = [
+            'materia_id' => $materiaId,
+            'nombre_materia' => $mat->nombre_materia,
+            'sigla_materia' => $mat->sigla_materia,
+            'materia_modo_asistencia' => $this->normModoAsistencia($mat->materia_modo_asistencia),
+            'paralelo' => $mat->paralelo ?? null,
+            'turno' => $mat->turno ?? null,
+            'lvl_curso' => $mat->lvl_curso ?? null,
+            'nombre_carrera' => $mat->nombre_carrera ?? null,
+        ];
+
+        if ($aulas->isEmpty()) {
+            return response()->json([
+                'ok' => true,
+                'materia' => $materiaInfo,
+                'sesiones' => [],
+            ]);
+        }
+
+        // Obtener sesiones ordenadas por fecha descendente
+        $sesiones = AsistenciaSesion::query()
+            ->whereIn('aulas_virtuales_id', $aulas->all())
+            ->orderByDesc('fecha')
+            ->limit(200)
+            ->get();
+
+        // Para cada sesión, agregar conteos de asistencia
+        $sesionesConConteo = $sesiones->map(function ($s) {
+            $registros = AsistenciaRegistro::query()
+                ->where('asistencias_sesiones_id', (int) $s->id)
+                ->get(['estado_asistencia']);
+
+            $conteos = [
+                'PRESENTE' => 0,
+                'ATRASO' => 0,
+                'FALTA' => 0,
+                'PERMISO' => 0,
+            ];
+
+            foreach ($registros as $r) {
+                $e = strtoupper(trim((string) ($r->estado_asistencia ?? '')));
+                if (isset($conteos[$e])) {
+                    $conteos[$e]++;
+                }
+            }
+
+            $arr = $s->toArray();
+            // Asegurar formato Y-m-d para fecha (evitar ISO full date del cast)
+            $arr['fecha'] = $s->fecha ? $s->fecha->format('Y-m-d') : null;
+            $arr['conteos'] = $conteos;
+            $arr['total_registros'] = $registros->count();
+            return $arr;
+        });
+
+        return response()->json([
+            'ok' => true,
+            'materia' => $materiaInfo,
+            'sesiones' => $sesionesConConteo,
+        ]);
+    }
+
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -285,7 +406,7 @@ class AsistenciaSesionController extends Controller
 
         $tiempoEspera = $payload['tiempo_espera_minutos'] ?? 10;
         $gpsRequerido = array_key_exists('gps_requerido', $payload) ? (int) $payload['gps_requerido'] : 1;
-        $radio = $payload['radio_metros'] ?? 150;
+        $radio = $payload['radio_metros'] ?? 10;
 
         $docenteId = $request->user()->id ?? null;
 
@@ -531,6 +652,20 @@ class AsistenciaSesionController extends Controller
         return response()->json(['ok' => true, 'registro' => $registro]);
     }
 
+    /**
+     * Verifica si un estudiante tiene licencia vigente para la fecha dada.
+     */
+    private function estudianteTieneLicencia(int $infoestudiantesifasId, string $fecha): bool
+    {
+        $tabla = $this->licenciasTable();
+
+        return DB::table($tabla)
+            ->where('infoestudiantesifas_id', $infoestudiantesifasId)
+            ->where('fecha_inicio', '<=', $fecha)
+            ->where('fecha_fin', '>=', $fecha)
+            ->exists();
+    }
+
     public function cerrar(Request $request, $id)
     {
         $sesion = AsistenciaSesion::find($id);
@@ -558,6 +693,7 @@ class AsistenciaSesionController extends Controller
             }
 
             $participantes = $base->distinct()->get(['ie.id as infoestudiantesifas_id']);
+            $fechaSesion = (string) ($sesion->fecha ?? date('Y-m-d'));
 
             $totalMarcados = 0;
             $totalFalta = 0;
@@ -579,18 +715,36 @@ class AsistenciaSesionController extends Controller
                     continue;
                 }
 
-                AsistenciaRegistro::create([
-                    'asistencias_sesiones_id' => $sesion->id,
-                    'infoestudiantesifas_id' => $estudianteId,
-                    'estado_asistencia' => 'FALTA',
-                    'metodo' => 'SISTEMA',
-                    'fecha_registro' => now(),
-                    'gps_valido' => 0,
-                    'estado' => 'ACTIVO',
-                    'visibilidad' => 'VISIBLE',
-                    'observacion' => 'Cierre de sesión (no registró asistencia)',
-                ]);
-                $totalFalta++;
+                // Auto-aplicar licencia si el estudiante tiene una vigente para la fecha de la sesión
+                $tieneLicencia = $this->estudianteTieneLicencia((int) $estudianteId, $fechaSesion);
+
+                if ($tieneLicencia) {
+                    AsistenciaRegistro::create([
+                        'asistencias_sesiones_id' => $sesion->id,
+                        'infoestudiantesifas_id' => $estudianteId,
+                        'estado_asistencia' => 'PERMISO',
+                        'metodo' => 'SISTEMA',
+                        'fecha_registro' => now(),
+                        'gps_valido' => 0,
+                        'estado' => 'ACTIVO',
+                        'visibilidad' => 'VISIBLE',
+                        'observacion' => 'Licencia aplicada automáticamente al cerrar sesión',
+                    ]);
+                    $totalPermiso++;
+                } else {
+                    AsistenciaRegistro::create([
+                        'asistencias_sesiones_id' => $sesion->id,
+                        'infoestudiantesifas_id' => $estudianteId,
+                        'estado_asistencia' => 'FALTA',
+                        'metodo' => 'SISTEMA',
+                        'fecha_registro' => now(),
+                        'gps_valido' => 0,
+                        'estado' => 'ACTIVO',
+                        'visibilidad' => 'VISIBLE',
+                        'observacion' => 'Cierre de sesión (no registró asistencia)',
+                    ]);
+                    $totalFalta++;
+                }
             }
 
             return [

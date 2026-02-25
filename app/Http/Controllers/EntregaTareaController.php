@@ -6,8 +6,10 @@ use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\Calificaciones;
 use App\Models\EntregaTarea;
 use App\Models\Infoestudiantesifas;
+use App\Models\Materias;
 use App\Models\Planteladministrativos;
 use App\Models\Planteldocentes;
+use App\Models\Planteldocentesmaterias;
 use App\Models\Tarea;
 use App\Models\Usuarioslcchs;
 use App\Models\Estudiantesifas;
@@ -20,6 +22,50 @@ class EntregaTareaController extends Controller
     public function __construct()
     {
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
+    private function modoMateria(int $materiaId): string
+    {
+        $modo = Materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->where('materias.id', (int) $materiaId)
+            ->value('plandeestudios.ModoMateria');
+
+        return strtoupper(trim((string) ($modo ?? '')));
+    }
+
+    private function docenteAsignadoMateria(Planteldocentes $doc, int $materiaId): bool
+    {
+        $ok = Planteldocentesmaterias::query()
+            ->where('planteldocentes_id', (int) $doc->id)
+            ->where('materias_id', (int) $materiaId)
+            ->exists();
+        if ($ok) return true;
+
+        $modo = $this->modoMateria($materiaId);
+        if ($modo === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_id', (int) $doc->id)
+                ->exists();
+        }
+        if ($modo === 'MODO PRÁCTICA DE CONJUNTOS') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_idPC', (int) $doc->id)
+                ->exists();
+        }
+        if ($modo === 'MODO INSTRUMENTO COMPLEMENTARIO') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_idOtros', (int) $doc->id)
+                ->exists();
+        }
+
+        return false;
     }
 
     public function index(Request $request, $tareaId)
@@ -39,18 +85,30 @@ class EntregaTareaController extends Controller
             return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
         }
 
-        // docentes/admins pueden ver todas las entregas dentro de su institución
-        if ($user instanceof Planteldocentes || $user instanceof Planteladministrativos) {
+        // admins: pueden ver todas las entregas dentro de su institución
+        if ($user instanceof Planteladministrativos) {
             if ((int) $user->instituciones_id !== (int) $aula->instituciones_id) {
                 return response()->json(['success' => false, 'message' => 'No permitido'], 403);
             }
-            $data = EntregaTarea::query()->where('tareas_id', (int) $tarea->id)->orderByDesc('id')->get();
+            $data = $this->entregasConEstudiante((int) $tarea->id);
+            return response()->json(['success' => true, 'data' => $data]);
+        }
+
+        // docentes: solo si está asignado a la materia del aula
+        if ($user instanceof Planteldocentes) {
+            if ((int) $user->instituciones_id !== (int) $aula->instituciones_id) {
+                return response()->json(['success' => false, 'message' => 'No permitido'], 403);
+            }
+            if (!$this->docenteAsignadoMateria($user, (int) $aula->materias_id)) {
+                return response()->json(['success' => false, 'message' => 'No permitido'], 403);
+            }
+            $data = $this->entregasConEstudiante((int) $tarea->id);
             return response()->json(['success' => true, 'data' => $data]);
         }
 
         // superadmin: todo
         if ($user instanceof Usuarioslcchs) {
-            $data = EntregaTarea::query()->where('tareas_id', (int) $tarea->id)->orderByDesc('id')->get();
+            $data = $this->entregasConEstudiante((int) $tarea->id);
             return response()->json(['success' => true, 'data' => $data]);
         }
 
@@ -66,6 +124,15 @@ class EntregaTareaController extends Controller
                 return response()->json(['success' => true, 'data' => []]);
             }
 
+            $estaEnMateria = Calificaciones::query()
+                ->where('infoestudiantesifas_id', (int) $infoId)
+                ->where('materias_id', (int) $aula->materias_id)
+                ->exists();
+
+            if (!$estaEnMateria) {
+                return response()->json(['success' => false, 'message' => 'No permitido'], 403);
+            }
+
             $row = EntregaTarea::query()
                 ->where('tareas_id', (int) $tarea->id)
                 ->where('infoestudiantesifas_id', (int) $infoId)
@@ -75,6 +142,40 @@ class EntregaTareaController extends Controller
         }
 
         return response()->json(['success' => false, 'message' => 'Tipo de usuario no soportado'], 403);
+    }
+
+    private function entregasConEstudiante(int $tareaId)
+    {
+        $entregas = EntregaTarea::query()
+            ->with('calificacion')
+            ->where('tareas_id', $tareaId)
+            ->orderByDesc('id')
+            ->get();
+
+        $infoIds = $entregas->pluck('infoestudiantesifas_id')->filter()->unique()->values();
+
+        $infos = Infoestudiantesifas::query()
+            ->whereIn('id', $infoIds)
+            ->get()
+            ->keyBy('id');
+
+        $estudianteIds = $infos->pluck('estudiantesifas_id')->filter()->unique()->values();
+
+        $estudiantes = Estudiantesifas::query()
+            ->whereIn('id', $estudianteIds)
+            ->get(['id', 'Nombres', 'Apellidos', 'foto'])
+            ->keyBy('id');
+
+        return $entregas->map(function ($entrega) use ($infos, $estudiantes) {
+            $info = $infos->get($entrega->infoestudiantesifas_id);
+            $est  = $info ? $estudiantes->get($info->estudiantesifas_id) : null;
+
+            $entrega->estudiante_nombres   = $est->Nombres ?? null;
+            $entrega->estudiante_apellidos  = $est->Apellidos ?? null;
+            $entrega->estudiante_foto       = $est->foto ?? null;
+
+            return $entrega;
+        });
     }
 
     public function submit(Request $request, $tareaId)

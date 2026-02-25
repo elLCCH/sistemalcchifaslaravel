@@ -5,6 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\AulaParticipante;
 use App\Models\AulaVirtual;
+use App\Models\Calificaciones;
+use App\Models\Estudiantesifas;
+use App\Models\Infoestudiantesifas;
+use App\Models\Materias;
+use App\Models\Planteldocentesmaterias;
 use App\Models\PublicacionAula;
 use App\Models\Tarea;
 use App\Models\Planteladministrativos;
@@ -35,15 +40,93 @@ class PublicacionAulaController extends Controller
         return 'OTRO';
     }
 
-    private function canPublicar($user, AulaVirtual $aula): bool
+    private function modoMateria(int $materiaId): string
     {
-        if ($user instanceof Usuarioslcchs) {
-            return true;
+        $modo = Materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->where('materias.id', (int) $materiaId)
+            ->value('plandeestudios.ModoMateria');
+
+        return strtoupper(trim((string) ($modo ?? '')));
+    }
+
+    private function docenteAsignadoMateria(Planteldocentes $doc, int $materiaId): bool
+    {
+        $ok = Planteldocentesmaterias::query()
+            ->where('planteldocentes_id', (int) $doc->id)
+            ->where('materias_id', (int) $materiaId)
+            ->exists();
+        if ($ok) return true;
+
+        $modo = $this->modoMateria($materiaId);
+        if ($modo === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_id', (int) $doc->id)
+                ->exists();
+        }
+        if ($modo === 'MODO PRÁCTICA DE CONJUNTOS') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_idPC', (int) $doc->id)
+                ->exists();
+        }
+        if ($modo === 'MODO INSTRUMENTO COMPLEMENTARIO') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_idOtros', (int) $doc->id)
+                ->exists();
         }
 
-        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
-            return false;
+        return false;
+    }
+
+    private function estudianteInscritoMateria(Estudiantesifas $est, int $materiaId, int $institucionId): bool
+    {
+        $infoId = (int) Infoestudiantesifas::query()
+            ->where('estudiantesifas_id', (int) $est->id)
+            ->where('instituciones_id', (int) $institucionId)
+            ->orderByDesc('id')
+            ->value('id');
+
+        if ($infoId <= 0) return false;
+
+        return Calificaciones::query()
+            ->where('infoestudiantesifas_id', (int) $infoId)
+            ->where('materias_id', (int) $materiaId)
+            ->exists();
+    }
+
+    private function canViewAula($user, AulaVirtual $aula): bool
+    {
+        if ($user instanceof Usuarioslcchs) return true;
+
+        $inst = (int) ($aula->instituciones_id ?? 0);
+        $materiaId = (int) ($aula->materias_id ?? 0);
+        if ($inst <= 0 || $materiaId <= 0) return false;
+
+        if ($user instanceof Planteladministrativos) {
+            return (int) $user->instituciones_id === $inst;
         }
+
+        if ($user instanceof Planteldocentes) {
+            if ((int) $user->instituciones_id !== $inst) return false;
+            return $this->docenteAsignadoMateria($user, $materiaId);
+        }
+
+        if ($user instanceof Estudiantesifas) {
+            return $this->estudianteInscritoMateria($user, $materiaId, $inst);
+        }
+
+        return false;
+    }
+
+    private function canPublicar($user, AulaVirtual $aula): bool
+    {
+        if (!$this->canViewAula($user, $aula)) return false;
 
         // administrativos: permitido por defecto
         if ($user instanceof Planteladministrativos) {
@@ -74,7 +157,7 @@ class PublicacionAulaController extends Controller
             return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
         }
 
-        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
+        if (!$this->canViewAula($user, $aula)) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 

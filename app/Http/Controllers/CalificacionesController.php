@@ -9,6 +9,7 @@ use App\Models\Planteladministrativos;
 use App\Models\Planteldocentes;
 use App\Models\Usuarioslcchs;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 
 use Illuminate\Routing\Controller;
@@ -41,12 +42,49 @@ class CalificacionesController extends Controller
     {
         if (!$this->isDocenteUser($user)) return;
 
+        // 1) Asignación explícita (modo normal)
         $ok = DB::table('planteldocentesmaterias')
             ->where('planteldocentes_id', (int) $user->id)
             ->where('materias_id', $materiaId)
             ->exists();
 
-        if (!$ok) {
+        if ($ok) return;
+
+        // 2) Asignación por inscripción (usado por Perfil) para modos especiales.
+        // En estos modos, el docente se vincula vía infoestudiantesifas.planteldocadmins_id*
+        // y puede no existir registro en planteldocentesmaterias.
+        $modoMateria = DB::table('materias')
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->where('materias.id', $materiaId)
+            ->value('plandeestudios.ModoMateria');
+
+        $modoMateria = trim((string) ($modoMateria ?? ''));
+        if ($modoMateria === '') {
+            abort(404);
+        }
+
+        $allowed = false;
+        if ($modoMateria === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
+            $allowed = DB::table('calificaciones as cal')
+                ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+                ->where('cal.materias_id', $materiaId)
+                ->where('info.planteldocadmins_id', (int) $user->id)
+                ->exists();
+        } elseif ($modoMateria === 'MODO PRÁCTICA DE CONJUNTOS') {
+            $allowed = DB::table('calificaciones as cal')
+                ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+                ->where('cal.materias_id', $materiaId)
+                ->where('info.planteldocadmins_idPC', (int) $user->id)
+                ->exists();
+        } elseif ($modoMateria === 'MODO INSTRUMENTO COMPLEMENTARIO') {
+            $allowed = DB::table('calificaciones as cal')
+                ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+                ->where('cal.materias_id', $materiaId)
+                ->where('info.planteldocadmins_idOtros', (int) $user->id)
+                ->exists();
+        }
+
+        if (!$allowed) {
             abort(404);
         }
     }
@@ -109,6 +147,80 @@ class CalificacionesController extends Controller
 
         return $inst === null ? null : (int) $inst;
     }
+
+    private function makeMateriaToken($user, int $materiaId): string
+    {
+        $payload = [
+            'mid' => (int) $materiaId,
+            'uid' => (int) ($user->id ?? 0),
+            // 24h (suficiente para navegación desde Perfil)
+            'exp' => time() + (24 * 60 * 60),
+        ];
+
+        return Crypt::encryptString(json_encode($payload));
+    }
+
+    private function decodeMateriaToken(string $token): ?array
+    {
+        try {
+            $json = Crypt::decryptString($token);
+            $arr = json_decode($json, true);
+            if (!is_array($arr)) return null;
+            $mid = (int) ($arr['mid'] ?? 0);
+            $uid = (int) ($arr['uid'] ?? 0);
+            $exp = (int) ($arr['exp'] ?? 0);
+            if ($mid <= 0 || $uid <= 0 || $exp <= 0) return null;
+            return ['mid' => $mid, 'uid' => $uid, 'exp' => $exp];
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    public function materiaToken(Request $request, $materiaId)
+    {
+        $user = $request->user();
+        if (!$user) abort(404);
+
+        $isSuperAdmin = $this->isSuperAdmin($user);
+
+        $materiaId = (int) $materiaId;
+        if ($materiaId <= 0) abort(404);
+
+        $materiaInstitucionId = $this->getInstitucionIdFromMateria($materiaId);
+        if (!$materiaInstitucionId) abort(404);
+
+        if (!$isSuperAdmin && (int) $user->instituciones_id !== (int) $materiaInstitucionId) {
+            abort(404);
+        }
+
+        // Reusar la misma regla de acceso docente (asignación explícita o por inscripción en modos especiales)
+        $this->ensureDocenteAsignado($user, $materiaId);
+
+        $token = $this->makeMateriaToken($user, $materiaId);
+        return response()->json(['token' => $token]);
+    }
+
+    public function byMateriaToken(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) abort(404);
+
+        $token = trim((string) $request->query('t', ''));
+        if ($token === '') abort(404);
+
+        $payload = $this->decodeMateriaToken($token);
+        if (!$payload) abort(404);
+
+        if ((int) ($user->id ?? 0) !== (int) $payload['uid']) {
+            abort(404);
+        }
+
+        if (time() > (int) $payload['exp']) {
+            abort(404);
+        }
+
+        return $this->byMateria($request, (int) $payload['mid']);
+    }
     //#region Inicio Controller de Crud PHP de calificaciones
     public function index(Request $request)
     {
@@ -139,6 +251,11 @@ class CalificacionesController extends Controller
         $user = $request->user();
         if (!$user) {
             abort(404);
+        }
+
+        // Docente no debe acceder por inscripción (podría ver materias ajenas).
+        if ($this->isDocenteUser($user)) {
+            return response()->json(['message' => 'Acceso no permitido'], 403);
         }
 
         $isSuperAdmin = $this->isSuperAdmin($user);
@@ -208,6 +325,11 @@ class CalificacionesController extends Controller
         $user = $request->user();
         if (!$user) {
             return response()->json(['message' => 'Usuario inválido'], 422);
+        }
+
+        // Docente no debe editar por inscripción (podría modificar materias ajenas).
+        if ($this->isDocenteUser($user)) {
+            return response()->json(['message' => 'Acceso no permitido'], 403);
         }
 
         $isSuperAdmin = $this->isSuperAdmin($user);
@@ -367,10 +489,12 @@ class CalificacionesController extends Controller
             ->select([
                 'materias.id',
                 'materias.Paralelo as MateriaParalelo',
+                'materias.Turno as Turno',
                 'materias.EstadoHabilitacion',
                 'plandeestudios.NombreMateria',
                 'plandeestudios.SiglaMateria',
                 'plandeestudios.LvlCurso',
+                'plandeestudios.ModoMateria as ModoMateria',
                 'anios.Anio',
                 'carreras.CantidadEvaluaciones',
                 'carreras.LimiteMaxTeorico',
@@ -411,6 +535,41 @@ class CalificacionesController extends Controller
             ->orderBy('planteldocentes.Nombres')
             ->get();
 
+        // Fallback para modos especiales: los docentes pueden venir por inscripción
+        // (infoestudiantesifas.planteldocadmins_id*) y no existir en planteldocentesmaterias.
+        if ($docentes->count() === 0) {
+            $modoMateria = trim((string) ($materia->ModoMateria ?? ''));
+            $docCol = null;
+            if ($modoMateria === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
+                $docCol = 'info.planteldocadmins_id';
+            } elseif ($modoMateria === 'MODO PRÁCTICA DE CONJUNTOS') {
+                $docCol = 'info.planteldocadmins_idPC';
+            } elseif ($modoMateria === 'MODO INSTRUMENTO COMPLEMENTARIO') {
+                $docCol = 'info.planteldocadmins_idOtros';
+            }
+
+            if ($docCol) {
+                $docentes = DB::table('calificaciones as cal')
+                    ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+                    ->join('planteldocentes as d', function ($join) use ($docCol) {
+                        $join->on(DB::raw($docCol), '=', 'd.id');
+                    })
+                    ->where('cal.materias_id', $materiaId)
+                    ->where('d.instituciones_id', $materiaInstitucionId)
+                    ->distinct()
+                    ->select([
+                        'd.id',
+                        'd.Nombres',
+                        'd.Apellidos',
+                    ])
+                    ->orderByRaw("(d.Apellidos IS NULL OR TRIM(d.Apellidos)='') DESC")
+                    ->orderBy('d.Apellidos')
+                    ->orderByRaw("(d.Nombres IS NULL OR TRIM(d.Nombres)='') DESC")
+                    ->orderBy('d.Nombres')
+                    ->get();
+            }
+        }
+
         $query = Calificaciones::query()
             ->join('infoestudiantesifas', 'calificaciones.infoestudiantesifas_id', '=', 'infoestudiantesifas.id')
             ->join('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
@@ -423,6 +582,7 @@ class CalificacionesController extends Controller
             ->where('infoestudiantesifas.instituciones_id', $materiaInstitucionId)
             ->select([
                 'calificaciones.*',
+                'estudiantesifas.id as estudiantesifas_id',
                 'estudiantesifas.Ap_Paterno',
                 'estudiantesifas.Ap_Materno',
                 'estudiantesifas.Nombre as Nombres',
@@ -444,6 +604,34 @@ class CalificacionesController extends Controller
             ->orderByRaw("(estudiantesifas.Nombre IS NULL OR TRIM(estudiantesifas.Nombre)='') DESC")
             ->orderBy('estudiantesifas.Nombre')
             ->orderBy('calificaciones.id');
+
+        // Docente: en los 3 modos especiales solo debe ver SUS estudiantes (asignación por inscripción)
+        if ($this->isDocenteUser($user)) {
+            $modoMateria = trim((string) ($materia->ModoMateria ?? ''));
+            if ($modoMateria === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
+                $query->where('infoestudiantesifas.planteldocadmins_id', (int) $user->id);
+            } elseif ($modoMateria === 'MODO PRÁCTICA DE CONJUNTOS') {
+                $query->where('infoestudiantesifas.planteldocadmins_idPC', (int) $user->id);
+            } elseif ($modoMateria === 'MODO INSTRUMENTO COMPLEMENTARIO') {
+                $query->where('infoestudiantesifas.planteldocadmins_idOtros', (int) $user->id);
+            }
+        }
+
+        // Admin/superadmin: puede filtrar por docente (opcional) en modos especiales.
+        // Esto sirve para generar/visualizar por un docente específico sin mezclar estudiantes.
+        if ($this->isAdminUser($user)) {
+            $docenteId = (int) $request->query('docente_id', 0);
+            if ($docenteId > 0) {
+                $modoMateria = trim((string) ($materia->ModoMateria ?? ''));
+                if ($modoMateria === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
+                    $query->where('infoestudiantesifas.planteldocadmins_id', $docenteId);
+                } elseif ($modoMateria === 'MODO PRÁCTICA DE CONJUNTOS') {
+                    $query->where('infoestudiantesifas.planteldocadmins_idPC', $docenteId);
+                } elseif ($modoMateria === 'MODO INSTRUMENTO COMPLEMENTARIO') {
+                    $query->where('infoestudiantesifas.planteldocadmins_idOtros', $docenteId);
+                }
+            }
+        }
 
         $perPage = (int) $request->query('per_page', 200);
         if ($perPage < 1) {
@@ -743,6 +931,7 @@ class CalificacionesController extends Controller
             ->where('calificaciones.id', (int) $id)
             ->select([
                 'calificaciones.*',
+                'calificaciones.materias_id as materias_id',
                 'infoestudiantesifas.instituciones_id as info_instituciones_id',
                 'carreras.instituciones_id as materia_instituciones_id',
             ])
@@ -761,6 +950,8 @@ class CalificacionesController extends Controller
         if (!$isSuperAdmin && (int) $user->instituciones_id !== $infoInst) {
             abort(404);
         }
+
+        $this->ensureDocenteAsignado($user, (int) ($row->materias_id ?? 0));
 
         unset($row->info_instituciones_id, $row->materia_instituciones_id);
         return response()->json(['data' => $row]);
@@ -800,6 +991,7 @@ class CalificacionesController extends Controller
             ->where('calificaciones.id', $id)
             ->select([
                 'calificaciones.id',
+                'calificaciones.materias_id as materias_id',
                 'infoestudiantesifas.instituciones_id as info_instituciones_id',
                 'carreras.instituciones_id as materia_instituciones_id',
             ])
@@ -818,6 +1010,8 @@ class CalificacionesController extends Controller
         if (!$isSuperAdmin && (int) $user->instituciones_id !== $infoInst) {
             abort(404);
         }
+
+        $this->ensureDocenteAsignado($user, (int) ($row->materias_id ?? 0));
 
         $payload = $validated;
         unset($payload['id']);
@@ -851,6 +1045,7 @@ class CalificacionesController extends Controller
             ->where('calificaciones.id', $id)
             ->select([
                 'calificaciones.id',
+                'calificaciones.materias_id as materias_id',
                 'infoestudiantesifas.instituciones_id as info_instituciones_id',
                 'carreras.instituciones_id as materia_instituciones_id',
             ])
@@ -869,6 +1064,8 @@ class CalificacionesController extends Controller
         if (!$isSuperAdmin && (int) $user->instituciones_id !== $infoInst) {
             return response()->json(['message' => 'Acceso no permitido'], 403);
         }
+
+        $this->ensureDocenteAsignado($user, (int) ($row->materias_id ?? 0));
 
         Calificaciones::query()
             ->where('id', $id)

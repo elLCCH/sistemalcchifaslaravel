@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\AulaParticipante;
 use App\Models\AulaVirtual;
+use App\Models\Calificaciones;
 use App\Models\Infoestudiantesifas;
+use App\Models\Materias;
 use App\Models\Planteladministrativos;
 use App\Models\Planteldocentes;
 use App\Models\Planteldocentesmaterias;
@@ -18,6 +20,50 @@ class AulaParticipanteController extends Controller
     public function __construct()
     {
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
+    private function modoMateria(int $materiaId): string
+    {
+        $modo = Materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->where('materias.id', (int) $materiaId)
+            ->value('plandeestudios.ModoMateria');
+
+        return strtoupper(trim((string) ($modo ?? '')));
+    }
+
+    private function docenteAsignadoMateria(Planteldocentes $doc, int $materiaId): bool
+    {
+        $ok = Planteldocentesmaterias::query()
+            ->where('planteldocentes_id', (int) $doc->id)
+            ->where('materias_id', (int) $materiaId)
+            ->exists();
+        if ($ok) return true;
+
+        $modo = $this->modoMateria($materiaId);
+        if ($modo === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_id', (int) $doc->id)
+                ->exists();
+        }
+        if ($modo === 'MODO PRÁCTICA DE CONJUNTOS') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_idPC', (int) $doc->id)
+                ->exists();
+        }
+        if ($modo === 'MODO INSTRUMENTO COMPLEMENTARIO') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_idOtros', (int) $doc->id)
+                ->exists();
+        }
+
+        return false;
     }
 
     private function canAdministrarAula($user, AulaVirtual $aula): bool
@@ -48,10 +94,7 @@ class AulaParticipanteController extends Controller
                 return true;
             }
 
-            return Planteldocentesmaterias::query()
-                ->where('planteldocentes_id', (int) $user->id)
-                ->where('materias_id', (int) $aula->materias_id)
-                ->exists();
+            return $this->docenteAsignadoMateria($user, (int) $aula->materias_id);
         }
 
         return false;
@@ -69,7 +112,7 @@ class AulaParticipanteController extends Controller
             return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
         }
 
-        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $user->instituciones_id !== (int) $aula->instituciones_id) {
+        if (!$this->canAdministrarAula($user, $aula)) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 

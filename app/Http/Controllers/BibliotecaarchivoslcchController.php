@@ -17,6 +17,22 @@ class BibliotecaarchivoslcchController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        $categoriaParam = trim((string) $request->query('categoria'));
+
+        // Para DOCUMENTOS_PUBLICOS: mezclar TODAS las instituciones y traer logo.
+        if (strtoupper($categoriaParam) === 'DOCUMENTOS_PUBLICOS') {
+            $query = Bibliotecaarchivoslcch::query()
+                ->leftJoin('instituciones', 'bibliotecaarchivoslcch.institucion_id', '=', 'instituciones.id')
+                ->select('bibliotecaarchivoslcch.*', 'instituciones.Logo as institucion_logo', 'instituciones.Nombre as institucion_nombre')
+                ->where('bibliotecaarchivoslcch.categoria', 'DOCUMENTOS_PUBLICOS')
+                ->when($request->query('visibilidad'), function ($q) use ($request) {
+                    $q->where('bibliotecaarchivoslcch.visibilidad', (string) $request->query('visibilidad'));
+                })
+                ->orderByDesc('bibliotecaarchivoslcch.fecha')
+                ->orderByDesc('bibliotecaarchivoslcch.id');
+
+            return response()->json(['data' => $query->get()]);
+        }
 
         $query = Bibliotecaarchivoslcch::query()
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
@@ -25,14 +41,22 @@ class BibliotecaarchivoslcchController extends Controller
             ->when(empty($user?->instituciones_id) && $request->query('institucion_id'), function ($q) use ($request) {
                 $q->where('institucion_id', (int) $request->query('institucion_id'));
             })
-            ->when($request->query('categoria'), function ($q) use ($request) {
-                $q->where('categoria', 'LIKE', '%' . trim((string) $request->query('categoria')) . '%');
+            ->when(!empty($categoriaParam), function ($q) use ($categoriaParam) {
+                $q->where('categoria', 'LIKE', '%' . $categoriaParam . '%');
             })
             ->when($request->query('visibilidad'), function ($q) use ($request) {
                 $q->where('visibilidad', (string) $request->query('visibilidad'));
             })
             ->orderByDesc('fecha')
             ->orderByDesc('id');
+
+        // Si es docente, filtrar solo sus propios planes.
+        if ($this->esDocente($user) && strtoupper($categoriaParam) === 'PLAN') {
+            $nombreDocente = trim(($user->Apellidos ?? '') . ' ' . ($user->Nombres ?? ''));
+            if (!empty($nombreDocente)) {
+                $query->where('publicado_por', $nombreDocente);
+            }
+        }
 
         return response()->json(['data' => $query->get()]);
     }
@@ -57,9 +81,14 @@ class BibliotecaarchivoslcchController extends Controller
     {
         $user = $request->user();
 
+        // Si es docente, solo puede crear documentos con categoria=PLAN.
+        if ($this->esDocente($user)) {
+            $request->merge(['categoria' => 'PLAN']);
+        }
+
         $validated = $request->validate([
             'institucion_id' => ['nullable', 'integer'],
-            'categoria' => ['nullable', 'string', 'max:80'],
+            'categoria' => ['required', 'string', 'max:80', 'in:PLAN,DOCUMENTOS_ADMINISTRATIVOS,DOCUMENTOS_PUBLICOS'],
             'nombre_documento' => ['required', 'string', 'max:150'],
             'fecha' => ['nullable', 'date'],
             'archivo' => ['required', 'string', 'max:300'],
@@ -77,6 +106,13 @@ class BibliotecaarchivoslcchController extends Controller
 
         if (empty($validated['institucion_id'])) {
             return response()->json(['error' => 'institucion_id es requerido'], 422);
+        }
+
+        // Auto-llenar campos para docentes.
+        if ($this->esDocente($user)) {
+            $validated['publicado_por'] = trim(($user->Apellidos ?? '') . ' ' . ($user->Nombres ?? ''));
+            $validated['dirigido'] = 'PLANTEL INSTITUCIONAL';
+            $validated['fecha'] = now()->toDateString();
         }
 
         $item = Bibliotecaarchivoslcch::create($validated);
@@ -97,6 +133,17 @@ class BibliotecaarchivoslcchController extends Controller
             return response()->json(['error' => 'Documento fuera de su institución'], 403);
         }
 
+        // Docente solo puede editar sus propios PLAN.
+        if ($this->esDocente($user)) {
+            if (strtoupper(trim($item->categoria ?? '')) !== 'PLAN') {
+                return response()->json(['error' => 'No tiene permiso para editar este documento'], 403);
+            }
+            $nombreDocente = trim(($user->Apellidos ?? '') . ' ' . ($user->Nombres ?? ''));
+            if (trim($item->publicado_por ?? '') !== $nombreDocente) {
+                return response()->json(['error' => 'Solo puede editar sus propios planes'], 403);
+            }
+        }
+
         $validated = $request->validate([
             'categoria' => ['nullable', 'string', 'max:80'],
             'nombre_documento' => ['nullable', 'string', 'max:150'],
@@ -108,6 +155,11 @@ class BibliotecaarchivoslcchController extends Controller
             'dirigido' => ['nullable', 'string', 'max:120'],
             'descripcion' => ['nullable', 'string'],
         ]);
+
+        // Docente no puede cambiar la categoría.
+        if ($this->esDocente($user)) {
+            unset($validated['categoria']);
+        }
 
         // No permitir cambiar institución desde update.
         unset($validated['institucion_id']);
@@ -131,8 +183,28 @@ class BibliotecaarchivoslcchController extends Controller
             return response()->json(['error' => 'Documento fuera de su institución'], 403);
         }
 
+        // Docente solo puede eliminar sus propios PLAN.
+        if ($this->esDocente($user)) {
+            if (strtoupper(trim($item->categoria ?? '')) !== 'PLAN') {
+                return response()->json(['error' => 'No tiene permiso para eliminar este documento'], 403);
+            }
+            $nombreDocente = trim(($user->Apellidos ?? '') . ' ' . ($user->Nombres ?? ''));
+            if (trim($item->publicado_por ?? '') !== $nombreDocente) {
+                return response()->json(['error' => 'Solo puede eliminar sus propios planes'], 403);
+            }
+        }
+
         $item->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Determina si el usuario autenticado es docente.
+     */
+    private function esDocente($user): bool
+    {
+        if (!$user) return false;
+        return $user instanceof \App\Models\Planteldocentes;
     }
 }

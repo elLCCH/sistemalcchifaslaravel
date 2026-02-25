@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\AulaParticipante;
 use App\Models\AulaVirtual;
+use App\Models\Calificaciones;
+use App\Models\Infoestudiantesifas;
 use App\Models\Materias;
 use App\Models\Planteladministrativos;
 use App\Models\Planteldocentes;
@@ -21,6 +23,246 @@ class AulaVirtualController extends Controller
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
 
+    private function materiaInstitucionId(int $materiaId): ?int
+    {
+        $inst = Materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('materias.id', (int) $materiaId)
+            ->value('carreras.instituciones_id');
+
+        return $inst ? (int) $inst : null;
+    }
+
+    private function modoMateria(int $materiaId): string
+    {
+        $modo = Materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->where('materias.id', (int) $materiaId)
+            ->value('plandeestudios.ModoMateria');
+
+        return strtoupper(trim((string) ($modo ?? '')));
+    }
+
+    private function docenteAsignadoMateria(Planteldocentes $doc, int $materiaId): bool
+    {
+        // Asignación explícita
+        $ok = Planteldocentesmaterias::query()
+            ->where('planteldocentes_id', (int) $doc->id)
+            ->where('materias_id', (int) $materiaId)
+            ->exists();
+        if ($ok) return true;
+
+        // Modos especiales: asignación por inscripción
+        $modo = $this->modoMateria($materiaId);
+        if ($modo === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_id', (int) $doc->id)
+                ->exists();
+        }
+        if ($modo === 'MODO PRÁCTICA DE CONJUNTOS') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_idPC', (int) $doc->id)
+                ->exists();
+        }
+        if ($modo === 'MODO INSTRUMENTO COMPLEMENTARIO') {
+            return Calificaciones::query()
+                ->join('infoestudiantesifas as info', 'calificaciones.infoestudiantesifas_id', '=', 'info.id')
+                ->where('calificaciones.materias_id', (int) $materiaId)
+                ->where('info.planteldocadmins_idOtros', (int) $doc->id)
+                ->exists();
+        }
+
+        return false;
+    }
+
+    private function estudianteInscritoMateria(Estudiantesifas $est, int $materiaId, int $institucionId): bool
+    {
+        $infoId = (int) Infoestudiantesifas::query()
+            ->where('estudiantesifas_id', (int) $est->id)
+            ->where('instituciones_id', (int) $institucionId)
+            ->orderByDesc('id')
+            ->value('id');
+
+        if ($infoId <= 0) return false;
+
+        return Calificaciones::query()
+            ->where('infoestudiantesifas_id', (int) $infoId)
+            ->where('materias_id', (int) $materiaId)
+            ->exists();
+    }
+
+    private function canAccessAula($user, AulaVirtual $aula): bool
+    {
+        if ($user instanceof Usuarioslcchs) return true;
+
+        $inst = (int) ($aula->instituciones_id ?? 0);
+        $materiaId = (int) ($aula->materias_id ?? 0);
+        if ($inst <= 0 || $materiaId <= 0) return false;
+
+        if ($user instanceof Planteladministrativos) {
+            return (int) $user->instituciones_id === $inst;
+        }
+
+        if ($user instanceof Planteldocentes) {
+            if ((int) $user->instituciones_id !== $inst) return false;
+            return $this->docenteAsignadoMateria($user, $materiaId);
+        }
+
+        if ($user instanceof Estudiantesifas) {
+            return $this->estudianteInscritoMateria($user, $materiaId, $inst);
+        }
+
+        return false;
+    }
+
+    private function ensureParticipantForActor($user, AulaVirtual $aula): void
+    {
+        if ($user instanceof Planteldocentes) {
+            // Si está asignado a la materia, lo registramos como participante con permisos.
+            if (!$this->docenteAsignadoMateria($user, (int) $aula->materias_id)) return;
+
+            AulaParticipante::query()->firstOrCreate(
+                [
+                    'aulas_virtuales_id' => (int) $aula->id,
+                    'tipo' => 'DOCENTE',
+                    'planteldocentes_id' => (int) $user->id,
+                ],
+                [
+                    'rol' => 'DOCENTE',
+                    'puede_publicar' => 1,
+                    'puede_calificar' => 1,
+                    'puede_administrar' => 0,
+                    'estado' => 'ACTIVO',
+                    'visibilidad' => 'VISIBLE',
+                ]
+            );
+        }
+
+        if ($user instanceof Planteladministrativos) {
+            AulaParticipante::query()->firstOrCreate(
+                [
+                    'aulas_virtuales_id' => (int) $aula->id,
+                    'tipo' => 'ADMIN',
+                    'planteladministrativos_id' => (int) $user->id,
+                ],
+                [
+                    'rol' => 'ADMIN',
+                    'puede_publicar' => 1,
+                    'puede_calificar' => 0,
+                    'puede_administrar' => 1,
+                    'estado' => 'ACTIVO',
+                    'visibilidad' => 'VISIBLE',
+                ]
+            );
+        }
+    }
+
+    public function byMateria(Request $request, $materiaId)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'No autenticado'], 401);
+        }
+
+        $materiaId = (int) $materiaId;
+        if ($materiaId <= 0) {
+            return response()->json(['success' => false, 'message' => 'Materia inválida'], 422);
+        }
+
+        $materiaInst = $this->materiaInstitucionId($materiaId);
+        if (!$materiaInst) {
+            return response()->json(['success' => false, 'message' => 'Materia no encontrada'], 404);
+        }
+
+        // SUPERADMIN: puede acceder a cualquier institución
+        if ($user instanceof Usuarioslcchs) {
+            // ok
+        } elseif ($user instanceof Planteladministrativos || $user instanceof Planteldocentes) {
+            if ((int) $user->instituciones_id !== (int) $materiaInst) {
+                return response()->json(['success' => false, 'message' => 'No permitido'], 403);
+            }
+
+            if ($user instanceof Planteldocentes && !$this->docenteAsignadoMateria($user, $materiaId)) {
+                return response()->json(['success' => false, 'message' => 'No permitido'], 403);
+            }
+        } elseif ($user instanceof Estudiantesifas) {
+            if (!$this->estudianteInscritoMateria($user, $materiaId, (int) $materiaInst)) {
+                return response()->json(['success' => false, 'message' => 'No permitido'], 403);
+            }
+        } else {
+            return response()->json(['success' => false, 'message' => 'Tipo de usuario no soportado'], 403);
+        }
+
+        $autoCreate = $request->boolean('auto_create');
+
+        $aula = AulaVirtual::query()
+            ->where('instituciones_id', (int) $materiaInst)
+            ->where('materias_id', (int) $materiaId)
+            ->first();
+
+        // Solo docentes/admin/super pueden autocrear
+        if (!$aula && $autoCreate && !($user instanceof Estudiantesifas)) {
+            $aula = AulaVirtual::query()->create([
+                'instituciones_id' => (int) $materiaInst,
+                'materias_id' => (int) $materiaId,
+                'estado' => 'ACTIVO',
+                'visibilidad' => 'VISIBLE',
+            ]);
+        }
+
+        if (!$aula) {
+            return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
+        }
+
+        // Si es docente/admin, asegurar registro en participantes (para publicar/subir)
+        $this->ensureParticipantForActor($user, $aula);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'aula' => $aula,
+                'participantes_count' => AulaParticipante::query()->where('aulas_virtuales_id', (int) $aula->id)->count(),
+            ],
+        ]);
+    }
+
+    private function enrichAulas($aulas)
+    {
+        $aulasCollection = collect($aulas);
+        $materiasIds = $aulasCollection->pluck('materias_id')->filter()->unique()->values();
+
+        if ($materiasIds->isEmpty()) return $aulasCollection;
+
+        $materias = Materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->whereIn('materias.id', $materiasIds)
+            ->select(
+                'materias.id',
+                'materias.Paralelo',
+                'materias.Turno',
+                'plandeestudios.NombreMateria',
+                'plandeestudios.SiglaMateria',
+                'plandeestudios.LvlCurso'
+            )
+            ->get()
+            ->keyBy('id');
+
+        return $aulasCollection->map(function ($aula) use ($materias) {
+            $m = $materias->get($aula->materias_id);
+            $aula->materia_nombre = $m->NombreMateria ?? null;
+            $aula->materia_sigla = $m->SiglaMateria ?? null;
+            $aula->materia_curso = $m->LvlCurso ?? null;
+            $aula->materia_paralelo = $m->Paralelo ?? null;
+            $aula->materia_turno = $m->Turno ?? null;
+            return $aula;
+        });
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -35,13 +277,13 @@ class AulaVirtualController extends Controller
             if ($request->filled('instituciones_id')) {
                 $query->where('instituciones_id', (int) $request->get('instituciones_id'));
             }
-            return response()->json(['success' => true, 'data' => $query->orderByDesc('id')->get()]);
+            return response()->json(['success' => true, 'data' => $this->enrichAulas($query->orderByDesc('id')->get())]);
         }
 
         // ADMINISTRATIVO: lista por su institución
         if ($user instanceof Planteladministrativos) {
             $query->where('instituciones_id', (int) $user->instituciones_id);
-            return response()->json(['success' => true, 'data' => $query->orderByDesc('id')->get()]);
+            return response()->json(['success' => true, 'data' => $this->enrichAulas($query->orderByDesc('id')->get())]);
         }
 
         // DOCENTE: lista aulas de sus materias asignadas
@@ -71,7 +313,7 @@ class AulaVirtualController extends Controller
             }
 
             $data = $query->orderByDesc('id')->get();
-            return response()->json(['success' => true, 'data' => $data]);
+            return response()->json(['success' => true, 'data' => $this->enrichAulas($data)]);
         }
 
         // ESTUDIANTE: lista aulas en las que tiene materias (vía calificaciones)
@@ -83,7 +325,7 @@ class AulaVirtualController extends Controller
                 ->select('aulas_virtuales.*')
                 ->distinct();
 
-            return response()->json(['success' => true, 'data' => $sub->orderByDesc('aulas_virtuales.id')->get()]);
+            return response()->json(['success' => true, 'data' => $this->enrichAulas($sub->orderByDesc('aulas_virtuales.id')->get())]);
         }
 
         return response()->json(['success' => false, 'message' => 'Tipo de usuario no soportado'], 403);
@@ -101,10 +343,11 @@ class AulaVirtualController extends Controller
             return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
         }
 
-        // control de institución (excepto superadmin)
-        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $aula->instituciones_id !== (int) $user->instituciones_id) {
+        if (!$this->canAccessAula($user, $aula)) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
+
+        $this->ensureParticipantForActor($user, $aula);
 
         return response()->json([
             'success' => true,
@@ -225,7 +468,7 @@ class AulaVirtualController extends Controller
             return response()->json(['success' => false, 'message' => 'Aula no encontrada'], 404);
         }
 
-        if (($user instanceof Planteladministrativos || $user instanceof Planteldocentes) && (int) $aula->instituciones_id !== (int) $user->instituciones_id) {
+        if (!$this->canAccessAula($user, $aula)) {
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 

@@ -112,6 +112,20 @@ class AsistenciaScanController extends Controller
         return $q;
     }
 
+    /**
+     * Verifica si un estudiante tiene licencia vigente para la fecha dada.
+     */
+    private function estudianteTieneLicencia(int $infoestudiantesifasId, string $fecha): bool
+    {
+        $tabla = $this->licenciasTable();
+
+        return DB::table($tabla)
+            ->where('infoestudiantesifas_id', $infoestudiantesifasId)
+            ->where('fecha_inicio', '<=', $fecha)
+            ->where('fecha_fin', '>=', $fecha)
+            ->exists();
+    }
+
     private function closeSessionAndFillMissing(AsistenciaSesion $sesion, int $materiaId, ?string $modoMateria): void
     {
         DB::transaction(function () use ($sesion, $materiaId, $modoMateria) {
@@ -134,13 +148,20 @@ class AsistenciaScanController extends Controller
                 ->all();
 
             $yaSet = array_fill_keys($yaMarcados, true);
+            $fechaSesion = (string) ($locked->fecha ?? date('Y-m-d'));
 
             foreach ($ids as $infoId) {
                 $infoId = (int) $infoId;
                 if (isset($yaSet[$infoId])) continue;
 
-                // No aplicar licencias automáticamente: el PERMISO se aplica explícitamente desde secretaría.
-                $estado = 'FALTA';
+                // Auto-aplicar licencia si el estudiante tiene una vigente para la fecha
+                $tieneLicencia = $this->estudianteTieneLicencia($infoId, $fechaSesion);
+
+                $estado = $tieneLicencia ? 'PERMISO' : 'FALTA';
+                $obs = $tieneLicencia
+                    ? 'Licencia aplicada automáticamente al cerrar sesión'
+                    : 'Cierre automático por vencimiento';
+
                 AsistenciaRegistro::create([
                     'asistencias_sesiones_id' => (int) $locked->id,
                     'infoestudiantesifas_id' => $infoId,
@@ -150,7 +171,7 @@ class AsistenciaScanController extends Controller
                     'gps_valido' => 0,
                     'estado' => 'ACTIVO',
                     'visibilidad' => 'VISIBLE',
-                    'observacion' => 'Cierre automático por vencimiento',
+                    'observacion' => $obs,
                 ]);
             }
         });
@@ -355,6 +376,11 @@ class AsistenciaScanController extends Controller
                 'estado' => 'ACTIVO',
                 'visibilidad' => 'VISIBLE',
             ]);
+
+            // Invalidar el token inmediatamente (uso único) para que nadie más pueda
+            // reutilizarlo durante la ventana de TTL.
+            $qr->expires_at = now()->subSecond();
+            $qr->save();
 
             return response()->json([
                 'ok' => true,

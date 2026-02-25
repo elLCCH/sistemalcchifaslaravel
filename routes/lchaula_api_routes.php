@@ -19,6 +19,7 @@ use App\Http\Controllers\LChaulaArchivoController;
 Route::prefix('lchaula')->group(function () {
     // Aulas
     Route::get('aulas', [AulaVirtualController::class, 'index']);
+    Route::get('aulas/by-materia/{materiaId}', [AulaVirtualController::class, 'byMateria']);
     Route::post('aulas', [AulaVirtualController::class, 'store']);
     Route::get('aulas/{id}', [AulaVirtualController::class, 'show']);
     Route::put('aulas/{id}', [AulaVirtualController::class, 'update']);

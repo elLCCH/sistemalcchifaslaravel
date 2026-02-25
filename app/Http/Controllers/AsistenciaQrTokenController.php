@@ -32,6 +32,20 @@ class AsistenciaQrTokenController extends Controller
         return Schema::hasTable('licenciasestudiantesifas') ? 'licenciasestudiantesifas' : 'permisos_asistencia';
     }
 
+    /**
+     * Verifica si un estudiante tiene licencia vigente para la fecha dada.
+     */
+    private function estudianteTieneLicencia(int $infoestudiantesifasId, string $fecha): bool
+    {
+        $tabla = $this->licenciasTable();
+
+        return DB::table($tabla)
+            ->where('infoestudiantesifas_id', $infoestudiantesifasId)
+            ->where('fecha_inicio', '<=', $fecha)
+            ->where('fecha_fin', '>=', $fecha)
+            ->exists();
+    }
+
     private function estudiantesQueryPorSesion(AsistenciaSesion $sesion)
     {
         $row = DB::table('aulas_virtuales as av')
@@ -199,6 +213,7 @@ class AsistenciaQrTokenController extends Controller
             }
 
             $participantes = $base->distinct()->get(['ie.id as infoestudiantesifas_id']);
+            $fechaSesion = (string) ($sesion->fecha ?? date('Y-m-d'));
 
             $totalMarcados = 0;
             $totalFalta = 0;
@@ -218,18 +233,36 @@ class AsistenciaQrTokenController extends Controller
                     continue;
                 }
 
-                AsistenciaRegistro::create([
-                    'asistencias_sesiones_id' => (int) $sesion->id,
-                    'infoestudiantesifas_id' => $estudianteId,
-                    'estado_asistencia' => 'FALTA',
-                    'metodo' => 'SISTEMA',
-                    'fecha_registro' => now(),
-                    'gps_valido' => 0,
-                    'estado' => 'ACTIVO',
-                    'visibilidad' => 'VISIBLE',
-                    'observacion' => 'Cierre por docente (no registró asistencia)',
-                ]);
-                $totalFalta++;
+                // Auto-aplicar licencia si el estudiante tiene una vigente para la fecha
+                $tieneLicencia = $this->estudianteTieneLicencia($estudianteId, $fechaSesion);
+
+                if ($tieneLicencia) {
+                    AsistenciaRegistro::create([
+                        'asistencias_sesiones_id' => (int) $sesion->id,
+                        'infoestudiantesifas_id' => $estudianteId,
+                        'estado_asistencia' => 'PERMISO',
+                        'metodo' => 'SISTEMA',
+                        'fecha_registro' => now(),
+                        'gps_valido' => 0,
+                        'estado' => 'ACTIVO',
+                        'visibilidad' => 'VISIBLE',
+                        'observacion' => 'Licencia aplicada automáticamente al detener QR',
+                    ]);
+                    $totalPermiso++;
+                } else {
+                    AsistenciaRegistro::create([
+                        'asistencias_sesiones_id' => (int) $sesion->id,
+                        'infoestudiantesifas_id' => $estudianteId,
+                        'estado_asistencia' => 'FALTA',
+                        'metodo' => 'SISTEMA',
+                        'fecha_registro' => now(),
+                        'gps_valido' => 0,
+                        'estado' => 'ACTIVO',
+                        'visibilidad' => 'VISIBLE',
+                        'observacion' => 'Cierre por docente (no registró asistencia)',
+                    ]);
+                    $totalFalta++;
+                }
             }
 
             return [
