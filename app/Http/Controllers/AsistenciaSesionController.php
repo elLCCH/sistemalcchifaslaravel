@@ -281,8 +281,10 @@ class AsistenciaSesionController extends Controller
     public function listByMateria(Request $request, $materiaId)
     {
         $user = $request->user();
-        if (!$user || !($user instanceof Planteldocentes)) {
-            return response()->json(['ok' => false, 'message' => 'Solo docentes pueden consultar sesiones por materia.'], 403);
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Solo docentes o administrativos pueden consultar sesiones por materia.'], 403);
         }
 
         $materiaId = (int) $materiaId;
@@ -543,8 +545,10 @@ class AsistenciaSesionController extends Controller
     public function marcar(Request $request, $id)
     {
         $user = $request->user();
-        if (!$user || !($user instanceof Planteldocentes)) {
-            return response()->json(['ok' => false, 'message' => 'Solo docentes pueden marcar asistencia.'], 403);
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Solo docentes o administrativos pueden marcar asistencia.'], 403);
         }
 
         $sesion = AsistenciaSesion::find($id);
@@ -552,27 +556,31 @@ class AsistenciaSesionController extends Controller
             return response()->json(['ok' => false, 'message' => 'Sesión no encontrada'], 404);
         }
 
-        if ((int) $sesion->planteldocentes_id !== (int) $user->id) {
+        // Docentes solo pueden modificar sus propias sesiones; admin puede modificar cualquiera
+        if (!$isAdmin && (int) $sesion->planteldocentes_id !== (int) $user->id) {
             return response()->json(['ok' => false, 'message' => 'No tienes permiso para modificar esta sesión.'], 403);
         }
 
         $ctx = $this->sesionMateriaContext($sesion);
         $modo = (string) ($ctx['materia_modo_asistencia'] ?? 'NORMAL');
 
-        if ($modo === 'NORMAL') {
-            return response()->json(['ok' => false, 'message' => 'Materia en modo NORMAL: no se permite marcado.'], 409);
-        }
+        // Administrativos pueden marcar en cualquier modo y estado de sesión
+        if (!$isAdmin) {
+            if ($modo === 'NORMAL') {
+                return response()->json(['ok' => false, 'message' => 'Materia en modo NORMAL: no se permite marcado.'], 409);
+            }
 
-        if ($this->modoEsEstrictoQr($modo)) {
-            return response()->json(['ok' => false, 'message' => 'Modo POR QR (ESTRICTO): no se permite registro virtual.'], 409);
-        }
+            if ($this->modoEsEstrictoQr($modo)) {
+                return response()->json(['ok' => false, 'message' => 'Modo POR QR (ESTRICTO): no se permite registro virtual.'], 409);
+            }
 
-        if (!$this->modoPermiteVirtual($modo)) {
-            return response()->json(['ok' => false, 'message' => 'Este modo de asistencia no permite registro virtual.'], 409);
-        }
+            if (!$this->modoPermiteVirtual($modo)) {
+                return response()->json(['ok' => false, 'message' => 'Este modo de asistencia no permite registro virtual.'], 409);
+            }
 
-        if ($sesion->estado !== 'ABIERTA') {
-            return response()->json(['ok' => false, 'message' => 'La sesión no está abierta.'], 409);
+            if ($sesion->estado !== 'ABIERTA') {
+                return response()->json(['ok' => false, 'message' => 'La sesión no está abierta.'], 409);
+            }
         }
 
         $validator = Validator::make($request->all(), [
@@ -625,7 +633,8 @@ class AsistenciaSesionController extends Controller
             ->first();
 
         // Si secretaría ya aplicó la licencia (registro PERMISO), el docente no puede modificarlo.
-        if ($registro && strtoupper(trim((string) $registro->estado_asistencia)) === 'PERMISO') {
+        // Administrativos sí pueden anular/cambiar el registro PERMISO.
+        if (!$isAdmin && $registro && strtoupper(trim((string) $registro->estado_asistencia)) === 'PERMISO') {
             return response()->json([
                 'ok' => false,
                 'message' => 'El estudiante tiene LICENCIA aplicada (PERMISO). No se puede modificar desde docente.',
