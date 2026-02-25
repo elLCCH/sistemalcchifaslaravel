@@ -375,7 +375,7 @@ class AsistenciaScanController extends Controller
         }
 
         // Si venció el tiempo (30 min), registrar como FALTA/PERMISO y cerrar la sesión automáticamente.
-        $limite = $sesion->hora_ingreso->copy()->addMinutes($sesion->minutos_falta ?? 30);
+        $limite = $sesion->hora_ingreso->copy()->addMinutes((int) ($sesion->minutos_falta ?? 30));
         if (now()->greaterThanOrEqualTo($limite)) {
             // Cierra + completa faltas/permiso (incluye a este estudiante).
             $this->closeSessionAndFillMissing($sesion, $materiaId, $ctx->plande_modo_materia ?? null);
