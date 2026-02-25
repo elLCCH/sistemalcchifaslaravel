@@ -211,6 +211,7 @@ class AsistenciaScanController extends Controller
 
     public function scan(Request $request)
     {
+      try {
         $validator = Validator::make($request->all(), [
             'token' => 'required|string|min:5',
             'gps_lat' => 'nullable|numeric',
@@ -438,5 +439,15 @@ class AsistenciaScanController extends Controller
 
             return response()->json(['ok' => false, 'message' => 'Error registrando asistencia.', 'error' => $msg], 500);
         }
+      } catch (\Throwable $globalEx) {
+          $gMsg = $globalEx->getMessage();
+          $gFile = $globalEx->getFile();
+          $gLine = $globalEx->getLine();
+          return response()->json([
+              'ok' => false,
+              'message' => 'Error interno en scan: ' . $gMsg,
+              'debug' => $gFile . ':' . $gLine,
+          ], 500);
+      }
     }
 }
