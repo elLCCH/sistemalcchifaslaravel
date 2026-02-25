@@ -143,7 +143,7 @@ class AsistenciaQrTokenController extends Controller
         }
 
         // Si pasaron 30 minutos desde hora_ingreso, no generar más tokens.
-        $limite = $sesion->hora_ingreso->copy()->addMinutes($sesion->minutos_falta ?? 30);
+        $limite = $sesion->hora_ingreso->copy()->addMinutes((int) ($sesion->minutos_falta ?? 30));
         if (now()->greaterThanOrEqualTo($limite)) {
             return response()->json([
                 'ok' => false,
