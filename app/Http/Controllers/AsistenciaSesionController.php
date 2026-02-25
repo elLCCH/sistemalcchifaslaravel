@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\AsistenciaRegistro;
 use App\Models\AsistenciaSesion;
+use App\Models\AsistenciaQrToken;
 use App\Models\AulaVirtual;
 use App\Models\Planteldocentes;
+use App\Models\Planteladministrativos;
+use App\Models\Usuarioslcchs;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -757,5 +760,42 @@ class AsistenciaSesionController extends Controller
         });
 
         return response()->json(['ok' => true] + $result);
+    }
+
+    /**
+     * Eliminar sesión (solo administrativos y super-admin).
+     * Borra registros de asistencia, tokens QR y la sesión misma.
+     */
+    public function destroy(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['ok' => false, 'message' => 'No autenticado'], 401);
+            }
+
+            $isAdmin = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+            if (!$isAdmin) {
+                return response()->json(['ok' => false, 'message' => 'Solo administrativos pueden eliminar sesiones.'], 403);
+            }
+
+            $sesion = AsistenciaSesion::find((int) $id);
+            if (!$sesion) {
+                return response()->json(['ok' => false, 'message' => 'Sesión no encontrada'], 404);
+            }
+
+            // Eliminar registros de asistencia asociados
+            AsistenciaRegistro::where('asistencias_sesiones_id', (int) $sesion->id)->delete();
+
+            // Eliminar tokens QR asociados
+            AsistenciaQrToken::where('asistencias_sesiones_id', (int) $sesion->id)->delete();
+
+            $sesion->delete();
+
+            return response()->json(['ok' => true, 'message' => 'Sesión eliminada correctamente']);
+        } catch (\Throwable $e) {
+            // \Log::error('Destroy sesion error', ['id' => $id, 'error' => $e->getMessage()]);
+            return response()->json(['ok' => false, 'message' => 'Error interno: ' . $e->getMessage()], 500);
+        }
     }
 }

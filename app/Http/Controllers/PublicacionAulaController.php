@@ -15,9 +15,13 @@ use App\Models\Tarea;
 use App\Models\Planteladministrativos;
 use App\Models\Planteldocentes;
 use App\Models\Usuarioslcchs;
+use App\Models\Archivo;
+use App\Models\ArchivoRelacion;
+use App\Models\EntregaTarea;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\File;
 
 class PublicacionAulaController extends Controller
 {
@@ -310,7 +314,42 @@ class PublicacionAulaController extends Controller
             return response()->json(['success' => false, 'message' => 'Publicación no encontrada'], 404);
         }
 
+        // Cascade: eliminar archivos fisicos de la publicacion
+        $this->deleteArchivosDeRelacion('PUBLICACION', (int) $pub->id);
+
+        // Si tiene tarea, eliminar archivos de cada entrega
+        if ($pub->tarea) {
+            $entregas = EntregaTarea::where('tareas_id', (int) $pub->tarea->id)->get();
+            foreach ($entregas as $entrega) {
+                $this->deleteArchivosDeRelacion('ENTREGA', (int) $entrega->id);
+            }
+        }
+
         $pub->delete();
         return response()->json(['success' => true, 'message' => 'Publicación eliminada']);
+    }
+
+    /**
+     * Elimina archivos fisicos y registros DB asociados a una relacion.
+     */
+    private function deleteArchivosDeRelacion(string $tipo, int $relacionId): void
+    {
+        $relaciones = ArchivoRelacion::where('relacion_tipo', $tipo)
+            ->where('relacion_id', $relacionId)
+            ->get();
+
+        foreach ($relaciones as $rel) {
+            $archivo = Archivo::find($rel->archivos_id);
+            if ($archivo) {
+                $fullPath = public_path(
+                    trim((string) $archivo->ruta, '/\\') . '/' . (string) $archivo->nombre_almacenado
+                );
+                if (File::exists($fullPath)) {
+                    File::delete($fullPath);
+                }
+                $archivo->delete();
+            }
+            $rel->delete();
+        }
     }
 }

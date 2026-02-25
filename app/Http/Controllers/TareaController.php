@@ -153,20 +153,29 @@ class TareaController extends Controller
         }
 
         // Enriquecer con info de materia
-        $materia = Materias::query()
-            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
-            ->where('materias.id', $aula->materias_id)
-            ->select('materias.id', 'materias.nombre_materia', 'materias.sigla_materia',
-                     'plandeestudios.LvlCurso', 'materias.plandeestudios_id')
-            ->first();
+        try {
+            $materia = Materias::query()
+                ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+                ->where('materias.id', $aula->materias_id)
+                ->select(
+                    'materias.id',
+                    'materias.Paralelo',
+                    'materias.Turno',
+                    'plandeestudios.NombreMateria',
+                    'plandeestudios.SiglaMateria',
+                    'plandeestudios.LvlCurso'
+                )
+                ->first();
 
-        if ($materia) {
-            $plan = \App\Models\Plandeestudios::find($materia->plandeestudios_id);
-            $aula->materia_nombre = $materia->nombre_materia;
-            $aula->materia_sigla  = $materia->sigla_materia;
-            $aula->materia_curso  = $materia->LvlCurso;
-            $aula->materia_paralelo = $aula->paralelo ?? $plan->Paralelo ?? '';
-            $aula->materia_turno    = $aula->turno ?? $plan->Turno ?? '';
+            if ($materia) {
+                $aula->materia_nombre   = $materia->NombreMateria;
+                $aula->materia_sigla    = $materia->SiglaMateria;
+                $aula->materia_curso    = $materia->LvlCurso;
+                $aula->materia_paralelo = $materia->Paralelo;
+                $aula->materia_turno    = $materia->Turno;
+            }
+        } catch (\Throwable $e) {
+            // \Log::warning('Tarea show: enrichment failed', ['error' => $e->getMessage()]);
         }
 
         return response()->json(['success' => true, 'data' => $tarea]);

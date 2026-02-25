@@ -83,6 +83,7 @@ class AsistenciaQrTokenController extends Controller
 
     public function create(Request $request, $id)
     {
+      try {
         $user = $request->user();
         if (!$user || !($user instanceof Planteldocentes)) {
             return response()->json(['ok' => false, 'message' => 'Solo docentes pueden generar QR.'], 403);
@@ -113,6 +114,10 @@ class AsistenciaQrTokenController extends Controller
             ->leftJoin('materias as m', 'm.id', '=', 'av.materias_id')
             ->where('av.id', (int) $sesion->aulas_virtuales_id)
             ->first(['m.ModoAsistencia as materia_modo_asistencia']);
+
+        if (!$row) {
+            return response()->json(['ok' => false, 'message' => 'No se encontró el aula/materia vinculada a esta sesión.'], 404);
+        }
 
         $modo = $this->normModoAsistencia($row->materia_modo_asistencia ?? null);
         if (!str_contains($modo, 'QR')) {
@@ -165,6 +170,10 @@ class AsistenciaQrTokenController extends Controller
             ],
             'sesion' => AsistenciaSesion::find((int) $sesion->id),
         ]);
+      } catch (\Throwable $e) {
+        //   \Log::error('QR create error', ['id' => $id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+          return response()->json(['ok' => false, 'message' => 'Error interno: ' . $e->getMessage()], 500);
+      }
     }
 
     public function stop(Request $request, $id)

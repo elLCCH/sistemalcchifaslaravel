@@ -316,7 +316,7 @@ class LChaulaArchivoController extends Controller
 
             $file->move(public_path($baseDir), $stored);
         } catch (\Throwable $e) {
-            \Log::error('LChaula upload file move error', ['error' => $e->getMessage(), 'baseDir' => $baseDir]);
+            // \Log::error('LChaula upload file move error', ['error' => $e->getMessage(), 'baseDir' => $baseDir]);
             return response()->json(['success' => false, 'message' => 'Error al guardar archivo: ' . $e->getMessage()], 500);
         }
 
@@ -343,7 +343,7 @@ class LChaulaArchivoController extends Controller
                 'created_at' => now(),
             ]);
         } catch (\Throwable $e) {
-            \Log::error('LChaula upload DB error', ['error' => $e->getMessage()]);
+            // \Log::error('LChaula upload DB error', ['error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Error al registrar archivo en BD: ' . $e->getMessage()], 500);
         }
 

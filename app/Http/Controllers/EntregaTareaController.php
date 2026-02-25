@@ -78,7 +78,7 @@ class EntregaTareaController extends Controller
         try {
             $tarea = Tarea::query()->with('publicacion.aula')->where('id', (int) $tareaId)->first();
         } catch (\Throwable $e) {
-            \Log::error('EntregaTarea index: error cargando tarea', ['tareaId' => $tareaId, 'error' => $e->getMessage()]);
+            // \Log::error('EntregaTarea index: error cargando tarea', ['tareaId' => $tareaId, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'Error al cargar tarea: ' . $e->getMessage()], 500);
         }
 
@@ -159,7 +159,7 @@ class EntregaTareaController extends Controller
                 ->orderByDesc('id')
                 ->get();
         } catch (\Throwable $e) {
-            \Log::error('EntregaTarea entregasConEstudiante: error', ['tareaId' => $tareaId, 'error' => $e->getMessage()]);
+            // \Log::error('EntregaTarea entregasConEstudiante: error', ['tareaId' => $tareaId, 'error' => $e->getMessage()]);
             return collect([]);
         }
 
