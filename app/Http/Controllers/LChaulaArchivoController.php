@@ -299,39 +299,53 @@ class LChaulaArchivoController extends Controller
             return response()->json(['success' => false, 'message' => 'Archivo no enviado'], 400);
         }
 
+        // Capturar metadatos ANTES de mover (por seguridad)
+        $fileSize = (int) $file->getSize();
+        $fileMime = (string) $file->getClientMimeType();
+        $original = $file->getClientOriginalName();
+
         $baseDir = 'archivos/institucion' . (int) $institucionId . '/lchaula/' . $pathExtra;
 
-        if (!File::exists(public_path($baseDir))) {
-            File::makeDirectory(public_path($baseDir), 0755, true, true);
+        try {
+            if (!File::exists(public_path($baseDir))) {
+                File::makeDirectory(public_path($baseDir), 0755, true, true);
+            }
+
+            $uuid = (string) Str::uuid();
+            $stored = $uuid . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $original);
+
+            $file->move(public_path($baseDir), $stored);
+        } catch (\Throwable $e) {
+            \Log::error('LChaula upload file move error', ['error' => $e->getMessage(), 'baseDir' => $baseDir]);
+            return response()->json(['success' => false, 'message' => 'Error al guardar archivo: ' . $e->getMessage()], 500);
         }
-
-        $uuid = (string) Str::uuid();
-        $original = $file->getClientOriginalName();
-        $stored = $uuid . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $original);
-
-        $file->move(public_path($baseDir), $stored);
 
         $actor = $this->actorInfo($user);
 
-        $archivo = Archivo::query()->create([
-            'instituciones_id' => (int) $institucionId,
-            'nombre_original' => $original,
-            'nombre_almacenado' => $stored,
-            'ruta' => $baseDir,
-            'tamano' => (int) $file->getSize(),
-            'tipo_mime' => (string) $file->getClientMimeType(),
-            'subido_por_tipo' => $actor['tipo'],
-            'subido_por_id' => $actor['id'],
-            'estado' => 'ACTIVO',
-            'visibilidad' => 'VISIBLE',
-        ]);
+        try {
+            $archivo = Archivo::query()->create([
+                'instituciones_id' => (int) $institucionId,
+                'nombre_original' => $original,
+                'nombre_almacenado' => $stored,
+                'ruta' => $baseDir,
+                'tamano' => $fileSize,
+                'tipo_mime' => $fileMime,
+                'subido_por_tipo' => $actor['tipo'],
+                'subido_por_id' => $actor['id'],
+                'estado' => 'ACTIVO',
+                'visibilidad' => 'VISIBLE',
+            ]);
 
-        $rel = ArchivoRelacion::query()->create([
-            'archivos_id' => (int) $archivo->id,
-            'relacion_tipo' => $relTipo,
-            'relacion_id' => $relId,
-            'created_at' => now(),
-        ]);
+            $rel = ArchivoRelacion::query()->create([
+                'archivos_id' => (int) $archivo->id,
+                'relacion_tipo' => $relTipo,
+                'relacion_id' => $relId,
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('LChaula upload DB error', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Error al registrar archivo en BD: ' . $e->getMessage()], 500);
+        }
 
         return response()->json([
             'success' => true,

@@ -75,7 +75,13 @@ class EntregaTareaController extends Controller
             return response()->json(['success' => false, 'message' => 'No autenticado'], 401);
         }
 
-        $tarea = Tarea::query()->with('publicacion.aula')->where('id', (int) $tareaId)->first();
+        try {
+            $tarea = Tarea::query()->with('publicacion.aula')->where('id', (int) $tareaId)->first();
+        } catch (\Throwable $e) {
+            \Log::error('EntregaTarea index: error cargando tarea', ['tareaId' => $tareaId, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Error al cargar tarea: ' . $e->getMessage()], 500);
+        }
+
         if (!$tarea) {
             return response()->json(['success' => false, 'message' => 'Tarea no encontrada'], 404);
         }
@@ -146,11 +152,16 @@ class EntregaTareaController extends Controller
 
     private function entregasConEstudiante(int $tareaId)
     {
-        $entregas = EntregaTarea::query()
-            ->with('calificacion')
-            ->where('tareas_id', $tareaId)
-            ->orderByDesc('id')
-            ->get();
+        try {
+            $entregas = EntregaTarea::query()
+                ->with('calificacion')
+                ->where('tareas_id', $tareaId)
+                ->orderByDesc('id')
+                ->get();
+        } catch (\Throwable $e) {
+            \Log::error('EntregaTarea entregasConEstudiante: error', ['tareaId' => $tareaId, 'error' => $e->getMessage()]);
+            return collect([]);
+        }
 
         $infoIds = $entregas->pluck('infoestudiantesifas_id')->filter()->unique()->values();
 

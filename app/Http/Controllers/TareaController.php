@@ -152,6 +152,23 @@ class TareaController extends Controller
             return response()->json(['success' => false, 'message' => 'No permitido'], 403);
         }
 
+        // Enriquecer con info de materia
+        $materia = Materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->where('materias.id', $aula->materias_id)
+            ->select('materias.id', 'materias.nombre_materia', 'materias.sigla_materia',
+                     'plandeestudios.LvlCurso', 'materias.plandeestudios_id')
+            ->first();
+
+        if ($materia) {
+            $plan = \App\Models\Plandeestudios::find($materia->plandeestudios_id);
+            $aula->materia_nombre = $materia->nombre_materia;
+            $aula->materia_sigla  = $materia->sigla_materia;
+            $aula->materia_curso  = $materia->LvlCurso;
+            $aula->materia_paralelo = $aula->paralelo ?? $plan->Paralelo ?? '';
+            $aula->materia_turno    = $aula->turno ?? $plan->Turno ?? '';
+        }
+
         return response()->json(['success' => true, 'data' => $tarea]);
     }
 

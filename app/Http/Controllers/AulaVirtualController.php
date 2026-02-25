@@ -349,10 +349,14 @@ class AulaVirtualController extends Controller
 
         $this->ensureParticipantForActor($user, $aula);
 
+        // Enrich with materia info
+        $enriched = $this->enrichAulas([$aula]);
+        $aulaEnriched = $enriched->first() ?? $aula;
+
         return response()->json([
             'success' => true,
             'data' => [
-                'aula' => $aula,
+                'aula' => $aulaEnriched,
                 'participantes_count' => AulaParticipante::query()->where('aulas_virtuales_id', (int) $aula->id)->count(),
             ],
         ]);
