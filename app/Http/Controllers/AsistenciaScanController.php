@@ -77,16 +77,48 @@ class AsistenciaScanController extends Controller
         // Si parece URL, intenta resolver (incl. maps.app.goo.gl) y re-parsear.
         if (str_starts_with(strtolower($s), 'http://') || str_starts_with(strtolower($s), 'https://')) {
             try {
+                // Usar cURL directo para seguir redirects de URLs cortas (maps.app.goo.gl)
+                $ch = curl_init($s);
+                curl_setopt_array($ch, [
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_MAXREDIRS => 10,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 8,
+                    CURLOPT_NOBODY => false,
+                    CURLOPT_USERAGENT => 'Mozilla/5.0',
+                    CURLOPT_SSL_VERIFYPEER => false,
+                ]);
+                $body = curl_exec($ch);
+                $finalUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+                curl_close($ch);
+
+                // 1. Intentar con la URL final tras redirects
+                if ($finalUrl) {
+                    $coords = $this->tryParseLatLngFromString($finalUrl);
+                    if ($coords) return $coords;
+                }
+
+                // 2. Buscar coords en el body (Google Maps embebe @lat,lng en el HTML)
+                if ($body && is_string($body)) {
+                    if (preg_match('/@(-?\d+\.\d+),(-?\d+\.\d+)/', $body, $m)) {
+                        return [(float) $m[1], (float) $m[2]];
+                    }
+                    // Fallback: buscar pattern "center=lat,lng" o "ll=lat,lng"
+                    if (preg_match('/(?:center|ll|q)=(-?\d+\.\d+)(?:%2C|,)(-?\d+\.\d+)/', $body, $m)) {
+                        return [(float) $m[1], (float) $m[2]];
+                    }
+                }
+
+                // 3. Fallback: intento vía Http facade
                 $resp = Http::timeout(6)->get($s);
-                $finalUrl = $resp->handlerStats()['url'] ?? null;
-                $coords = $this->tryParseLatLngFromString($finalUrl);
+                $hUrl = $resp->handlerStats()['url'] ?? null;
+                $coords = $this->tryParseLatLngFromString($hUrl);
                 if ($coords) return $coords;
 
-                // A veces el body contiene un redirect via JS/meta. Reintenta con el contenido.
                 $coords2 = $this->tryParseLatLngFromString($resp->body());
                 if ($coords2) return $coords2;
             } catch (\Throwable $e) {
-                // Silencioso: si no hay internet o falla la redirección, devolver null.
+                // \Log::warning('parseInstitucionLatLng failed', ['url' => $s, 'error' => $e->getMessage()]);
             }
         }
 

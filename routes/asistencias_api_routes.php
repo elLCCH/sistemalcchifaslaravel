@@ -33,6 +33,7 @@ Route::prefix('asistencias')->middleware(['auth:sanctum'])->group(function () {
 
     // QR rotativo
     Route::post('sesiones/{id}/qr', [AsistenciaQrTokenController::class, 'create']);
+    Route::get('sesiones/{id}/qr/status', [AsistenciaQrTokenController::class, 'tokenStatus']);
     Route::post('sesiones/{id}/qr/stop', [AsistenciaQrTokenController::class, 'stop']);
 
     // Escaneo estudiante

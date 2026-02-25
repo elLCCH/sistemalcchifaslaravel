@@ -132,7 +132,7 @@ class AsistenciaQrTokenController extends Controller
             return response()->json(['ok' => false, 'errors' => $validator->errors()], 422);
         }
 
-        $ttl = (int) ($validator->validated()['ttl_seconds'] ?? 5);
+        $ttl = (int) ($validator->validated()['ttl_seconds'] ?? 13);
 
         // Primera vez: al generar el primer token, se considera INICIO del QR (arranca contador)
         // y se alinea hora_ingreso con ese momento.
@@ -174,6 +174,41 @@ class AsistenciaQrTokenController extends Controller
         //   \Log::error('QR create error', ['id' => $id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
           return response()->json(['ok' => false, 'message' => 'Error interno: ' . $e->getMessage()], 500);
       }
+    }
+
+    /**
+     * Comprueba si el último QR de la sesión fue consumido (escaneado) por un estudiante.
+     * El docente lo pollea para saber cuándo regenerar inmediatamente.
+     */
+    public function tokenStatus(Request $request, $id)
+    {
+        $sesion = AsistenciaSesion::find($id);
+        if (!$sesion) {
+            return response()->json(['ok' => false, 'message' => 'Sesión no encontrada'], 404);
+        }
+
+        // Último token generado para esta sesión
+        $latest = AsistenciaQrToken::query()
+            ->where('asistencias_sesiones_id', (int) $sesion->id)
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$latest) {
+            return response()->json(['ok' => true, 'consumed' => false, 'reason' => 'no_token']);
+        }
+
+        // Si el token fue usado, un registro de asistencia lo referencia
+        $usadoPorEstudiante = AsistenciaRegistro::query()
+            ->where('asistencias_qr_tokens_id', (int) $latest->id)
+            ->exists();
+
+        // consumed = true si ya fue escaneado por un estudiante
+        return response()->json([
+            'ok' => true,
+            'consumed' => $usadoPorEstudiante,
+            'token_id' => $latest->id,
+            'expired' => now()->greaterThanOrEqualTo($latest->expires_at),
+        ]);
     }
 
     public function stop(Request $request, $id)
