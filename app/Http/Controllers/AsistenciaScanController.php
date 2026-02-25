@@ -353,14 +353,20 @@ class AsistenciaScanController extends Controller
             [$latInst, $lngInst] = $coordsInst;
             $distancia = $this->haversineMeters((float) $data['gps_lat'], (float) $data['gps_lng'], (float) $latInst, (float) $lngInst);
 
-            if ($distancia <= (float) $sesion->radio_metros) {
+            // Tolerancia: agregar precisión GPS del dispositivo (cap 50 m) al radio permitido
+            $gpsPrecision = isset($data['gps_precision_m']) ? min((float) $data['gps_precision_m'], 50) : 0;
+            $radioEfectivo = (float) $sesion->radio_metros + max($gpsPrecision, 0);
+
+            if ($distancia <= $radioEfectivo) {
                 $gpsValido = 1;
             } else {
                 return response()->json([
                     'ok' => false,
-                    'message' => 'Estás fuera del radio permitido.',
-                    'distancia_m' => $distancia,
+                    'message' => 'Estás fuera del radio permitido. Distancia: ' . round($distancia, 1) . ' m, radio: ' . (int) $sesion->radio_metros . ' m (+ ' . round($gpsPrecision, 0) . ' m GPS).',
+                    'distancia_m' => round($distancia, 1),
                     'radio_m' => (int) $sesion->radio_metros,
+                    'radio_efectivo_m' => round($radioEfectivo, 1),
+                    'gps_precision_m' => round($gpsPrecision, 1),
                 ], 403);
             }
         }
