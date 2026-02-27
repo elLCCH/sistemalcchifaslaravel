@@ -205,6 +205,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::put('/plantillas-excel/{id}', [PlantillasExcelController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::delete('/plantillas-excel/{id}', [PlantillasExcelController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::post('/plantillas-excel/{id}/generar', [PlantillasExcelController::class, 'generar'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
+    Route::post('/plantillas-excel/{id}/actualizar', [PlantillasExcelController::class, 'actualizar'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
 
     // =========================
     // EstudiantesifasController

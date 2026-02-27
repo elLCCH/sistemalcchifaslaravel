@@ -7,6 +7,7 @@ use App\Models\Controles;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use Illuminate\Support\Facades\DB;
 use ZipArchive;
 
 class PlantillasExcelController extends Controller
@@ -291,41 +292,246 @@ class PlantillasExcelController extends Controller
         $downloadExt = $ext === 'xlsm' ? 'xlsm' : 'xlsx';
         $downloadName = $safeName . '.' . $downloadExt;
 
-        // Celdas adicionales (en orden):
-        // 1) Docente, 2) Materia, 3) Curso, 4) Gestión
-        $cellUpdates = [];
-        $valuesByOrder = [
-            (string) ($payload['docente'] ?? ''),
-            (string) ($payload['materia'] ?? ''),
-            (string) ($payload['curso'] ?? ''),
-            (string) ($payload['gestion'] ?? ''),
-        ];
+        // Auto-lookup: si se envía materiaId, buscar datos de carrera/plandeestudios/instituciones
+        // para rellenar campos que el frontend no envíe explícitamente.
+        $materiaId = !empty($payload['materiaId']) ? (int) $payload['materiaId'] : 0;
+        if ($materiaId > 0) {
+            $meta = DB::table('materias')
+                ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+                ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+                ->join('instituciones', 'carreras.instituciones_id', '=', 'instituciones.id')
+                ->where('materias.id', '=', $materiaId)
+                ->select([
+                    'carreras.NombreCarrera',
+                    'carreras.Nivel',
+                    'carreras.Area',
+                    'carreras.Mencion',
+                    'carreras.Resolucion',
+                    'carreras.HorasTotales',
+                    'carreras.TituloOficial',
+                    'plandeestudios.SiglaMateria',
+                    'materias.Turno',
+                    'instituciones.Nombre as NombreInstitucion',
+                ])
+                ->first();
 
-        $metaRefs = array_slice($refs, 1);
-        for ($i = 0; $i < 4; $i++) {
-            if (!isset($metaRefs[$i])) {
-                continue;
-            }
-            $ref = trim((string) $metaRefs[$i]);
-            if ($ref === '') {
-                continue;
-            }
-            try {
-                [$cLetters, $rNum] = Coordinate::coordinateFromString($ref);
-                $addr = strtoupper($cLetters) . (int) $rNum;
-                $cellUpdates[$addr] = $valuesByOrder[$i];
-            } catch (\Throwable $e) {
-                // ignorar referencias inválidas
+            if ($meta) {
+                // Solo rellenar si el frontend NO envió un valor explícito
+                $autoFill = [
+                    'carrera'      => $meta->NombreCarrera,
+                    'nivel'        => $meta->Nivel,
+                    'sigla'        => $meta->SiglaMateria,
+                    'turno'        => $meta->Turno,
+                    'area'         => $meta->Area,
+                    'institucion'  => $meta->NombreInstitucion,
+                    'resolucion'   => $meta->Resolucion,
+                    'horasTotales' => $meta->HorasTotales,
+                    'mencion'      => $meta->Mencion,
+                    'tituloOficial' => $meta->TituloOficial,
+                ];
+                foreach ($autoFill as $key => $dbVal) {
+                    if (empty($payload[$key]) && !empty($dbVal)) {
+                        $payload[$key] = (string) $dbVal;
+                    }
+                }
             }
         }
 
-        // Generación preservando 100% formato/hojas/imagenes:
+        // Celdas adicionales (metadatos)
+        $cellUpdates = $this->buildCellUpdates($refs, $payload);
+
         // se parchea el ZIP (xlsx/xlsm) y se actualiza SOLO la hoja INSC.
         try {
             return $this->generarParcheandoZip($fullPath, 'INSC.', $startCol, $startRow, $rows, $downloadName, $cellUpdates);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'No se pudo generar el Excel'], 500);
         }
+    }
+
+    /**
+     * ACTUALIZAR DATOS: el usuario sube su archivo Excel (parcial) y recibe
+     * el mismo archivo con los datos de estudiantes y metadatos actualizados.
+     * Usa la configuración de celdas de la plantilla indicada por {id}.
+     */
+    public function actualizar(Request $request, $id)
+    {
+        $user = $request->user();
+        $row = Controles::where('id', '=', $id)->firstOrFail();
+
+        $inst = (int) ($row->instituciones_id ?? 0);
+        $userInst = (int) ($user?->instituciones_id ?? 0);
+        if (!($user instanceof \App\Models\Usuarioslcchs) && $userInst > 0 && $inst !== $userInst) {
+            return response()->json(['error' => 'No autorizado'], 403);
+        }
+
+        // Validar que se subió un archivo
+        if (!$request->hasFile('archivo')) {
+            return response()->json(['error' => 'Debe subir un archivo Excel (campo "archivo")'], 422);
+        }
+
+        $file = $request->file('archivo');
+        $fileExt = strtolower((string) $file->getClientOriginalExtension());
+        if (!in_array($fileExt, ['xlsx', 'xlsm', 'xltx'], true)) {
+            return response()->json(['error' => 'Solo se permiten archivos .xlsx, .xlsm o .xltx'], 422);
+        }
+
+        $uploadedPath = $file->getRealPath();
+        if (!$uploadedPath || !is_file($uploadedPath)) {
+            return response()->json(['error' => 'No se pudo leer el archivo subido'], 422);
+        }
+
+        // Payload JSON viene como campos adicionales del multipart
+        $rows = json_decode((string) ($request->input('rows', '[]')), true);
+        if (!is_array($rows)) {
+            return response()->json(['error' => 'rows requerido (JSON array)'], 422);
+        }
+
+        // Reusar la misma lógica de refs de la plantilla
+        $nivelCursoRaw = trim((string) ($row->NivelCurso ?? 'B10'));
+        if ($nivelCursoRaw === '') {
+            $nivelCursoRaw = 'B10';
+        }
+
+        $refs = array_values(array_filter(array_map(function ($x) {
+            return trim((string) $x);
+        }, preg_split('/\s*,\s*/', $nivelCursoRaw) ?: []), function ($x) {
+            return $x !== '';
+        }));
+        if (count($refs) === 0) {
+            $refs = ['B10'];
+        }
+
+        $startCell = $refs[0];
+
+        try {
+            [$colLetters, $rowNum] = Coordinate::coordinateFromString($startCell);
+            $startCol = Coordinate::columnIndexFromString($colLetters);
+            $startRow = (int) $rowNum;
+            if ($startRow <= 0 || $startCol <= 0) {
+                throw new \RuntimeException('Celda inválida');
+            }
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'Celda inicial inválida en la plantilla.'], 422);
+        }
+
+        $safeName = trim((string) ($request->input('filename', 'registro_actualizado')));
+        $safeName = preg_replace('/[^a-zA-Z0-9_\- ]/', '', $safeName);
+        $safeName = $safeName ?: 'registro_actualizado';
+
+        $downloadExt = $fileExt === 'xlsm' ? 'xlsm' : 'xlsx';
+        $downloadName = $safeName . '.' . $downloadExt;
+
+        // Construir payload desde input (multipart fields)
+        $payload = $request->all();
+
+        // Auto-lookup desde materiaId (igual que generar)
+        $materiaId = !empty($payload['materiaId']) ? (int) $payload['materiaId'] : 0;
+        if ($materiaId > 0) {
+            $meta = DB::table('materias')
+                ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+                ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+                ->join('instituciones', 'carreras.instituciones_id', '=', 'instituciones.id')
+                ->where('materias.id', '=', $materiaId)
+                ->select([
+                    'carreras.NombreCarrera',
+                    'carreras.Nivel',
+                    'carreras.Area',
+                    'carreras.Mencion',
+                    'carreras.Resolucion',
+                    'carreras.HorasTotales',
+                    'carreras.TituloOficial',
+                    'plandeestudios.SiglaMateria',
+                    'materias.Turno',
+                    'instituciones.Nombre as NombreInstitucion',
+                ])
+                ->first();
+
+            if ($meta) {
+                $autoFill = [
+                    'carrera'      => $meta->NombreCarrera,
+                    'nivel'        => $meta->Nivel,
+                    'sigla'        => $meta->SiglaMateria,
+                    'turno'        => $meta->Turno,
+                    'area'         => $meta->Area,
+                    'institucion'  => $meta->NombreInstitucion,
+                    'resolucion'   => $meta->Resolucion,
+                    'horasTotales' => $meta->HorasTotales,
+                    'mencion'      => $meta->Mencion,
+                    'tituloOficial' => $meta->TituloOficial,
+                ];
+                foreach ($autoFill as $key => $dbVal) {
+                    if (empty($payload[$key]) && !empty($dbVal)) {
+                        $payload[$key] = (string) $dbVal;
+                    }
+                }
+            }
+        }
+
+        // Construir cellUpdates (misma lógica que generar)
+        $cellUpdates = $this->buildCellUpdates($refs, $payload);
+
+        try {
+            return $this->generarParcheandoZip($uploadedPath, 'INSC.', $startCol, $startRow, $rows, $downloadName, $cellUpdates);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'No se pudo actualizar el Excel: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Construir el array de actualizaciones de celdas (metadatos) a partir
+     * de las refs de la plantilla y el payload.
+     */
+    private function buildCellUpdates(array $refs, array $payload): array
+    {
+        $cellUpdates = [];
+        $valuesByOrder = [
+            (string) ($payload['docente'] ?? ''),
+            (string) ($payload['materia'] ?? ''),
+            (string) ($payload['curso'] ?? ''),
+            (string) ($payload['gestion'] ?? ''),
+            (string) ($payload['carrera'] ?? ''),
+            (string) ($payload['nivel'] ?? ''),
+            (string) ($payload['sigla'] ?? ''),
+            (string) ($payload['turno'] ?? ''),
+            (string) ($payload['area'] ?? ''),
+            (string) ($payload['institucion'] ?? ''),
+            (string) ($payload['resolucion'] ?? ''),
+            (string) ($payload['horasTotales'] ?? ''),
+            (string) ($payload['mencion'] ?? ''),
+            (string) ($payload['tituloOficial'] ?? ''),
+        ];
+
+        $metaRefs = array_slice($refs, 1);
+        for ($i = 0; $i < count($valuesByOrder); $i++) {
+            if (!isset($metaRefs[$i])) {
+                continue;
+            }
+            $rawRef = trim((string) $metaRefs[$i]);
+            if ($rawRef === '') {
+                continue;
+            }
+
+            $wrapParens = false;
+            $ref = $rawRef;
+            if (preg_match('/^\((.+)\)$/', $ref, $pm)) {
+                $wrapParens = true;
+                $ref = trim($pm[1]);
+            }
+
+            try {
+                [$cLetters, $rNum] = Coordinate::coordinateFromString($ref);
+                $addr = strtoupper($cLetters) . (int) $rNum;
+                $val = $valuesByOrder[$i];
+                if ($wrapParens && $val !== '') {
+                    $val = '(' . $val . ')';
+                }
+                $cellUpdates[$addr] = $val;
+            } catch (\Throwable $e) {
+                // ignorar refs inválidas
+            }
+        }
+
+        return $cellUpdates;
     }
 
     private function generarParcheandoZip(string $templatePath, string $sheetName, int $startCol, int $startRow, array $rows, string $downloadName, array $cellUpdates = [])
@@ -385,11 +591,27 @@ class PlantillasExcelController extends Controller
 
         $patched = $this->parchearSheetXml($sheetXml, $startCol, $startRow, $rows, $cellUpdates);
         $zip->addFromString($sheetPath, $patched);
+
+        // ── Forzar recálculo de fórmulas al abrir el workbook ──
+        // Las demás hojas pueden tener fórmulas como =CONCAT(INSC.!B5;" ";INSC.!C5)
+        // cuyos resultados están cacheados en <v>. Al parchear INSC. esos caches quedan
+        // obsoletos. Solución: (1) poner fullCalcOnLoad en workbook.xml, (2) limpiar
+        // los <v> de celdas con fórmula en las demás hojas.
+        $workbookXml = $this->forzarFullCalcOnLoad($workbookXml);
+        $zip->addFromString('xl/workbook.xml', $workbookXml);
+
+        // Limpiar caches de fórmulas en las demás hojas
+        $this->limpiarCachesFormulasOtrasHojas($zip, $relsXml, $sheetPath);
+
         $zip->close();
         @unlink($tmp);
 
+        $mime = $downloadExt === 'xlsm'
+            ? 'application/vnd.ms-excel.sheet.macroEnabled.12'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
         return response()->download($tmpFile, $downloadName, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Type' => $mime,
         ])->deleteFileAfterSend(true);
     }
 
@@ -433,14 +655,144 @@ class PlantillasExcelController extends Controller
         return null;
     }
 
-    private function parchearSheetXml(string $sheetXml, int $startCol, int $startRow, array $rows, array $cellUpdates = []): string
+    /**
+     * Modificar workbook.xml para forzar recálculo completo al abrir.
+     * Añade/actualiza fullCalcOnLoad="1" en <calcPr>.
+     */
+    private function forzarFullCalcOnLoad(string $workbookXml): string
     {
         $dom = new \DOMDocument();
-        $dom->preserveWhiteSpace = false;
+        $dom->preserveWhiteSpace = true;
+        $dom->formatOutput = false;
+        $dom->loadXML($workbookXml);
+
+        $nsUri = $dom->documentElement->namespaceURI
+              ?? 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+
+        $calcPrList = $dom->getElementsByTagNameNS($nsUri, 'calcPr');
+        if ($calcPrList->length > 0) {
+            $calcPr = $calcPrList->item(0);
+        } else {
+            // No existe <calcPr>: crearlo como hijo de <workbook>
+            $calcPr = $dom->createElementNS($nsUri, 'calcPr');
+            $dom->documentElement->appendChild($calcPr);
+        }
+
+        $calcPr->setAttribute('fullCalcOnLoad', '1');
+        $calcPr->setAttribute('forceFullCalc', '1');
+
+        $xml = $dom->saveXML();
+        $xml = preg_replace(
+            '/^<\?xml [^?]*\?>/',
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+            $xml
+        );
+
+        return $xml;
+    }
+
+    /**
+     * Recorrer TODAS las hojas del workbook excepto la hoja parcheada (INSC.)
+     * y eliminar los nodos <v> de cualquier celda que contenga <f> (fórmula).
+     * Esto obliga a Excel a recalcular esas fórmulas al abrir.
+     */
+    private function limpiarCachesFormulasOtrasHojas(ZipArchive $zip, string $relsXml, string $patchedSheetPath): void
+    {
+        $rels = new \DOMDocument();
+        $rels->preserveWhiteSpace = false;
+        $rels->loadXML($relsXml);
+
+        $relsNodes = $rels->getElementsByTagName('Relationship');
+        $sheetPaths = [];
+        foreach ($relsNodes as $rel) {
+            $type = $rel->getAttribute('Type');
+            // Solo hojas de cálculo
+            if (
+                strpos($type, '/worksheet') === false &&
+                strpos($type, '/chartsheet') === false
+            ) {
+                continue;
+            }
+            $target = $rel->getAttribute('Target');
+            if (!$target) continue;
+            $target = ltrim($target, '/');
+            $fullPath = 'xl/' . $target;
+            // Excluir la hoja que ya parcheamos (INSC.)
+            if ($fullPath === $patchedSheetPath) continue;
+            $sheetPaths[] = $fullPath;
+        }
+
+        foreach ($sheetPaths as $sp) {
+            $xml = $zip->getFromName($sp);
+            if ($xml === false) continue;
+
+            $cleaned = $this->limpiarCacheFormulasEnSheet($xml);
+            if ($cleaned !== null) {
+                $zip->addFromString($sp, $cleaned);
+            }
+        }
+    }
+
+    /**
+     * En una hoja XML, para cada celda <c> que tenga un hijo <f> (fórmula),
+     * eliminar los hijos <v> (valor cacheado) para forzar recálculo.
+     * Devuelve null si no hubo cambios (optimización).
+     */
+    private function limpiarCacheFormulasEnSheet(string $sheetXml): ?string
+    {
+        $dom = new \DOMDocument();
+        $dom->preserveWhiteSpace = true;
         $dom->formatOutput = false;
         $dom->loadXML($sheetXml);
 
-        $sheetData = $dom->getElementsByTagName('sheetData')->item(0);
+        $changed = false;
+        $cells = $dom->getElementsByTagName('c');
+        foreach ($cells as $cell) {
+            $hasFormula = false;
+            $cachedValues = [];
+            foreach ($cell->childNodes as $child) {
+                if ($child instanceof \DOMElement) {
+                    if ($child->localName === 'f') {
+                        $hasFormula = true;
+                    }
+                    if ($child->localName === 'v') {
+                        $cachedValues[] = $child;
+                    }
+                }
+            }
+            if ($hasFormula && count($cachedValues) > 0) {
+                foreach ($cachedValues as $v) {
+                    $cell->removeChild($v);
+                }
+                $changed = true;
+            }
+        }
+
+        if (!$changed) {
+            return null;
+        }
+
+        $xml = $dom->saveXML();
+        $xml = preg_replace(
+            '/^<\?xml [^?]*\?>/',
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+            $xml
+        );
+        return $xml;
+    }
+
+    private function parchearSheetXml(string $sheetXml, int $startCol, int $startRow, array $rows, array $cellUpdates = []): string
+    {
+        $dom = new \DOMDocument();
+        $dom->preserveWhiteSpace = true;
+        $dom->formatOutput = false;
+        $dom->loadXML($sheetXml);
+
+        // Detectar el namespace principal de la hoja (spreadsheetml)
+        $nsUri = $dom->documentElement->namespaceURI ?? 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+
+        $sheetData = $dom->getElementsByTagNameNS($nsUri, 'sheetData')->item(0)
+                  ?? $dom->getElementsByTagName('sheetData')->item(0);
         if (!$sheetData) {
             return $sheetXml;
         }
@@ -454,7 +806,7 @@ class PlantillasExcelController extends Controller
             }
         }
 
-        $setInlineStrCell = function (string $addr, string $value) use (&$dom, $sheetData, &$rowIndex) {
+        $setInlineStrCell = function (string $addr, string $value) use (&$dom, $sheetData, &$rowIndex, $nsUri) {
             try {
                 [$colLetters, $rowNum] = Coordinate::coordinateFromString($addr);
                 $r = (int) $rowNum;
@@ -463,7 +815,7 @@ class PlantillasExcelController extends Controller
 
                 $rowEl = $rowIndex[$r] ?? null;
                 if (!$rowEl) {
-                    $rowEl = $dom->createElement('row');
+                    $rowEl = $dom->createElementNS($nsUri, 'row');
                     $rowEl->setAttribute('r', (string) $r);
                     $sheetData->appendChild($rowEl);
                     $rowIndex[$r] = $rowEl;
@@ -477,14 +829,14 @@ class PlantillasExcelController extends Controller
                     }
                 }
                 if (!$cell) {
-                    $cell = $dom->createElement('c');
+                    $cell = $dom->createElementNS($nsUri, 'c');
                     $cell->setAttribute('r', $addrNorm);
                     $rowEl->appendChild($cell);
                 }
 
                 // No sobrescribir fórmulas si existen
                 foreach ($cell->childNodes as $child) {
-                    if ($child instanceof \DOMElement && $child->tagName === 'f') {
+                    if ($child instanceof \DOMElement && $child->localName === 'f') {
                         return;
                     }
                 }
@@ -492,7 +844,7 @@ class PlantillasExcelController extends Controller
                 // Limpiar nodos de valor anteriores (v/is)
                 $toRemove = [];
                 foreach ($cell->childNodes as $child) {
-                    if ($child instanceof \DOMElement && ($child->tagName === 'v' || $child->tagName === 'is')) {
+                    if ($child instanceof \DOMElement && ($child->localName === 'v' || $child->localName === 'is')) {
                         $toRemove[] = $child;
                     }
                 }
@@ -501,8 +853,8 @@ class PlantillasExcelController extends Controller
                 }
 
                 $cell->setAttribute('t', 'inlineStr');
-                $is = $dom->createElement('is');
-                $t = $dom->createElement('t');
+                $is = $dom->createElementNS($nsUri, 'is');
+                $t = $dom->createElementNS($nsUri, 't');
                 $t->setAttribute('xml:space', 'preserve');
                 $t->appendChild($dom->createTextNode($value));
                 $is->appendChild($t);
@@ -534,7 +886,7 @@ class PlantillasExcelController extends Controller
 
             $rowEl = $rowIndex[$r] ?? null;
             if (!$rowEl) {
-                $rowEl = $dom->createElement('row');
+                $rowEl = $dom->createElementNS($nsUri, 'row');
                 $rowEl->setAttribute('r', (string) $r);
                 $sheetData->appendChild($rowEl);
                 $rowIndex[$r] = $rowEl;
@@ -553,7 +905,7 @@ class PlantillasExcelController extends Controller
                 $addr = Coordinate::stringFromColumnIndex($startCol + $i) . $r;
                 $cell = $cellIndex[$addr] ?? null;
                 if (!$cell) {
-                    $cell = $dom->createElement('c');
+                    $cell = $dom->createElementNS($nsUri, 'c');
                     $cell->setAttribute('r', $addr);
                     $rowEl->appendChild($cell);
                     $cellIndex[$addr] = $cell;
@@ -562,7 +914,7 @@ class PlantillasExcelController extends Controller
                 // No sobrescribir fórmulas si existen
                 $hasFormula = false;
                 foreach ($cell->childNodes as $child) {
-                    if ($child instanceof \DOMElement && $child->tagName === 'f') {
+                    if ($child instanceof \DOMElement && $child->localName === 'f') {
                         $hasFormula = true;
                         break;
                     }
@@ -574,7 +926,7 @@ class PlantillasExcelController extends Controller
                 // Limpiar nodos de valor anteriores (v/is)
                 $toRemove = [];
                 foreach ($cell->childNodes as $child) {
-                    if ($child instanceof \DOMElement && ($child->tagName === 'v' || $child->tagName === 'is')) {
+                    if ($child instanceof \DOMElement && ($child->localName === 'v' || $child->localName === 'is')) {
                         $toRemove[] = $child;
                     }
                 }
@@ -584,8 +936,8 @@ class PlantillasExcelController extends Controller
 
                 // Escribir como inlineStr para no tocar sharedStrings
                 $cell->setAttribute('t', 'inlineStr');
-                $is = $dom->createElement('is');
-                $t = $dom->createElement('t');
+                $is = $dom->createElementNS($nsUri, 'is');
+                $t = $dom->createElementNS($nsUri, 't');
                 $t->setAttribute('xml:space', 'preserve');
                 $t->appendChild($dom->createTextNode((string) ($vals[$i] ?? '')));
                 $is->appendChild($t);
@@ -595,6 +947,60 @@ class PlantillasExcelController extends Controller
             $r++;
         }
 
-        return $dom->saveXML();
+        // ─── ORDENAR filas y celdas para cumplir con el formato xlsx ───
+        // Excel exige que <row> estén ordenadas ascendentemente por atributo "r"
+        // y <c> dentro de cada fila estén ordenados por columna ascendente.
+        $allRows = [];
+        foreach ($sheetData->childNodes as $child) {
+            if ($child instanceof \DOMElement && $child->localName === 'row') {
+                $allRows[] = $child;
+            }
+        }
+
+        // Ordenar filas por número de fila
+        usort($allRows, function (\DOMElement $a, \DOMElement $b) {
+            return (int) $a->getAttribute('r') - (int) $b->getAttribute('r');
+        });
+
+        // Reordenar en el DOM
+        foreach ($allRows as $rowEl) {
+            $sheetData->appendChild($rowEl); // appendChild mueve el nodo existente
+
+            // Ordenar celdas dentro de la fila por columna
+            $cells = [];
+            foreach ($rowEl->childNodes as $child) {
+                if ($child instanceof \DOMElement && $child->localName === 'c') {
+                    $cells[] = $child;
+                }
+            }
+            if (count($cells) > 1) {
+                usort($cells, function (\DOMElement $a, \DOMElement $b) {
+                    try {
+                        $colA = Coordinate::columnIndexFromString(
+                            Coordinate::coordinateFromString($a->getAttribute('r'))[0]
+                        );
+                        $colB = Coordinate::columnIndexFromString(
+                            Coordinate::coordinateFromString($b->getAttribute('r'))[0]
+                        );
+                        return $colA - $colB;
+                    } catch (\Throwable $e) {
+                        return 0;
+                    }
+                });
+                foreach ($cells as $cellEl) {
+                    $rowEl->appendChild($cellEl);
+                }
+            }
+        }
+
+        // Preservar la declaración XML original del sheet (encoding + standalone)
+        $xml = $dom->saveXML();
+        $xml = preg_replace(
+            '/^<\?xml [^?]*\?>/',
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+            $xml
+        );
+
+        return $xml;
     }
 }
