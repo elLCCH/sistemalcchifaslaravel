@@ -205,6 +205,12 @@ class AuthController extends Controller
         }
 
         //SI SE LOGRÓ REALIZAR EL LOGIN ENTONCES HACER TOKENS}
+        if ($login==false) {
+            return response()->json([
+                "message" => "Nombre de usuario o contraseña incorrectos."
+            ], 401);
+        }
+
         if ($login==true) {
             switch ($tipoSesion) {
                 case 'usuarioslcchs':

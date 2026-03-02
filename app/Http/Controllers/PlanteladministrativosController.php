@@ -96,9 +96,10 @@ class PlanteladministrativosController extends Controller
 
         if ($request->has('Contrasenia')) {
             $raw = (string) $request->input('Contrasenia');
-            if (trim($raw) !== '') {
+            if (trim($raw) !== '' && !\Illuminate\Support\Str::startsWith($raw, ['$2y$', '$2a$', '$argon2', '$bcrypt$'])) {
                 $requestData['Contrasenia'] = Hash::make($raw);
             } else {
+                // Vacío o ya es un hash → mantener la contraseña actual
                 $requestData['Contrasenia'] = $administrativo->Contrasenia;
             }
         } else {

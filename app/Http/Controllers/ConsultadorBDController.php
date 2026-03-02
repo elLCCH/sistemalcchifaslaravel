@@ -39,7 +39,7 @@ class ConsultadorBDController extends Controller
      * Ejecuta una consulta SQL (solo SELECT y UPDATE permitidos).
      * Si la consulta contiene "-- encriptar", encripta las contraseñas no encriptadas.
      *
-     * USAR EJEMPLO: SELECT id, Nombre, Ap_Paterno, Ap_Materno, FechaNac, Contrasenia FROM estudiantesifas WHERE Nombre LIKE '%CHOQUE%' -- encriptar
+     * USAR EJEMPLO: select id, Nombre, Ap_Paterno, Ap_Materno, FechaNac, Contrasenia from estudiantesifas WHERE id BETWEEN 1 AND 100 -- encriptar
      * 
      */
     public function ConsultarApi(Request $request)

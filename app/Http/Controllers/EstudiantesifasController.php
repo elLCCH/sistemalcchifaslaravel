@@ -16,6 +16,15 @@ class EstudiantesifasController extends Controller
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
 
+    private function isHashedPassword(?string $value): bool
+    {
+        $v = (string) ($value ?? '');
+        if ($v === '') {
+            return false;
+        }
+        return \Illuminate\Support\Str::startsWith($v, ['$2y$', '$2a$', '$argon2', '$bcrypt$']);
+    }
+
     private function normalizedCiExpr(): string
     {
         // Normaliza CI para comparar duplicados ignorando separadores comunes.
@@ -302,9 +311,11 @@ class EstudiantesifasController extends Controller
         }
 
         if (array_key_exists('Contrasenia', $data)) {
-            if (!empty($data['Contrasenia'])) {
-                $data['Contrasenia'] = Hash::make($data['Contrasenia']);
+            $raw = (string) ($data['Contrasenia'] ?? '');
+            if (trim($raw) !== '' && !$this->isHashedPassword($raw)) {
+                $data['Contrasenia'] = Hash::make($raw);
             } else {
+                // Vacío o ya es un hash → no tocar la contraseña actual
                 unset($data['Contrasenia']);
             }
         }
