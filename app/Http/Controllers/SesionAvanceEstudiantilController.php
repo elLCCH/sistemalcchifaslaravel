@@ -554,27 +554,22 @@ class SesionAvanceEstudiantilController extends Controller
             ->get()
             ->keyBy('id');
 
-        // Agrupar por evaluación → número_clase
+        // Agrupar por evaluación → número_clase → [registros]
         $grouped = [];
         foreach ($sesiones as $s) {
             $ev = (int) $s->evaluacion;
             $nc = (int) $s->numero_clase;
             if (!isset($grouped[$ev])) $grouped[$ev] = [];
-            if (!isset($grouped[$ev][$nc])) $grouped[$ev][$nc] = ['numero_clase' => $nc, 'fecha' => $s->fecha, 'registros' => []];
+            if (!isset($grouped[$ev][$nc])) $grouped[$ev][$nc] = [];
             $est = $estudiantes[(int) $s->infoestudiantesifas_id] ?? null;
             $nombre = $est ? trim("{$est->Ap_Paterno} {$est->Ap_Materno} {$est->Nombre}") : "ID {$s->infoestudiantesifas_id}";
-            $grouped[$ev][$nc]['registros'][] = [
+            $grouped[$ev][$nc][] = [
                 'infoestudiantesifas_id' => (int) $s->infoestudiantesifas_id,
                 'nombre'     => $nombre,
-                'ci'         => $est->CI ?? '',
+                'ci'         => $est?->CI ?? '',
                 'asistencia' => $s->asistencia,
                 'estrellas'  => $s->estrellas,
             ];
-        }
-
-        // Limpiar keys
-        foreach ($grouped as $ev => &$clases) {
-            $clases = array_values($clases);
         }
 
         return response()->json(['data' => $grouped, 'estudiantes' => $estudiantes->values()]);

@@ -630,4 +630,140 @@ class PerfilController extends Controller
 
         return array_values($map);
     }
+
+    /**
+     * Cambiar foto de perfil (todos los usuarios).
+     */
+    public function cambiarFoto(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'No autenticado'], 401);
+        }
+
+        $file = $request->file('foto');
+        if (!$file) {
+            return response()->json(['message' => 'No se envió ninguna imagen.'], 422);
+        }
+
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+        if (!in_array($ext, $allowed, true)) {
+            return response()->json(['message' => 'Solo se permiten imágenes (jpg, jpeg, png, webp).'], 422);
+        }
+
+        $path = 'archivos/compartidosifas/FotosPerfiles';
+        $destDir = public_path($path);
+        if (!is_dir($destDir)) {
+            mkdir($destDir, 0755, true);
+        }
+
+        $fileName = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $file->getClientOriginalName());
+        $file->move($destDir, $fileName);
+        $fullPath = $path . '/' . $fileName;
+
+        // Actualizar según tipo de usuario
+        if ($user instanceof Planteldocentes) {
+            DB::table('planteldocentes')->where('id', $user->id)->update(['Foto' => $fullPath]);
+        } elseif ($user instanceof Planteladministrativos) {
+            DB::table('planteladministrativos')->where('id', $user->id)->update(['Foto' => $fullPath]);
+        } elseif ($user instanceof Estudiantesifas) {
+            DB::table('estudiantesifas')->where('id', $user->id)->update(['Foto' => $fullPath]);
+        } elseif ($user instanceof Usuarioslcchs) {
+            DB::table('usuarioslcchs')->where('id', $user->id)->update(['Foto' => $fullPath]);
+        } else {
+            return response()->json(['message' => 'Tipo de usuario no soportado.'], 422);
+        }
+
+        return response()->json(['message' => 'Foto actualizada.', 'foto' => $fullPath]);
+    }
+
+    /**
+     * Actualizar biografía (hoja de vida) — solo docentes y administrativos.
+     */
+    public function actualizarBiografia(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'No autenticado'], 401);
+        }
+
+        $biografia = $request->input('biografia', '');
+
+        if ($user instanceof Planteldocentes) {
+            DB::table('planteldocentes')->where('id', $user->id)->update(['Biografia' => $biografia]);
+        } elseif ($user instanceof Planteladministrativos) {
+            DB::table('planteladministrativos')->where('id', $user->id)->update(['Biografia' => $biografia]);
+        } else {
+            return response()->json(['message' => 'Solo docentes y administrativos pueden modificar su biografía.'], 403);
+        }
+
+        return response()->json(['message' => 'Biografía actualizada.']);
+    }
+
+    /**
+     * Actualizar datos personales/familiares/académicos — solo estudiantes.
+     */
+    public function actualizarDatosEstudiante(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'No autenticado'], 401);
+        }
+
+        if (!($user instanceof Estudiantesifas)) {
+            return response()->json(['message' => 'Solo estudiantes pueden actualizar esta información.'], 403);
+        }
+
+        $validated = $request->validate([
+            'Celular' => ['nullable', 'string', 'max:15'],
+            'Direccion' => ['nullable', 'string', 'max:150'],
+            'Correo' => ['nullable', 'string', 'max:100'],
+
+            'Nombre_Padre' => ['nullable', 'string', 'max:50'],
+            'Nombre_Madre' => ['nullable', 'string', 'max:50'],
+            'OcupacionP' => ['nullable', 'string', 'max:20'],
+            'OcupacionM' => ['nullable', 'string', 'max:20'],
+            'NumCelP' => ['nullable', 'string', 'max:15'],
+            'NumCelM' => ['nullable', 'string', 'max:15'],
+
+            'NColegio' => ['nullable', 'string', 'max:100'],
+            'TipoColegio' => ['nullable', 'string', 'max:50'],
+            'CGrado' => ['nullable', 'string', 'max:50'],
+            'CNivel' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        // Permitir también keys en minúscula desde frontend legacy.
+        $payload = [
+            'Celular' => $validated['Celular'] ?? $request->input('celular'),
+            'Direccion' => $validated['Direccion'] ?? $request->input('direccion'),
+            'Correo' => $validated['Correo'] ?? $request->input('correo'),
+
+            'Nombre_Padre' => $validated['Nombre_Padre'] ?? $request->input('Nombre_Padre') ?? $request->input('nombre_padre'),
+            'Nombre_Madre' => $validated['Nombre_Madre'] ?? $request->input('Nombre_Madre') ?? $request->input('nombre_madre'),
+            'OcupacionP' => $validated['OcupacionP'] ?? $request->input('ocupacionp'),
+            'OcupacionM' => $validated['OcupacionM'] ?? $request->input('ocupacionm'),
+            'NumCelP' => $validated['NumCelP'] ?? $request->input('numcelp'),
+            'NumCelM' => $validated['NumCelM'] ?? $request->input('numcelm'),
+
+            'NColegio' => $validated['NColegio'] ?? $request->input('ncolegio'),
+            'TipoColegio' => $validated['TipoColegio'] ?? $request->input('tipocolegio'),
+            'CGrado' => $validated['CGrado'] ?? $request->input('cgrado'),
+            'CNivel' => $validated['CNivel'] ?? $request->input('cnivel'),
+        ];
+
+        // Normalizar strings (trim). Mantener null si viene null.
+        foreach ($payload as $k => $v) {
+            if (is_string($v)) {
+                $payload[$k] = trim($v);
+            }
+        }
+
+        DB::table('estudiantesifas')->where('id', $user->id)->update($payload);
+
+        return response()->json([
+            'message' => 'Información actualizada.',
+            'data' => $payload,
+        ]);
+    }
 }
