@@ -46,6 +46,8 @@ use App\Http\Controllers\PasswordRecoveryController;
 use App\Http\Controllers\PeticionesPrivadas;
 use App\Http\Controllers\PeticionesPublicas;
 use App\Http\Controllers\EstadisticasAsignacionesController;
+use App\Http\Controllers\SesionAvanceEstudiantilController;
+use App\Http\Controllers\ConsultadorBDController;
 use App\Http\Middleware\AuditMiddleware;
 
 Route::post('/verify-token', [TokenController::class, 'verify']);
@@ -87,6 +89,24 @@ Route::prefix('v1/perfil')->middleware('auth:sanctum')->group(function () {
     Route::get('/materias', [PerfilController::class, 'materias']);
     Route::get('/deudas', [PerfilController::class, 'deudas']);
     Route::put('/materias/{materiaId}', [PerfilController::class, 'updateMateriaDocente']);
+});
+
+// ============================================================
+// Sesiones de Avance Estudiantil (docente)
+// ============================================================
+Route::prefix('v1/sesiones-avance')->middleware('auth:sanctum')->group(function () {
+    Route::get('/mis-estudiantes', [SesionAvanceEstudiantilController::class, 'misEstudiantes']);
+    Route::get('/resumen-baterias', [SesionAvanceEstudiantilController::class, 'resumenBaterias']);
+    Route::post('/comparacion',    [SesionAvanceEstudiantilController::class, 'comparacion']);
+    Route::get('/mis-sesiones',    [SesionAvanceEstudiantilController::class, 'misSesionesEstudiante']);
+    Route::post('/terminar-clase', [SesionAvanceEstudiantilController::class, 'terminarClase']);
+    Route::get('/asistencias-docente', [SesionAvanceEstudiantilController::class, 'asistenciasDocente']);
+    Route::get('/',               [SesionAvanceEstudiantilController::class, 'index']);
+    Route::post('/',              [SesionAvanceEstudiantilController::class, 'store']);
+    Route::get('/{id}',           [SesionAvanceEstudiantilController::class, 'show']);
+    Route::put('/{id}',           [SesionAvanceEstudiantilController::class, 'update']);
+    Route::delete('/{id}',        [SesionAvanceEstudiantilController::class, 'destroy']);
+    Route::post('/copiar-ultima', [SesionAvanceEstudiantilController::class, 'copiarUltima']);
 });
 
 Route::prefix('v1/branding')->middleware('auth:sanctum')->group(function () {
@@ -150,6 +170,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::put('/calificaciones/{id}', [CalificacionesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
     Route::delete('/calificaciones/{id}', [CalificacionesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),ASIGNADOR_DE_MATERIAS_ESTUDIANTES']);
     Route::get('calificaciones/by-info/{infoId}', [CalificacionesController::class, 'byInfo'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
+    Route::get('calificaciones/by-info-docente/{infoId}', [CalificacionesController::class, 'byInfoDocente'])->middleware([CheckAbilities::class . ':DOCENTE']);
     Route::post('calificaciones/bulk-update', [CalificacionesController::class, 'bulkUpdate'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),DOCENTE']);
     Route::get('calificaciones/by-materia/{materiaId}', [CalificacionesController::class, 'byMateria'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
     Route::get('calificaciones/materia-token/{materiaId}', [CalificacionesController::class, 'materiaToken'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE,ASIGNADOR_DE_MATERIAS_ESTUDIANTES,PRACTICANTE']);
@@ -464,6 +485,11 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::post('/CargarInformacionCuadroInscripciones', [PeticionesPrivadas::class, 'CargarInformacionCuadroInscripciones'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
     Route::post('/CargarListaPreliminarAlumnos2026', [PeticionesPrivadas::class, 'CargarListaPreliminarAlumnos2026'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
 
+    // =========================
+    // ConsultadorBDController (Consultas SQL directas - Solo CREADOR y TÉCNICO)
+    // =========================
+    Route::post('/consultador-bd', [ConsultadorBDController::class, 'ConsultarApi'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+
 });
 
 
@@ -485,6 +511,9 @@ Route::get('/inicios/{id}', [IniciosController::class, 'show']);
 Route::get('/instituciones', [InstitucionesController::class, 'index']);
 Route::get('/instituciones/{id}', [InstitucionesController::class, 'show']);
 Route::get('/controles', [ControlesController::class, 'index']);
+
+// Biblioteca archivos públicos (sin autenticación)
+Route::get('bibliotecaarchivoslcch-public', [BibliotecaarchivoslcchController::class, 'indexPublic']);
 
 // ============================================================
 // RUTAS PÚBLICAS PARA INSCRIPCIÓN A EVENTOS (WEB)

@@ -56,7 +56,9 @@ class PlanteladministrativosController extends Controller
             $planteladministrativos['instituciones_id'] = $user->instituciones_id;
         }
         
-        $planteladministrativos['Contrasenia'] = Hash::make($request->input('Contrasenia'));
+        $planteladministrativos['Contrasenia'] = !empty($request->input('Contrasenia'))
+            ? Hash::make($request->input('Contrasenia'))
+            : null;
         Planteladministrativos::insert($planteladministrativos);
         return response()->json(['data' => $planteladministrativos]);
     }

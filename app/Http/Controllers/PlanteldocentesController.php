@@ -51,7 +51,9 @@ class PlanteldocentesController extends Controller
         if ($user->instituciones_id) {
             $planteldocentes['instituciones_id'] = $user->instituciones_id;
         }
-        $planteldocentes['Contrasenia'] = Hash::make($request->input('Contrasenia'));
+        $planteldocentes['Contrasenia'] = !empty($request->input('Contrasenia'))
+            ? Hash::make($request->input('Contrasenia'))
+            : null;
         Planteldocentes::insert($planteldocentes);
         return response()->json(['data' => $planteldocentes]);
     }

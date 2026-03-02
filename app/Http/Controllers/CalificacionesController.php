@@ -246,6 +246,95 @@ class CalificacionesController extends Controller
         return response()->json(['data' => $query->get()]);
     }
 
+    /**
+     * Calificaciones de un estudiante visible para el docente autenticado.
+     * Devuelve las calificaciones agrupadas por materia.
+     */
+    public function byInfoDocente(Request $request, $infoId)
+    {
+        $user = $request->user();
+        if (!$user || !$this->isDocenteUser($user)) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $infoId = (int) $infoId;
+        if ($infoId <= 0) abort(404);
+
+        $docenteId = (int) $user->id;
+
+        // Obtener las materias_id donde el docente está asignado (directa o por inscripción del estudiante)
+        // 1) Asignación directa vía planteldocentesmaterias
+        $materiasDirectas = DB::table('planteldocentesmaterias')
+            ->where('planteldocentes_id', $docenteId)
+            ->pluck('materias_id')
+            ->toArray();
+
+        // 2) Materias donde el estudiante está inscrito y vinculado al docente por modo
+        $materiasPorModo = DB::table('calificaciones as cal')
+            ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+            ->join('materias', 'cal.materias_id', '=', 'materias.id')
+            ->join('plandeestudios as pe', 'materias.plandeestudios_id', '=', 'pe.id')
+            ->where('cal.infoestudiantesifas_id', $infoId)
+            ->where(function ($q) use ($docenteId) {
+                $q->where('info.planteldocadmins_id', $docenteId)
+                  ->orWhere('info.planteldocadmins_idPC', $docenteId)
+                  ->orWhere('info.planteldocadmins_idOtros', $docenteId);
+            })
+            ->pluck('cal.materias_id')
+            ->toArray();
+
+        $allMaterias = array_unique(array_merge($materiasDirectas, $materiasPorModo));
+        if (empty($allMaterias)) {
+            return response()->json(['data' => []]);
+        }
+
+        // Calificaciones del estudiante en esas materias
+        $calificaciones = Calificaciones::query()
+            ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
+            ->where('calificaciones.infoestudiantesifas_id', $infoId)
+            ->whereIn('calificaciones.materias_id', $allMaterias)
+            ->select([
+                'calificaciones.*',
+                'materias.Paralelo as MateriaParalelo',
+                'plandeestudios.NombreMateria',
+                'plandeestudios.SiglaMateria',
+                'plandeestudios.LvlCurso',
+                'plandeestudios.ModoMateria',
+                'anios.Anio',
+                'carreras.NombreCarrera',
+                'carreras.CantidadEvaluaciones',
+            ])
+            ->orderBy('plandeestudios.RangoLvlCurso')
+            ->orderBy('plandeestudios.Rango')
+            ->orderBy('plandeestudios.NombreMateria')
+            ->get();
+
+        // Agrupar por materia
+        $grouped = [];
+        foreach ($calificaciones as $c) {
+            $mid = $c->materias_id;
+            if (!isset($grouped[$mid])) {
+                $grouped[$mid] = [
+                    'materia_id' => $mid,
+                    'nombre_materia' => $c->NombreMateria,
+                    'sigla_materia' => $c->SiglaMateria,
+                    'lvl_curso' => $c->LvlCurso,
+                    'paralelo' => $c->MateriaParalelo,
+                    'anio' => $c->Anio,
+                    'carrera' => $c->NombreCarrera,
+                    'cantidad_evaluaciones' => $c->CantidadEvaluaciones,
+                    'calificacion' => null,
+                ];
+            }
+            $grouped[$mid]['calificacion'] = $c;
+        }
+
+        return response()->json(['data' => array_values($grouped)]);
+    }
+
     public function byInfo(Request $request, $infoId)
     {
         $user = $request->user();

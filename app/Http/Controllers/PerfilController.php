@@ -233,10 +233,10 @@ class PerfilController extends Controller
                 ->orderBy('p.NombreMateria')
                 ->get();
 
-            $merged = collect($asignadas)
-                ->concat($especialidad)
-                ->concat($practica)
-                ->concat($complementario)
+            $merged = collect($asignadas)->map(fn ($r) => (array) $r + ['modo_docente' => 'asignada'])
+                ->concat(collect($especialidad)->map(fn ($r) => (array) $r + ['modo_docente' => 'especialidad']))
+                ->concat(collect($practica)->map(fn ($r) => (array) $r + ['modo_docente' => 'practica']))
+                ->concat(collect($complementario)->map(fn ($r) => (array) $r + ['modo_docente' => 'complementario']))
                 ->unique('materia_id')
                 ->values();
 

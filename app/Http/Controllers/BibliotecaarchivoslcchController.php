@@ -11,54 +11,168 @@ class BibliotecaarchivoslcchController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class])->except(['indexPublic']);
+    }
+
+    /**
+     * Endpoint público (sin autenticación) para DOCUMENTOS_PUBLICOS y NAVEGADOR.
+     */
+    public function indexPublic(Request $request)
+    {
+        $categoriaParam = strtoupper(trim((string) $request->query('categoria')));
+
+        if (!in_array($categoriaParam, ['DOCUMENTOS_PUBLICOS', 'NAVEGADOR'])) {
+            return response()->json(['error' => 'Categoría no permitida en acceso público'], 403);
+        }
+
+        $query = Bibliotecaarchivoslcch::query()
+            ->leftJoin('instituciones', 'bibliotecaarchivoslcch.institucion_id', '=', 'instituciones.id')
+            ->select('bibliotecaarchivoslcch.*', 'instituciones.Logo as institucion_logo', 'instituciones.Nombre as institucion_nombre')
+            ->where('bibliotecaarchivoslcch.categoria', $categoriaParam)
+            ->where('bibliotecaarchivoslcch.visibilidad', 'VISIBLE')
+            ->where('bibliotecaarchivoslcch.estado', 'ACTIVO')
+            ->orderByDesc('bibliotecaarchivoslcch.fecha')
+            ->orderByDesc('bibliotecaarchivoslcch.id');
+
+        return response()->json(['data' => $query->get()]);
     }
 
     public function index(Request $request)
     {
         $user = $request->user();
-        $categoriaParam = trim((string) $request->query('categoria'));
+        $categoriaParam = strtoupper(trim((string) $request->query('categoria')));
+        $perPage = max(1, min((int) ($request->query('per_page') ?? 10), 20));
+        $search = trim((string) $request->query('search'));
+        $anio = trim((string) $request->query('anio'));
 
-        // Para DOCUMENTOS_PUBLICOS: mezclar TODAS las instituciones y traer logo.
-        if (strtoupper($categoriaParam) === 'DOCUMENTOS_PUBLICOS') {
+        // Para DOCUMENTOS_PUBLICOS y NAVEGADOR: mezclar TODAS las instituciones y traer logo.
+        if (in_array($categoriaParam, ['DOCUMENTOS_PUBLICOS', 'NAVEGADOR'])) {
             $query = Bibliotecaarchivoslcch::query()
                 ->leftJoin('instituciones', 'bibliotecaarchivoslcch.institucion_id', '=', 'instituciones.id')
                 ->select('bibliotecaarchivoslcch.*', 'instituciones.Logo as institucion_logo', 'instituciones.Nombre as institucion_nombre')
-                ->where('bibliotecaarchivoslcch.categoria', 'DOCUMENTOS_PUBLICOS')
-                ->when($request->query('visibilidad'), function ($q) use ($request) {
-                    $q->where('bibliotecaarchivoslcch.visibilidad', (string) $request->query('visibilidad'));
-                })
-                ->orderByDesc('bibliotecaarchivoslcch.fecha')
-                ->orderByDesc('bibliotecaarchivoslcch.id');
+                ->where('bibliotecaarchivoslcch.categoria', $categoriaParam)
+                ->where('bibliotecaarchivoslcch.visibilidad', 'VISIBLE')
+                ->where('bibliotecaarchivoslcch.estado', 'ACTIVO');
 
-            return response()->json(['data' => $query->get()]);
+            if (!empty($search)) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('bibliotecaarchivoslcch.nombre_documento', 'LIKE', "%{$search}%")
+                      ->orWhere('bibliotecaarchivoslcch.publicado_por', 'LIKE', "%{$search}%")
+                      ->orWhere('bibliotecaarchivoslcch.descripcion', 'LIKE', "%{$search}%")
+                      ->orWhere('instituciones.Nombre', 'LIKE', "%{$search}%");
+                });
+            }
+            if (!empty($anio)) {
+                $query->where('bibliotecaarchivoslcch.fecha', 'LIKE', $anio . '%');
+            }
+
+            $paginated = $query->orderByDesc('bibliotecaarchivoslcch.fecha')
+                ->orderByDesc('bibliotecaarchivoslcch.id')
+                ->paginate($perPage);
+
+            return response()->json([
+                'data'         => $paginated->items(),
+                'total'        => $paginated->total(),
+                'per_page'     => $paginated->perPage(),
+                'current_page' => $paginated->currentPage(),
+                'last_page'    => $paginated->lastPage(),
+            ]);
         }
 
-        $query = Bibliotecaarchivoslcch::query()
-            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
-                $q->where('institucion_id', (int) $user->instituciones_id);
-            })
-            ->when(empty($user?->instituciones_id) && $request->query('institucion_id'), function ($q) use ($request) {
-                $q->where('institucion_id', (int) $request->query('institucion_id'));
-            })
-            ->when(!empty($categoriaParam), function ($q) use ($categoriaParam) {
-                $q->where('categoria', 'LIKE', '%' . $categoriaParam . '%');
-            })
-            ->when($request->query('visibilidad'), function ($q) use ($request) {
-                $q->where('visibilidad', (string) $request->query('visibilidad'));
-            })
-            ->orderByDesc('fecha')
-            ->orderByDesc('id');
-
-        // Si es docente, filtrar solo sus propios planes.
-        if ($this->esDocente($user) && strtoupper($categoriaParam) === 'PLAN') {
+        // ==== Consulta normal por institución ====
+        $isDocente = $this->esDocente($user);
+        $nombreDocente = '';
+        if ($isDocente) {
             $nombreDocente = trim(($user->Apellidos ?? '') . ' ' . ($user->Nombres ?? ''));
-            if (!empty($nombreDocente)) {
+        }
+
+        $validCats = ['PLAN', 'DOCUMENTOS_ADMINISTRATIVOS'];
+
+        // Closure para aplicar las condiciones base (institución, visible, activo)
+        $applyBase = function ($q) use ($user, $request) {
+            if (!empty($user?->instituciones_id)) {
+                $q->where('institucion_id', (int) $user->instituciones_id);
+            } elseif ($request->query('institucion_id')) {
+                $q->where('institucion_id', (int) $request->query('institucion_id'));
+            }
+            $q->where('visibilidad', 'VISIBLE')->where('estado', 'ACTIVO');
+        };
+
+        // Closure para la condición "TODOS" de docentes: ve sólo sus PLAN + todo DOCUMENTOS_ADMINISTRATIVOS
+        $applyDocenteTodos = function ($q) use ($isDocente, $nombreDocente) {
+            if ($isDocente && !empty($nombreDocente)) {
+                $q->where(function ($sub) use ($nombreDocente) {
+                    $sub->where('categoria', '!=', 'PLAN')
+                        ->orWhere('publicado_por', $nombreDocente);
+                });
+            }
+        };
+
+        // --- Conteo por categoría ---
+        $categoryCounts = [];
+        foreach ($validCats as $cat) {
+            $cq = Bibliotecaarchivoslcch::query();
+            $applyBase($cq);
+            $cq->where('categoria', $cat);
+            if ($isDocente && $cat === 'PLAN' && !empty($nombreDocente)) {
+                $cq->where('publicado_por', $nombreDocente);
+            }
+            $categoryCounts[$cat] = $cq->count();
+        }
+        $categoryCounts['TODOS'] = array_sum($categoryCounts);
+
+        // --- Años disponibles ---
+        $yq = Bibliotecaarchivoslcch::query();
+        $applyBase($yq);
+        $yq->whereIn('categoria', $validCats);
+        $applyDocenteTodos($yq);
+        $years = $yq->selectRaw("DISTINCT LEFT(COALESCE(fecha, created_at), 4) as anio")
+            ->whereNotNull('fecha')
+            ->pluck('anio')
+            ->filter()
+            ->sort()
+            ->reverse()
+            ->values()
+            ->toArray();
+
+        // --- Consulta principal paginada ---
+        $query = Bibliotecaarchivoslcch::query();
+        $applyBase($query);
+
+        if (!empty($categoriaParam) && $categoriaParam !== 'TODOS' && in_array($categoriaParam, $validCats)) {
+            $query->where('categoria', $categoriaParam);
+            if ($isDocente && $categoriaParam === 'PLAN' && !empty($nombreDocente)) {
                 $query->where('publicado_por', $nombreDocente);
             }
+        } else {
+            $query->whereIn('categoria', $validCats);
+            $applyDocenteTodos($query);
         }
 
-        return response()->json(['data' => $query->get()]);
+        if (!empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('nombre_documento', 'LIKE', "%{$search}%")
+                  ->orWhere('publicado_por', 'LIKE', "%{$search}%")
+                  ->orWhere('descripcion', 'LIKE', "%{$search}%")
+                  ->orWhere('dirigido', 'LIKE', "%{$search}%");
+            });
+        }
+
+        if (!empty($anio)) {
+            $query->where('fecha', 'LIKE', $anio . '%');
+        }
+
+        $paginated = $query->orderByDesc('fecha')->orderByDesc('id')->paginate($perPage);
+
+        return response()->json([
+            'data'            => $paginated->items(),
+            'total'           => $paginated->total(),
+            'per_page'        => $paginated->perPage(),
+            'current_page'    => $paginated->currentPage(),
+            'last_page'       => $paginated->lastPage(),
+            'category_counts' => $categoryCounts,
+            'available_years' => $years,
+        ]);
     }
 
     public function show(int $id, Request $request)
@@ -88,7 +202,7 @@ class BibliotecaarchivoslcchController extends Controller
 
         $validated = $request->validate([
             'institucion_id' => ['nullable', 'integer'],
-            'categoria' => ['required', 'string', 'max:80', 'in:PLAN,DOCUMENTOS_ADMINISTRATIVOS,DOCUMENTOS_PUBLICOS'],
+            'categoria' => ['required', 'string', 'max:80', 'in:PLAN,DOCUMENTOS_ADMINISTRATIVOS,DOCUMENTOS_PUBLICOS,NAVEGADOR'],
             'nombre_documento' => ['required', 'string', 'max:150'],
             'fecha' => ['nullable', 'date'],
             'archivo' => ['required', 'string', 'max:300'],
@@ -108,11 +222,13 @@ class BibliotecaarchivoslcchController extends Controller
             return response()->json(['error' => 'institucion_id es requerido'], 422);
         }
 
-        // Auto-llenar campos para docentes.
+        // Auto-llenar publicado_por y fecha para TODOS los roles.
+        $validated['fecha'] = now()->toDateString();
+        $validated['publicado_por'] = trim(($user->Apellidos ?? '') . ' ' . ($user->Nombres ?? ''));
+
+        // Para docentes, forzar dirigido.
         if ($this->esDocente($user)) {
-            $validated['publicado_por'] = trim(($user->Apellidos ?? '') . ' ' . ($user->Nombres ?? ''));
             $validated['dirigido'] = 'PLANTEL INSTITUCIONAL';
-            $validated['fecha'] = now()->toDateString();
         }
 
         $item = Bibliotecaarchivoslcch::create($validated);
@@ -160,6 +276,10 @@ class BibliotecaarchivoslcchController extends Controller
         if ($this->esDocente($user)) {
             unset($validated['categoria']);
         }
+
+        // Siempre sobrescribir publicado_por y fecha al editar.
+        $validated['fecha'] = now()->toDateString();
+        $validated['publicado_por'] = trim(($user->Apellidos ?? '') . ' ' . ($user->Nombres ?? ''));
 
         // No permitir cambiar institución desde update.
         unset($validated['institucion_id']);
