@@ -215,7 +215,7 @@ class AsistenciaSesionController extends Controller
 
         $fecha = $payload['fecha'] ?? date('Y-m-d');
         $horaIngreso = $payload['hora_ingreso'] ?? date('Y-m-d H:i:s');
-        $tiempoEspera = $payload['tiempo_espera_minutos'] ?? 10;
+        $tiempoEspera = $payload['tiempo_espera_minutos'] ?? 20;
         $gpsRequerido = array_key_exists('gps_requerido', $payload) ? (int) $payload['gps_requerido'] : 1;
         $radio = $payload['radio_metros'] ?? 150;
 
@@ -233,7 +233,7 @@ class AsistenciaSesionController extends Controller
                 'fecha' => $fecha,
                 'hora_ingreso' => $horaIngreso,
                 'tiempo_espera_minutos' => $tiempoEspera,
-                'minutos_falta' => 30,
+                'minutos_falta' => 40,
                 'gps_requerido' => $gpsRequerido,
                 'radio_metros' => $radio,
                 'estado' => 'ABIERTA',
@@ -409,7 +409,7 @@ class AsistenciaSesionController extends Controller
         $fecha = $payload['fecha'] ?? date('Y-m-d');
         $horaIngreso = $payload['hora_ingreso'] ?? date('Y-m-d H:i:s');
 
-        $tiempoEspera = $payload['tiempo_espera_minutos'] ?? 10;
+        $tiempoEspera = $payload['tiempo_espera_minutos'] ?? 20;
         $gpsRequerido = array_key_exists('gps_requerido', $payload) ? (int) $payload['gps_requerido'] : 1;
         $radio = $payload['radio_metros'] ?? 150;
 
@@ -427,7 +427,7 @@ class AsistenciaSesionController extends Controller
                 'fecha' => $fecha,
                 'hora_ingreso' => $horaIngreso,
                 'tiempo_espera_minutos' => $tiempoEspera,
-                'minutos_falta' => 30,
+                'minutos_falta' => 40,
                 'gps_requerido' => $gpsRequerido,
                 'radio_metros' => $radio,
                 'estado' => 'ABIERTA',
@@ -769,6 +769,220 @@ class AsistenciaSesionController extends Controller
         });
 
         return response()->json(['ok' => true] + $result);
+    }
+
+    /**
+     * Quitar/eliminar el registro de asistencia de un estudiante en una sesión.
+     * Disponible para docentes (sus propias sesiones) y administrativos.
+     */
+    public function quitarAsistencia(Request $request, $id)
+    {
+        $user = $request->user();
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Solo docentes o administrativos pueden quitar asistencia.'], 403);
+        }
+
+        $sesion = AsistenciaSesion::find($id);
+        if (!$sesion) {
+            return response()->json(['ok' => false, 'message' => 'Sesión no encontrada'], 404);
+        }
+
+        if (!$isAdmin && (int) $sesion->planteldocentes_id !== (int) $user->id) {
+            return response()->json(['ok' => false, 'message' => 'No tienes permiso para modificar esta sesión.'], 403);
+        }
+
+        $infoId = (int) $request->input('infoestudiantesifas_id');
+        if ($infoId <= 0) {
+            return response()->json(['ok' => false, 'message' => 'ID de estudiante inválido.'], 422);
+        }
+
+        $registro = AsistenciaRegistro::query()
+            ->where('asistencias_sesiones_id', (int) $sesion->id)
+            ->where('infoestudiantesifas_id', $infoId)
+            ->first();
+
+        if (!$registro) {
+            return response()->json(['ok' => false, 'message' => 'No existe registro de asistencia para este estudiante en esta sesión.'], 404);
+        }
+
+        $registro->delete();
+
+        return response()->json(['ok' => true, 'message' => 'Registro de asistencia eliminado.']);
+    }
+
+    /**
+     * Historial de asistencia de un estudiante en una materia (para el propio estudiante).
+     * Devuelve las sesiones y el estado de asistencia del estudiante en cada una.
+     */
+    public function misAsistenciasMateria(Request $request, $materiaId)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['ok' => false, 'message' => 'No autenticado.'], 401);
+        }
+
+        $materiaId = (int) $materiaId;
+        if ($materiaId <= 0) {
+            return response()->json(['ok' => false, 'message' => 'Materia inválida.'], 422);
+        }
+
+        // Determinar infoestudiantesifas_id
+        // Si es estudiante, buscar su propio info
+        $isEstudiante = method_exists($user, 'getTable') && $user->getTable() === 'estudiantesifas';
+        if (!$isEstudiante) {
+            // También soportar docentes/admin que consulten (futuro), pero por ahora solo estudiantes
+            $isEstudiante = ($user instanceof \App\Models\Estudiantesifas);
+        }
+
+        if (!$isEstudiante) {
+            return response()->json(['ok' => false, 'message' => 'Solo estudiantes pueden consultar sus propias asistencias.'], 403);
+        }
+
+        // Buscar infoestudiantesifas del estudiante
+        $infoEst = DB::table('infoestudiantesifas')
+            ->where('estudiantesifas_id', $user->id)
+            ->first(['id as info_id', 'instituciones_id']);
+
+        if (!$infoEst) {
+            return response()->json(['ok' => false, 'message' => 'No se encontró información del estudiante.'], 404);
+        }
+
+        $infoId = (int) $infoEst->info_id;
+
+        // Obtener info de la materia
+        $mat = DB::table('materias as m')
+            ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+            ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+            ->where('m.id', $materiaId)
+            ->first([
+                'm.id as materia_id',
+                'p.NombreMateria as nombre_materia',
+                'p.SiglaMateria as sigla_materia',
+                'p.LvlCurso as lvl_curso',
+                'm.Paralelo as paralelo',
+                'm.Turno as turno',
+                'c.NombreCarrera as nombre_carrera',
+            ]);
+
+        if (!$mat) {
+            return response()->json(['ok' => false, 'message' => 'Materia no encontrada.'], 404);
+        }
+
+        // Buscar aulas de la materia
+        $aulas = AulaVirtual::query()
+            ->where('materias_id', $materiaId)
+            ->pluck('id');
+
+        if ($aulas->isEmpty()) {
+            return response()->json([
+                'ok' => true,
+                'materia' => $mat,
+                'asistencias' => [],
+                'resumen' => ['PRESENTE' => 0, 'ATRASO' => 0, 'FALTA' => 0, 'PERMISO' => 0, 'SIN REGISTRO' => 0],
+            ]);
+        }
+
+        // Obtener sesiones de esas aulas ordenadas por fecha
+        $sesiones = AsistenciaSesion::query()
+            ->whereIn('aulas_virtuales_id', $aulas->all())
+            ->orderByDesc('fecha')
+            ->limit(200)
+            ->get();
+
+        $resumen = ['PRESENTE' => 0, 'ATRASO' => 0, 'FALTA' => 0, 'PERMISO' => 0, 'SIN REGISTRO' => 0];
+        $asistencias = [];
+
+        foreach ($sesiones as $s) {
+            $reg = AsistenciaRegistro::query()
+                ->where('asistencias_sesiones_id', (int) $s->id)
+                ->where('infoestudiantesifas_id', $infoId)
+                ->first(['estado_asistencia', 'metodo', 'fecha_registro']);
+
+            $estado = $reg ? strtoupper(trim((string) $reg->estado_asistencia)) : 'SIN REGISTRO';
+            if (isset($resumen[$estado])) {
+                $resumen[$estado]++;
+            } else {
+                $resumen['SIN REGISTRO']++;
+            }
+
+            $asistencias[] = [
+                'sesion_id' => $s->id,
+                'fecha' => $s->fecha ? $s->fecha->format('Y-m-d') : null,
+                'estado_sesion' => $s->estado,
+                'estado_asistencia' => $reg ? $reg->estado_asistencia : null,
+                'metodo' => $reg ? $reg->metodo : null,
+                'fecha_registro' => $reg ? $reg->fecha_registro : null,
+            ];
+        }
+
+        return response()->json([
+            'ok' => true,
+            'materia' => $mat,
+            'asistencias' => $asistencias,
+            'resumen' => $resumen,
+        ]);
+    }
+
+    /**
+     * Materias del docente autenticado (para el botón flotante de "Llamar asistencia").
+     * Solo devuelve materias con modo de asistencia != NORMAL.
+     */
+    public function misMaterias(Request $request)
+    {
+        $user = $request->user();
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Solo docentes o administrativos.'], 403);
+        }
+
+        $instId = (int) ($user->instituciones_id ?? 0);
+
+        // Para docentes: materias asignadas vía planteldocentesmaterias
+        // Para admin: todas las materias de su institución con modo != NORMAL
+        if ($isDocente) {
+            $materias = DB::table('planteldocentesmaterias as pdm')
+                ->join('materias as m', 'pdm.materias_id', '=', 'm.id')
+                ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+                ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+                ->where('pdm.planteldocentes_id', $user->id)
+                ->where('c.instituciones_id', $instId)
+                ->whereNotNull('m.ModoAsistencia')
+                ->where('m.ModoAsistencia', '!=', '')
+                ->where('m.ModoAsistencia', '!=', 'NORMAL')
+                ->get([
+                    'm.id as materia_id',
+                    'p.NombreMateria as nombre_materia',
+                    'p.SiglaMateria as sigla_materia',
+                    'p.LvlCurso as lvl_curso',
+                    'm.Paralelo as paralelo',
+                    'm.Turno as turno',
+                    'c.NombreCarrera as nombre_carrera',
+                    'm.ModoAsistencia as modo_asistencia',
+                ]);
+        } else {
+            $materias = DB::table('materias as m')
+                ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+                ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+                ->where('c.instituciones_id', $instId)
+                ->whereNotNull('m.ModoAsistencia')
+                ->where('m.ModoAsistencia', '!=', '')
+                ->where('m.ModoAsistencia', '!=', 'NORMAL')
+                ->get([
+                    'm.id as materia_id',
+                    'p.NombreMateria as nombre_materia',
+                    'p.SiglaMateria as sigla_materia',
+                    'p.LvlCurso as lvl_curso',
+                    'm.Paralelo as paralelo',
+                    'm.Turno as turno',
+                    'c.NombreCarrera as nombre_carrera',
+                    'm.ModoAsistencia as modo_asistencia',
+                ]);
+        }
+
+        return response()->json(['ok' => true, 'materias' => $materias]);
     }
 
     /**

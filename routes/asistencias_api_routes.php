@@ -27,9 +27,16 @@ Route::prefix('asistencias')->middleware(['auth:sanctum'])->group(function () {
     Route::get('sesiones/{id}', [AsistenciaSesionController::class, 'show']);
     Route::post('sesiones/{id}/cerrar', [AsistenciaSesionController::class, 'cerrar']);
     Route::post('sesiones/{id}/marcar', [AsistenciaSesionController::class, 'marcar']);
+    Route::post('sesiones/{id}/quitar', [AsistenciaSesionController::class, 'quitarAsistencia']);
     Route::get('sesiones/{id}/registros', [AsistenciaSesionController::class, 'registros']);
     Route::get('sesiones/{id}/estudiantes', [AsistenciaSesionController::class, 'estudiantes']);
     Route::delete('sesiones/{id}', [AsistenciaSesionController::class, 'destroy']);
+
+    // Mis asistencias (estudiante) por materia
+    Route::get('mis-asistencias/materia/{materiaId}', [AsistenciaSesionController::class, 'misAsistenciasMateria']);
+
+    // Materias del docente/admin con asistencia habilitada (para botón flotante)
+    Route::get('mis-materias', [AsistenciaSesionController::class, 'misMaterias']);
 
     // QR rotativo
     Route::post('sesiones/{id}/qr', [AsistenciaQrTokenController::class, 'create']);

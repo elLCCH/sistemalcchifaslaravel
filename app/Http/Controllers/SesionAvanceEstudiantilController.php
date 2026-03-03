@@ -331,13 +331,24 @@ class SesionAvanceEstudiantilController extends Controller
         if (!empty($instrumentos)) $q->whereIn('info.InstrumentoMusical', $instrumentos);
 
         if ($search !== '') {
-            $like = '%' . mb_strtolower($search) . '%';
-            $q->where(function ($sub) use ($like) {
-                $sub->whereRaw('LOWER(COALESCE(e.Ap_Paterno, \'\')) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(COALESCE(e.Ap_Materno, \'\')) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(COALESCE(e.Nombre, \'\')) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(COALESCE(e.CI, \'\')) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(COALESCE(info.InstrumentoMusical, \'\')) LIKE ?', [$like]);
+            $searchLower = mb_strtolower($search);
+            $tokens = preg_split('/\s+/', $searchLower) ?: [];
+            $tokens = array_values(array_filter(array_map(fn($t) => trim((string) $t), $tokens), fn($t) => $t !== ''));
+
+            // Requerir que TODOS los tokens aparezcan en alguno de los campos (AND entre tokens, OR entre campos)
+            $q->where(function ($sub) use ($tokens) {
+                foreach ($tokens as $t) {
+                    $like = '%' . $t . '%';
+                    $sub->where(function ($sub2) use ($like) {
+                        $sub2->whereRaw('LOWER(COALESCE(e.Ap_Paterno, \'\')) LIKE ?', [$like])
+                            ->orWhereRaw('LOWER(COALESCE(e.Ap_Materno, \'\')) LIKE ?', [$like])
+                            ->orWhereRaw('LOWER(COALESCE(e.Nombre, \'\')) LIKE ?', [$like])
+                            ->orWhereRaw('LOWER(COALESCE(e.CI, \'\')) LIKE ?', [$like])
+                            ->orWhereRaw('LOWER(COALESCE(info.InstrumentoMusical, \'\')) LIKE ?', [$like])
+                            // Nombre completo concatenado (para búsquedas tipo "mamani villca")
+                            ->orWhereRaw("LOWER(TRIM(CONCAT_WS(' ', COALESCE(e.Ap_Paterno,''), COALESCE(e.Ap_Materno,''), COALESCE(e.Nombre,'')))) LIKE ?", [$like]);
+                    });
+                }
             });
         }
 
