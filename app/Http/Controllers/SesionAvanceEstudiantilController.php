@@ -97,6 +97,257 @@ class SesionAvanceEstudiantilController extends Controller
     }
 
     // ─────────────────────────────────────────────────────
+    // MIS ESTUDIANTES (PAGINADO + FILTROS): para docentes con muchos estudiantes
+    // ─────────────────────────────────────────────────────
+
+    private function columnaDocentePorTipo(string $tipo): ?string
+    {
+        if ($tipo === 'ESPECIALIDAD') return 'planteldocadmins_id';
+        if ($tipo === 'PRACTICA_CONJUNTOS') return 'planteldocadmins_idPC';
+        if ($tipo === 'COMPLEMENTARIO') return 'planteldocadmins_idOtros';
+        return null;
+    }
+
+    /** Query base de estudiantes asignados a un docente por tipo. */
+    private function queryMisEstudiantesBase(Planteldocentes $user, string $tipo)
+    {
+        $col = $this->columnaDocentePorTipo($tipo);
+        if (!$col) return null;
+
+        $docenteId = (int) $user->id;
+        $instId    = (int) $user->instituciones_id;
+
+        $selectBase = [
+            'info.id as infoestudiantesifas_id',
+            'info.estudiantesifas_id',
+            'info.instituciones_id',
+            'info.Turno',
+            'info.Curso_Solicitado',
+            'info.Paralelo_Solicitado',
+            'info.InstrumentoMusical',
+            'info.InstrumentoMusicalSecundario',
+            'e.Ap_Paterno',
+            'e.Ap_Materno',
+            'e.Nombre',
+            'e.CI',
+            'e.Foto',
+            'i.Nombre as institucion_nombre',
+            'i.Logo   as institucion_logo',
+            'i.ColorBajo as color_bajo',
+        ];
+
+        return DB::table('infoestudiantesifas as info')
+            ->join('estudiantesifas as e', 'info.estudiantesifas_id', '=', 'e.id')
+            ->join('instituciones as i', 'info.instituciones_id', '=', 'i.id')
+            ->where("info.$col", $docenteId)
+            ->where('info.instituciones_id', $instId)
+            ->select($selectBase);
+    }
+
+    private function normArray($v): array
+    {
+        if (is_array($v)) return array_values(array_filter(array_map(fn ($x) => trim((string) $x), $v), fn ($x) => $x !== ''));
+        if ($v === null) return [];
+        $s = trim((string) $v);
+        if ($s === '') return [];
+        return [$s];
+    }
+
+    /** Totales por tipo (para badges). */
+    public function misEstudiantesTotales(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof Planteldocentes)) {
+            return response()->json(['message' => 'Solo los docentes pueden ver sus estudiantes.'], 403);
+        }
+
+        $docenteId = (int) $user->id;
+        $instId    = (int) $user->instituciones_id;
+
+        $base = DB::table('infoestudiantesifas')->where('instituciones_id', $instId);
+
+        $especialidad = (clone $base)->where('planteldocadmins_id', $docenteId)->count();
+        $practica     = (clone $base)->where('planteldocadmins_idPC', $docenteId)->count();
+        $complement   = (clone $base)->where('planteldocadmins_idOtros', $docenteId)->count();
+
+        return response()->json([
+            'especialidad'   => (int) $especialidad,
+            'practica'       => (int) $practica,
+            'complementario' => (int) $complement,
+        ]);
+    }
+
+    /** Opciones de filtros (distinct) para el tipo activo. */
+    public function misEstudiantesFiltros(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof Planteldocentes)) {
+            return response()->json(['message' => 'Solo los docentes pueden ver sus estudiantes.'], 403);
+        }
+
+        $tipo = (string) $request->query('tipo_asignacion', '');
+        if (!$tipo) return response()->json(['message' => 'tipo_asignacion requerido.'], 422);
+
+        $col = $this->columnaDocentePorTipo($tipo);
+        if (!$col) return response()->json(['message' => 'tipo_asignacion inválido.'], 422);
+
+        $docenteId = (int) $user->id;
+        $instId    = (int) $user->instituciones_id;
+
+        $q = DB::table('infoestudiantesifas as info')
+            ->where("info.$col", $docenteId)
+            ->where('info.instituciones_id', $instId);
+
+        $cursos = (clone $q)
+            ->select('info.Curso_Solicitado')
+            ->whereNotNull('info.Curso_Solicitado')
+            ->distinct()
+            ->orderBy('info.Curso_Solicitado')
+            ->pluck('Curso_Solicitado')
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '')
+            ->values();
+
+        $paralelos = (clone $q)
+            ->select('info.Paralelo_Solicitado')
+            ->whereNotNull('info.Paralelo_Solicitado')
+            ->distinct()
+            ->orderBy('info.Paralelo_Solicitado')
+            ->pluck('Paralelo_Solicitado')
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '')
+            ->values();
+
+        $turnos = (clone $q)
+            ->select('info.Turno')
+            ->whereNotNull('info.Turno')
+            ->distinct()
+            ->orderBy('info.Turno')
+            ->pluck('Turno')
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '')
+            ->values();
+
+        $instrumentos = (clone $q)
+            ->select('info.InstrumentoMusical')
+            ->whereNotNull('info.InstrumentoMusical')
+            ->distinct()
+            ->orderBy('info.InstrumentoMusical')
+            ->pluck('InstrumentoMusical')
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '')
+            ->values();
+
+        $total = (clone $q)->count();
+
+        return response()->json([
+            'total' => (int) $total,
+            'cursos' => $cursos,
+            'paralelos' => $paralelos,
+            'turnos' => $turnos,
+            'instrumentos' => $instrumentos,
+        ]);
+    }
+
+    /** Grupos Curso+Paralelo+Turno (con cantidad) para Terminar Clase. */
+    public function misEstudiantesCursos(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof Planteldocentes)) {
+            return response()->json(['message' => 'Solo los docentes pueden ver sus estudiantes.'], 403);
+        }
+
+        $tipo = (string) $request->query('tipo_asignacion', '');
+        if (!$tipo) return response()->json(['message' => 'tipo_asignacion requerido.'], 422);
+
+        $col = $this->columnaDocentePorTipo($tipo);
+        if (!$col) return response()->json(['message' => 'tipo_asignacion inválido.'], 422);
+
+        $docenteId = (int) $user->id;
+        $instId    = (int) $user->instituciones_id;
+
+        $rows = DB::table('infoestudiantesifas as info')
+            ->where("info.$col", $docenteId)
+            ->where('info.instituciones_id', $instId)
+            ->select([
+                'info.Curso_Solicitado',
+                'info.Paralelo_Solicitado',
+                'info.Turno',
+                DB::raw('COUNT(*) as cant'),
+            ])
+            ->groupBy('info.Curso_Solicitado', 'info.Paralelo_Solicitado', 'info.Turno')
+            ->orderBy('info.Curso_Solicitado')
+            ->orderBy('info.Paralelo_Solicitado')
+            ->orderBy('info.Turno')
+            ->get();
+
+        $data = [];
+        foreach ($rows as $r) {
+            $curso = trim((string) ($r->Curso_Solicitado ?? ''));
+            $paralelo = trim((string) ($r->Paralelo_Solicitado ?? ''));
+            $turno = trim((string) ($r->Turno ?? ''));
+            $key = $curso . '||' . $paralelo . '||' . ($turno !== '' ? $turno : '—');
+            $label = trim($curso . ($paralelo !== '' ? (' ' . $paralelo) : ''));
+            $data[] = [
+                'key' => $key,
+                'curso' => $curso,
+                'paralelo' => $paralelo,
+                'turno' => $turno,
+                'label' => $label !== '' ? $label : 'SIN CURSO',
+                'cantEstudiantes' => (int) ($r->cant ?? 0),
+            ];
+        }
+
+        return response()->json(['data' => $data]);
+    }
+
+    /** Listado paginado (15x defecto) con filtros y búsqueda. */
+    public function misEstudiantesPaginado(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof Planteldocentes)) {
+            return response()->json(['message' => 'Solo los docentes pueden ver sus estudiantes.'], 403);
+        }
+
+        $tipo = (string) $request->query('tipo_asignacion', '');
+        if (!$tipo) return response()->json(['message' => 'tipo_asignacion requerido.'], 422);
+
+        $q = $this->queryMisEstudiantesBase($user, $tipo);
+        if (!$q) return response()->json(['message' => 'tipo_asignacion inválido.'], 422);
+
+        $perPage = (int) $request->query('per_page', 15);
+        if ($perPage <= 0) $perPage = 15;
+        if ($perPage > 100) $perPage = 100;
+
+        $cursos = $this->normArray($request->query('cursos', []));
+        $paralelos = $this->normArray($request->query('paralelos', []));
+        $turnos = $this->normArray($request->query('turnos', []));
+        $instrumentos = $this->normArray($request->query('instrumentos', []));
+        $search = trim((string) $request->query('q', ''));
+
+        if (!empty($cursos)) $q->whereIn('info.Curso_Solicitado', $cursos);
+        if (!empty($paralelos)) $q->whereIn('info.Paralelo_Solicitado', $paralelos);
+        if (!empty($turnos)) $q->whereIn('info.Turno', $turnos);
+        if (!empty($instrumentos)) $q->whereIn('info.InstrumentoMusical', $instrumentos);
+
+        if ($search !== '') {
+            $like = '%' . mb_strtolower($search) . '%';
+            $q->where(function ($sub) use ($like) {
+                $sub->whereRaw('LOWER(COALESCE(e.Ap_Paterno, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(e.Ap_Materno, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(e.Nombre, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(e.CI, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(info.InstrumentoMusical, \'\')) LIKE ?', [$like]);
+            });
+        }
+
+        $q->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre');
+
+        $paginated = $q->paginate($perPage);
+        return response()->json($paginated);
+    }
+
+    // ─────────────────────────────────────────────────────
     // CRUD de sesiones de avance
     // ─────────────────────────────────────────────────────
 
@@ -444,8 +695,8 @@ class SesionAvanceEstudiantilController extends Controller
     }
 
     // ─────────────────────────────────────────────────────
-    // TERMINAR CLASE: marcar F (falta) a estudiantes sin sesión hoy
-    // Solo si al menos un estudiante tiene asistencia registrada (P/A/F/L).
+    // TERMINAR CLASE: marca F (falta) a estudiantes sin sesión en la fecha indicada.
+    // Autocompleta por estudiante tomando su última sesión registrada (número + avance_texto).
     // ─────────────────────────────────────────────────────
     public function terminarClase(Request $request)
     {
@@ -457,51 +708,75 @@ class SesionAvanceEstudiantilController extends Controller
         $tipo       = $request->input('tipo_asignacion', '');
         $evaluacion = (int) $request->input('evaluacion', 1);
         $fecha      = $request->input('fecha', now()->toDateString());
+        $cursos     = $request->input('cursos', []);
 
         if (!$tipo) {
             return response()->json(['message' => 'tipo_asignacion requerido.'], 422);
         }
 
+        if ($evaluacion <= 0) {
+            $evaluacion = 1;
+        }
+
+        if (!is_array($cursos)) {
+            $cursos = [];
+        }
+
         // Obtener todos los estudiantes asignados al docente en este tipo
-        $estudiantesIds = $this->obtenerIdsEstudiantes($user, $tipo);
+        $estudiantesIds = $this->obtenerIdsEstudiantes($user, $tipo, $cursos);
         if (empty($estudiantesIds)) {
             return response()->json(['message' => 'No tienes estudiantes asignados.'], 422);
         }
 
-        // Obtener sesiones que ya existen para esa fecha
+        // Sesiones existentes hoy (para no duplicar)
         $sesionesHoy = SesionAvanceEstudiantil::where('planteldocentes_id', (int) $user->id)
             ->where('tipo_asignacion', $tipo)
+            ->where('evaluacion', $evaluacion)
             ->where('fecha', $fecha)
-            ->get();
+            ->whereIn('infoestudiantesifas_id', $estudiantesIds)
+            ->get(['infoestudiantesifas_id']);
 
-        // Verificar que al menos uno tiene asistencia real (P/A/F/L)
-        $conAsistencia = $sesionesHoy->filter(fn($s) => in_array($s->asistencia, ['P', 'A', 'F', 'L']));
-        if ($conAsistencia->isEmpty()) {
-            return response()->json(['message' => 'No se puede terminar la clase: ningún estudiante tiene asistencia registrada hoy.'], 422);
+        $idsConSesion = $sesionesHoy->pluck('infoestudiantesifas_id')->map(fn($v) => (int) $v)->toArray();
+        $sinSesion = array_values(array_diff($estudiantesIds, $idsConSesion));
+
+        if (empty($sinSesion)) {
+            return response()->json([
+                'message' => 'Clase terminada. No había estudiantes pendientes sin sesión hoy.',
+                'creadas' => 0,
+            ]);
         }
 
-        // Obtener el avance_texto de alguna sesión existente hoy para copiar
-        $sesionModelo = $sesionesHoy->first();
-        $avanceTexto  = $sesionModelo ? $sesionModelo->avance_texto : '';
+        // Cargar última sesión por estudiante (para autollenar individualmente)
+        $ultimas = SesionAvanceEstudiantil::where('planteldocentes_id', (int) $user->id)
+            ->where('tipo_asignacion', $tipo)
+            ->where('evaluacion', $evaluacion)
+            ->whereIn('infoestudiantesifas_id', $sinSesion)
+            ->orderBy('fecha', 'desc')
+            ->orderBy('numero_clase', 'desc')
+            ->get(['infoestudiantesifas_id', 'numero_clase', 'avance_texto']);
 
-        // Determinar número de clase (usar el máximo existente hoy)
-        $maxClase = $sesionesHoy->max('numero_clase') ?? 1;
-
-        // IDs de estudiantes que ya tienen sesión hoy
-        $idsConSesion = $sesionesHoy->pluck('infoestudiantesifas_id')->map(fn($v) => (int) $v)->toArray();
-
-        // Estudiantes sin sesión hoy
-        $sinSesion = array_diff($estudiantesIds, $idsConSesion);
+        $ultimaPorEst = [];
+        foreach ($ultimas as $row) {
+            $iid = (int) $row->infoestudiantesifas_id;
+            if (!isset($ultimaPorEst[$iid])) {
+                $ultimaPorEst[$iid] = $row;
+            }
+        }
 
         $creadas = 0;
         foreach ($sinSesion as $infoId) {
+            $infoId = (int) $infoId;
+            $ultima = $ultimaPorEst[$infoId] ?? null;
+            $numeroClase = $ultima ? (((int) $ultima->numero_clase) + 1) : 1;
+            $avanceTexto = $ultima ? ($ultima->avance_texto ?? '') : '';
+
             SesionAvanceEstudiantil::create([
                 'infoestudiantesifas_id' => $infoId,
                 'planteldocentes_id'     => (int) $user->id,
                 'tipo_asignacion'        => $tipo,
                 'evaluacion'             => $evaluacion,
                 'fecha'                  => $fecha,
-                'numero_clase'           => $maxClase,
+                'numero_clase'           => $numeroClase,
                 'avance_texto'           => $avanceTexto,
                 'estrellas'              => 0,
                 'sugerencia'             => 'NO ASISTIÓ A LA CLASE',
@@ -548,9 +823,20 @@ class SesionAvanceEstudiantilController extends Controller
 
         // Obtener nombres de estudiantes
         $infoIds = $sesiones->pluck('infoestudiantesifas_id')->unique()->toArray();
-        $estudiantes = DB::table('infoestudiantesifas')
-            ->whereIn('id', $infoIds)
-            ->select('id', 'Ap_Paterno', 'Ap_Materno', 'Nombre', 'CI')
+        $estudiantes = DB::table('infoestudiantesifas as info')
+            ->join('estudiantesifas as e', 'info.estudiantesifas_id', '=', 'e.id')
+            ->whereIn('info.id', $infoIds)
+            ->select([
+                'info.id as id',
+                'info.Curso_Solicitado',
+                'info.Paralelo_Solicitado',
+                'info.Turno',
+                'e.Ap_Paterno',
+                'e.Ap_Materno',
+                'e.Nombre',
+                'e.CI',
+                'e.Foto',
+            ])
             ->get()
             ->keyBy('id');
 
@@ -567,6 +853,10 @@ class SesionAvanceEstudiantilController extends Controller
                 'infoestudiantesifas_id' => (int) $s->infoestudiantesifas_id,
                 'nombre'     => $nombre,
                 'ci'         => $est?->CI ?? '',
+                'curso'      => $est?->Curso_Solicitado ?? '',
+                'paralelo'   => $est?->Paralelo_Solicitado ?? '',
+                'turno'      => $est?->Turno ?? '',
+                'fecha'      => $s->fecha,
                 'asistencia' => $s->asistencia,
                 'estrellas'  => $s->estrellas,
             ];
@@ -578,7 +868,7 @@ class SesionAvanceEstudiantilController extends Controller
     /**
      * Helper: obtener IDs de infoestudiantesifas asignados al docente por tipo.
      */
-    private function obtenerIdsEstudiantes($user, string $tipo): array
+    private function obtenerIdsEstudiantes($user, string $tipo, array $cursoKeys = []): array
     {
         $docenteId = (int) $user->id;
         $instId    = (int) $user->instituciones_id;
@@ -593,10 +883,50 @@ class SesionAvanceEstudiantilController extends Controller
             return [];
         }
 
-        return DB::table('infoestudiantesifas')
+        $q = DB::table('infoestudiantesifas')
             ->where($column, $docenteId)
-            ->where('instituciones_id', $instId)
-            ->pluck('id')
+            ->where('instituciones_id', $instId);
+
+        // Filtro opcional por curso+paralelo+turno (keys: "CURSO||PARALELO||TURNO")
+        // Compatibilidad: también acepta "CURSO||TURNO".
+        $cursoKeys = array_values(array_filter(array_map(fn($v) => is_string($v) ? trim($v) : '', $cursoKeys)));
+        if (!empty($cursoKeys)) {
+            $pairs = [];
+            foreach ($cursoKeys as $key) {
+                $parts = explode('||', $key);
+                $curso = isset($parts[0]) ? trim($parts[0]) : '';
+                $paralelo = '';
+                $turno = '';
+                if (count($parts) >= 3) {
+                    $paralelo = trim((string) ($parts[1] ?? ''));
+                    $turno = trim((string) ($parts[2] ?? ''));
+                } else {
+                    $turno = trim((string) ($parts[1] ?? ''));
+                }
+                if ($curso === '') continue;
+                // Si paralelo/turno está vacío, filtrar solo por los que existan.
+                $pairs[] = [$curso, $paralelo, $turno];
+            }
+
+            if (!empty($pairs)) {
+                $q->where(function ($sub) use ($pairs) {
+                    foreach ($pairs as $pair) {
+                        [$curso, $paralelo, $turno] = $pair;
+                        $sub->orWhere(function ($sub2) use ($curso, $paralelo, $turno) {
+                            $sub2->where('Curso_Solicitado', $curso);
+                            if ($paralelo !== '') {
+                                $sub2->where('Paralelo_Solicitado', $paralelo);
+                            }
+                            if ($turno !== '') {
+                                $sub2->where('Turno', $turno);
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        return $q->pluck('id')
             ->map(fn($v) => (int) $v)
             ->toArray();
     }
