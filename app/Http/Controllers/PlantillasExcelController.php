@@ -592,16 +592,19 @@ class PlantillasExcelController extends Controller
         $patched = $this->parchearSheetXml($sheetXml, $startCol, $startRow, $rows, $cellUpdates);
         $zip->addFromString($sheetPath, $patched);
 
-        // ── Forzar recálculo de fórmulas al abrir el workbook ──
-        // Las demás hojas pueden tener fórmulas como =CONCAT(INSC.!B5;" ";INSC.!C5)
-        // cuyos resultados están cacheados en <v>. Al parchear INSC. esos caches quedan
-        // obsoletos. Solución: (1) poner fullCalcOnLoad en workbook.xml, (2) limpiar
-        // los <v> de celdas con fórmula en las demás hojas.
+        // ── Compatibilidad y recálculo de fórmulas ──
+        // 1) Excel antiguos muestran "=_xlfn.CONCAT(...)" y no calculan CONCAT.
+        //    Convertimos CONCAT/_xlfn.CONCAT a CONCATENATE.
+        // 2) En algunos visores móviles no se recalculan fórmulas al abrir,
+        //    por lo que necesitamos escribir valores cacheados <v> para fórmulas
+        //    simples que dependen de INSC.
+        // 3) Además, forzamos recálculo completo en Excel de escritorio.
         $workbookXml = $this->forzarFullCalcOnLoad($workbookXml);
         $zip->addFromString('xl/workbook.xml', $workbookXml);
 
-        // Limpiar caches de fórmulas en las demás hojas
-        $this->limpiarCachesFormulasOtrasHojas($zip, $relsXml, $sheetPath);
+        // Compatibilizar fórmulas y refrescar caches (sin borrar todo)
+        $inscValueMap = $this->buildInscValueMap($startCol, $startRow, $rows, $cellUpdates);
+        $this->compatibilizarFormulasYCacheOtrasHojas($zip, $relsXml, $sheetPath, $inscValueMap);
 
         $zip->close();
         @unlink($tmp);
@@ -613,6 +616,279 @@ class PlantillasExcelController extends Controller
         return response()->download($tmpFile, $downloadName, [
             'Content-Type' => $mime,
         ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Construye un mapa de valores escritos en la hoja INSC. para poder
+     * resolver fórmulas de otras hojas (especialmente CONCAT/CONCATENATE).
+     */
+    private function buildInscValueMap(int $startCol, int $startRow, array $rows, array $cellUpdates): array
+    {
+        $map = [];
+
+        // Filas de estudiantes (tabla)
+        $r = $startRow;
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                $r++;
+                continue;
+            }
+            $c = $startCol;
+            foreach ($row as $val) {
+                $addr = strtoupper(Coordinate::stringFromColumnIndex($c)) . (int) $r;
+                $map[$addr] = (string) ($val ?? '');
+                $c++;
+            }
+            $r++;
+        }
+
+        // Metadatos adicionales
+        foreach ($cellUpdates as $addr => $val) {
+            $addrNorm = strtoupper(trim((string) $addr));
+            if ($addrNorm === '') continue;
+            $map[$addrNorm] = (string) ($val ?? '');
+        }
+
+        return $map;
+    }
+
+    /**
+     * Recorre hojas (excepto la parcheada) para:
+     * - Convertir CONCAT/_xlfn.CONCAT a CONCATENATE (compatibilidad).
+     * - Escribir <v> cacheado para fórmulas simples que dependen de INSC.
+     */
+    private function compatibilizarFormulasYCacheOtrasHojas(ZipArchive $zip, string $relsXml, string $patchedSheetPath, array $inscValueMap): void
+    {
+        $rels = new \DOMDocument();
+        $rels->preserveWhiteSpace = false;
+        $rels->loadXML($relsXml);
+
+        $relsNodes = $rels->getElementsByTagName('Relationship');
+        $sheetPaths = [];
+        foreach ($relsNodes as $rel) {
+            $type = $rel->getAttribute('Type');
+            if (
+                strpos($type, '/worksheet') === false &&
+                strpos($type, '/chartsheet') === false
+            ) {
+                continue;
+            }
+            $target = $rel->getAttribute('Target');
+            if (!$target) continue;
+            $target = ltrim($target, '/');
+            $fullPath = 'xl/' . $target;
+            if ($fullPath === $patchedSheetPath) continue;
+            $sheetPaths[] = $fullPath;
+        }
+
+        foreach ($sheetPaths as $sp) {
+            $xml = $zip->getFromName($sp);
+            if ($xml === false) continue;
+
+            $patched = $this->parchearCompatFormulasYCachesEnSheet($xml, $inscValueMap);
+            if ($patched !== null) {
+                $zip->addFromString($sp, $patched);
+            }
+        }
+    }
+
+    /**
+     * En una hoja XML:
+     * - Reemplaza CONCAT/_xlfn.CONCAT por CONCATENATE.
+     * - Actualiza el <v> (valor cacheado) para fórmulas simples que referencian INSC.
+     * Devuelve null si no hubo cambios.
+     */
+    private function parchearCompatFormulasYCachesEnSheet(string $sheetXml, array $inscValueMap): ?string
+    {
+        $dom = new \DOMDocument();
+        $dom->preserveWhiteSpace = true;
+        $dom->formatOutput = false;
+        $dom->loadXML($sheetXml);
+
+        $changed = false;
+        $cells = $dom->getElementsByTagName('c');
+        foreach ($cells as $cell) {
+            $fNode = null;
+            $vNode = null;
+            foreach ($cell->childNodes as $child) {
+                if (!($child instanceof \DOMElement)) continue;
+                if ($child->localName === 'f') {
+                    $fNode = $child;
+                }
+                if ($child->localName === 'v') {
+                    $vNode = $child;
+                }
+            }
+            if (!$fNode) continue;
+
+            $formula = (string) ($fNode->textContent ?? '');
+            $formulaTrim = ltrim($formula);
+            if (str_starts_with($formulaTrim, '=')) {
+                $formulaTrim = ltrim(substr($formulaTrim, 1));
+            }
+
+            // Compat: CONCAT -> CONCATENATE
+            $newFormulaTrim = preg_replace('/(?:_xlfn\.)?CONCAT\(/i', 'CONCATENATE(', $formulaTrim);
+            if ($newFormulaTrim !== null && $newFormulaTrim !== $formulaTrim) {
+                $fNode->nodeValue = $newFormulaTrim;
+                $formulaTrim = $newFormulaTrim;
+                $changed = true;
+            }
+
+            // Cache: si podemos calcular el resultado, setear <v>
+            $computed = $this->tryComputeFormulaValueFromInsc($formulaTrim, $inscValueMap);
+            if ($computed !== null) {
+                if (!$vNode) {
+                    $vNode = $dom->createElement('v');
+                    $cell->appendChild($vNode);
+                }
+                $vNode->nodeValue = $computed;
+                // Resultado string
+                $cell->setAttribute('t', 'str');
+                $changed = true;
+            }
+        }
+
+        if (!$changed) {
+            return null;
+        }
+
+        $xml = $dom->saveXML();
+        $xml = preg_replace(
+            '/^<\?xml [^?]*\?>/',
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+            $xml
+        );
+        return $xml;
+    }
+
+    /**
+     * Intenta calcular el valor de una fórmula simple basada en INSC.
+     * Soporta:
+     * - Referencia directa: INSC.!B2
+     * - CONCATENATE/CONCAT: CONCATENATE(INSC.!B2," ",INSC.!C2)
+     */
+    private function tryComputeFormulaValueFromInsc(string $formula, array $inscValueMap): ?string
+    {
+        $f = trim($formula);
+        if ($f === '') return null;
+
+        // Referencia directa a INSC
+        $direct = $this->parseInscCellRef($f);
+        if ($direct !== null) {
+            return (string) ($inscValueMap[$direct] ?? '');
+        }
+
+        // CONCATENATE(...)
+        if (preg_match('/^CONCATENATE\((.*)\)$/i', $f, $m)) {
+            $args = $this->splitFormulaArgs($m[1]);
+            if ($args === null) return null;
+            $out = '';
+            foreach ($args as $arg) {
+                $arg = trim($arg);
+                if ($arg === '') continue;
+
+                // string literal
+                if (preg_match('/^"(.*)"$/s', $arg, $sm)) {
+                    $lit = str_replace('""', '"', $sm[1]);
+                    $out .= $lit;
+                    continue;
+                }
+
+                $ref = $this->parseInscCellRef($arg);
+                if ($ref !== null) {
+                    $out .= (string) ($inscValueMap[$ref] ?? '');
+                    continue;
+                }
+
+                // No soportado
+                return null;
+            }
+            return $out;
+        }
+
+        return null;
+    }
+
+    /**
+     * Divide argumentos de una función, soportando separadores ',' o ';'
+     * y respetando comillas.
+     */
+    private function splitFormulaArgs(string $inside): ?array
+    {
+        $args = [];
+        $buf = '';
+        $inQuotes = false;
+        $depth = 0;
+        $len = strlen($inside);
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $inside[$i];
+            if ($ch === '"') {
+                // manejar comillas escapadas ""
+                $next = $i + 1 < $len ? $inside[$i + 1] : '';
+                if ($inQuotes && $next === '"') {
+                    $buf .= '""';
+                    $i++;
+                    continue;
+                }
+                $inQuotes = !$inQuotes;
+                $buf .= $ch;
+                continue;
+            }
+
+            if (!$inQuotes) {
+                if ($ch === '(') $depth++;
+                if ($ch === ')' && $depth > 0) $depth--;
+
+                if ($depth === 0 && ($ch === ',' || $ch === ';')) {
+                    $args[] = $buf;
+                    $buf = '';
+                    continue;
+                }
+            }
+
+            $buf .= $ch;
+        }
+
+        if ($inQuotes) {
+            return null;
+        }
+
+        $args[] = $buf;
+        return $args;
+    }
+
+    /**
+     * Si el string representa una referencia a una celda de INSC, devuelve el addr (ej: B2).
+     * Acepta variantes: INSC.!B2, 'INSC.'!$B$2, INSC!B2
+     */
+    private function parseInscCellRef(string $expr): ?string
+    {
+        $raw = trim($expr);
+        if ($raw === '') return null;
+        $raw = str_replace('$', '', $raw);
+
+        // separar por '!'
+        if (strpos($raw, '!') !== false) {
+            [$sheet, $ref] = explode('!', $raw, 2);
+            $sheet = trim($sheet, "'\"");
+            $sheet = rtrim($sheet);
+            $sheetNorm = strtoupper(rtrim($sheet, '.'));
+            if ($sheetNorm !== 'INSC') return null;
+            $ref = trim($ref);
+            if (preg_match('/^([A-Z]{1,3})(\d+)$/i', $ref, $m)) {
+                return strtoupper($m[1]) . (int) $m[2];
+            }
+            return null;
+        }
+
+        // variante sin '!': INSC.B2 o INSCB2 no se soporta; INSCB2 ambiguo.
+        // Variante: INSC.B2 no estándar, ignorar.
+        if (preg_match('/^(?:\'INSC\.\'|INSC\.)\s*([A-Z]{1,3})(\d+)$/i', $raw, $m)) {
+            return strtoupper($m[1]) . (int) $m[2];
+        }
+
+        return null;
     }
 
     private function resolverRutaHojaDesdeWorkbook(string $workbookXml, string $relsXml, string $sheetName): ?string

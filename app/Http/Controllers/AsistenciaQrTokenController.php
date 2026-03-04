@@ -144,11 +144,16 @@ class AsistenciaQrTokenController extends Controller
 
         $maxMinutos = (int) ($sesion->minutos_falta ?? 40);
         // Si ya pasó el límite de la sesión, no generar más tokens.
+        // Auto-cerrar la sesión y marcar FALTA a los sin registro.
         $limite = $sesion->hora_ingreso->copy()->addMinutes($maxMinutos);
         if (now()->greaterThanOrEqualTo($limite)) {
+            // Cerrar sesión automáticamente si sigue abierta
+            if ($sesion->estado === 'ABIERTA') {
+                $this->autoCerrarSesionVencida($sesion);
+            }
             return response()->json([
                 'ok' => false,
-                'message' => 'La sesión ya venció (pasaron ' . $maxMinutos . ' minutos).',
+                'message' => 'La sesión ya venció (pasaron ' . $maxMinutos . ' minutos). Se cerraron las asistencias automáticamente.',
             ], 409);
         }
 
@@ -320,5 +325,59 @@ class AsistenciaQrTokenController extends Controller
         });
 
         return response()->json(['ok' => true] + $result);
+    }
+
+    /**
+     * Cierra automáticamente una sesión vencida y marca FALTA/PERMISO a los sin registro.
+     * Se invoca desde `create()` cuando el temporizador ya expiró.
+     */
+    private function autoCerrarSesionVencida(AsistenciaSesion $sesion): void
+    {
+        DB::transaction(function () use ($sesion) {
+            $locked = AsistenciaSesion::query()->where('id', (int) $sesion->id)->lockForUpdate()->first();
+            if (!$locked || $locked->estado === 'CERRADA') return;
+
+            $locked->estado = 'CERRADA';
+            $locked->save();
+
+            $base = $this->estudiantesQueryPorSesion($locked);
+            if (!$base) return;
+
+            $ids = $base->distinct()->pluck('ie.id')->map(fn ($x) => (int) $x)->values();
+            if ($ids->count() === 0) return;
+
+            $yaMarcados = AsistenciaRegistro::query()
+                ->where('asistencias_sesiones_id', (int) $locked->id)
+                ->whereIn('infoestudiantesifas_id', $ids->all())
+                ->pluck('infoestudiantesifas_id')
+                ->map(fn ($x) => (int) $x)
+                ->all();
+
+            $yaSet = array_fill_keys($yaMarcados, true);
+            $fechaSesion = (string) ($locked->fecha ?? date('Y-m-d'));
+
+            foreach ($ids as $infoId) {
+                $infoId = (int) $infoId;
+                if (isset($yaSet[$infoId])) continue;
+
+                $tieneLicencia = $this->estudianteTieneLicencia($infoId, $fechaSesion);
+                $estado = $tieneLicencia ? 'PERMISO' : 'FALTA';
+                $obs = $tieneLicencia
+                    ? 'Licencia aplicada automáticamente al vencer la sesión'
+                    : 'Cierre automático por vencimiento de tiempo';
+
+                AsistenciaRegistro::create([
+                    'asistencias_sesiones_id' => (int) $locked->id,
+                    'infoestudiantesifas_id' => $infoId,
+                    'estado_asistencia' => $estado,
+                    'metodo' => 'SISTEMA',
+                    'fecha_registro' => now(),
+                    'gps_valido' => 0,
+                    'estado' => 'ACTIVO',
+                    'visibilidad' => 'VISIBLE',
+                    'observacion' => $obs,
+                ]);
+            }
+        });
     }
 }

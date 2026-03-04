@@ -21,6 +21,9 @@ Route::prefix('asistencias')->middleware(['auth:sanctum'])->group(function () {
     // Listar sesiones por materia (docente - gestor de asistencias)
     Route::get('materias/{materiaId}/sesiones', [AsistenciaSesionController::class, 'listByMateria']);
 
+    // Reporte de asistencias por materia (docente/admin) - rango de fechas
+    Route::get('materias/{materiaId}/reporte', [AsistenciaSesionController::class, 'reporteAsistenciasMateria']);
+
     // Sesiones (docentes/admin)
     Route::get('sesiones', [AsistenciaSesionController::class, 'index']);
     Route::post('sesiones', [AsistenciaSesionController::class, 'store']);

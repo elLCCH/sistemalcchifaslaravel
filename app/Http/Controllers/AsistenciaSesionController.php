@@ -986,8 +986,10 @@ class AsistenciaSesionController extends Controller
     }
 
     /**
-     * Eliminar sesión (solo administrativos y super-admin).
-     * Borra registros de asistencia, tokens QR y la sesión misma.
+     * Eliminar sesión.
+     * - Administrativos/super: pueden eliminar cualquier sesión.
+     * - Docentes: solo pueden eliminar sus propias sesiones si NO tienen registros de asistencia.
+     * Borra registros de asistencia (si los hay), tokens QR y la sesión misma.
      */
     public function destroy(Request $request, $id)
     {
@@ -998,8 +1000,10 @@ class AsistenciaSesionController extends Controller
             }
 
             $isAdmin = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
-            if (!$isAdmin) {
-                return response()->json(['ok' => false, 'message' => 'Solo administrativos pueden eliminar sesiones.'], 403);
+            $isDocente = ($user instanceof Planteldocentes);
+
+            if (!$isAdmin && !$isDocente) {
+                return response()->json(['ok' => false, 'message' => 'No tienes permiso para eliminar sesiones.'], 403);
             }
 
             $sesion = AsistenciaSesion::find((int) $id);
@@ -1007,7 +1011,20 @@ class AsistenciaSesionController extends Controller
                 return response()->json(['ok' => false, 'message' => 'Sesión no encontrada'], 404);
             }
 
-            // Eliminar registros de asistencia asociados
+            // Docentes: verificar que sea su propia sesión
+            if ($isDocente) {
+                if ((int) $sesion->planteldocentes_id !== (int) $user->id) {
+                    return response()->json(['ok' => false, 'message' => 'Solo puedes eliminar tus propias sesiones.'], 403);
+                }
+
+                // Docentes solo pueden eliminar si no hay registros de asistencia
+                $tieneRegistros = AsistenciaRegistro::where('asistencias_sesiones_id', (int) $sesion->id)->exists();
+                if ($tieneRegistros) {
+                    return response()->json(['ok' => false, 'message' => 'No se puede eliminar: la sesión ya tiene registros de asistencia. Solo puedes eliminar sesiones sin asistencia registrada.'], 409);
+                }
+            }
+
+            // Eliminar registros de asistencia asociados (para admins, o si por alguna razón hay)
             AsistenciaRegistro::where('asistencias_sesiones_id', (int) $sesion->id)->delete();
 
             // Eliminar tokens QR asociados
@@ -1020,5 +1037,113 @@ class AsistenciaSesionController extends Controller
             // \Log::error('Destroy sesion error', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['ok' => false, 'message' => 'Error interno: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Reporte de asistencias por materia en un rango de fechas.
+     * Devuelve una matriz: estudiantes × fechas con el estado de asistencia.
+     */
+    public function reporteAsistenciasMateria(Request $request, $materiaId)
+    {
+        $user = $request->user();
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Solo docentes o administrativos.'], 403);
+        }
+
+        $materiaId = (int) $materiaId;
+        $fechaInicio = $request->input('fecha_inicio');
+        $fechaFin = $request->input('fecha_fin');
+
+        if (!$fechaInicio || !$fechaFin) {
+            return response()->json(['ok' => false, 'message' => 'Debe indicar fecha_inicio y fecha_fin.'], 422);
+        }
+
+        // Buscar aulas de la materia en la institución del usuario
+        $aulas = AulaVirtual::query()
+            ->where('instituciones_id', (int) $user->instituciones_id)
+            ->where('materias_id', $materiaId)
+            ->pluck('id');
+
+        if ($aulas->isEmpty()) {
+            return response()->json(['ok' => true, 'fechas' => [], 'estudiantes' => []]);
+        }
+
+        // Sesiones en el rango
+        $sesiones = AsistenciaSesion::query()
+            ->whereIn('aulas_virtuales_id', $aulas->all())
+            ->whereDate('fecha', '>=', $fechaInicio)
+            ->whereDate('fecha', '<=', $fechaFin)
+            ->orderBy('fecha')
+            ->get();
+
+        if ($sesiones->isEmpty()) {
+            return response()->json(['ok' => true, 'fechas' => [], 'estudiantes' => []]);
+        }
+
+        $sesionIds = $sesiones->pluck('id')->all();
+        $fechasMap = []; // sesion_id => fecha (Y-m-d)
+        foreach ($sesiones as $s) {
+            $fechasMap[$s->id] = $s->fecha ? $s->fecha->format('Y-m-d') : null;
+        }
+        $fechas = array_values(array_unique(array_filter(array_values($fechasMap))));
+        sort($fechas);
+
+        // Obtener todos los registros de asistencia de esas sesiones
+        $registros = AsistenciaRegistro::query()
+            ->whereIn('asistencias_sesiones_id', $sesionIds)
+            ->get(['infoestudiantesifas_id', 'asistencias_sesiones_id', 'estado_asistencia']);
+
+        // Obtener nombres de estudiantes
+        $infoIds = $registros->pluck('infoestudiantesifas_id')->unique()->values()->all();
+
+        // También incluir estudiantes que están en la materia pero sin registros (para ver SIN REGISTRO)
+        $base = $this->estudiantesQueryPorSesion($sesiones->first());
+        $todosIds = [];
+        if ($base) {
+            $todosIds = $base->distinct()->pluck('ie.id')->map(fn ($x) => (int) $x)->values()->all();
+        }
+        $allIds = array_values(array_unique(array_merge($infoIds, $todosIds)));
+
+        $nombres = DB::table('infoestudiantesifas as ie')
+            ->join('estudiantesifas as e', 'e.id', '=', 'ie.estudiantesifas_id')
+            ->whereIn('ie.id', $allIds)
+            ->get(['ie.id as infoestudiantesifas_id', DB::raw("CONCAT(e.Ap_Paterno, ' ', e.Ap_Materno, ' ', e.Nombre) as nombre_completo")])
+            ->keyBy('infoestudiantesifas_id');
+
+        // Construir la matriz
+        $matrix = []; // infoId => [fecha => estado]
+        foreach ($registros as $r) {
+            $infoId = (int) $r->infoestudiantesifas_id;
+            $fecha = $fechasMap[$r->asistencias_sesiones_id] ?? null;
+            if (!$fecha) continue;
+            if (!isset($matrix[$infoId])) $matrix[$infoId] = [];
+            $matrix[$infoId][$fecha] = strtoupper(trim($r->estado_asistencia ?? ''));
+        }
+
+        $estudiantes = [];
+        foreach ($allIds as $infoId) {
+            $infoId = (int) $infoId;
+            $nombre = $nombres[$infoId]->nombre_completo ?? '—';
+            $asistencias = [];
+            foreach ($fechas as $f) {
+                $asistencias[$f] = $matrix[$infoId][$f] ?? null;
+            }
+            $estudiantes[] = [
+                'infoestudiantesifas_id' => $infoId,
+                'nombre_completo' => $nombre,
+                'asistencias' => $asistencias,
+            ];
+        }
+
+        // Ordenar por nombre
+        usort($estudiantes, fn ($a, $b) => strcasecmp($a['nombre_completo'], $b['nombre_completo']));
+
+        return response()->json([
+            'ok' => true,
+            'fechas' => $fechas,
+            'estudiantes' => $estudiantes,
+        ]);
     }
 }
