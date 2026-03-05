@@ -357,6 +357,26 @@ class PeticionesPrivadas extends Controller
             LIMIT 1
         )";
 
+        // Nivel: priorizar carreras.Nivel (asignados) → fallback a Curso_Solicitado
+        $nivelSubquery = "COALESCE(
+            (
+                SELECT ca.Nivel
+                FROM calificaciones c
+                INNER JOIN materias m ON m.id = c.materias_id
+                INNER JOIN plandeestudios p ON p.id = m.plandeestudios_id
+                INNER JOIN carreras ca ON ca.id = p.carreras_id
+                INNER JOIN anios a ON a.id = p.anio_id
+                WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+                ORDER BY a.Anio DESC, p.id DESC
+                LIMIT 1
+            ),
+            CASE
+                WHEN UPPER(TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado,''))) LIKE '%SUPERIOR%' THEN 'TECNICO SUPERIOR'
+                WHEN UPPER(TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado,''))) LIKE '%MEDIO%' THEN 'TECNICO MEDIO'
+                ELSE 'CAPACITACIÓN'
+            END
+        )";
+
         $q = DB::table('infoestudiantesifas')
             ->join('estudiantesifas', 'estudiantesifas.id', '=', 'infoestudiantesifas.estudiantesifas_id')
             ->where('infoestudiantesifas.instituciones_id', $institucionId)
@@ -378,7 +398,7 @@ class PeticionesPrivadas extends Controller
                 DB::raw($areaSubquery . ' as Area'),
                 DB::raw($carreraSubquery . ' as Carrera'),
                 DB::raw($resolucionSubquery . ' as Malla'),
-                DB::raw("(CASE WHEN UPPER(TRIM(COALESCE(infoestudiantesifas.Curso_Solicitado,''))) LIKE '%SUPERIOR%' THEN 'TECNICO SUPERIOR' ELSE 'CAPACITACIÓN' END) as Nivel"),
+                DB::raw($nivelSubquery . ' as Nivel'),
             ]);
 
         // Filtro por nivel/curso (opcional)
@@ -386,9 +406,20 @@ class PeticionesPrivadas extends Controller
         $cursoSolicitadoUp = mb_strtoupper($cursoSolicitadoStr, 'UTF-8');
         if ($cursoSolicitadoStr !== '' && $cursoSolicitadoUp !== 'MIXTO') {
             if (str_contains($cursoSolicitadoUp, 'SUPERIOR')) {
-                $q->where('infoestudiantesifas.Curso_Solicitado', 'like', '%SUPERIOR%');
+                // Asignados con carreras.Nivel SUPERIOR, o sin asignar con Curso_Solicitado SUPERIOR
+                $q->where(function ($ww) use ($nivelSubquery) {
+                    $ww->whereRaw('UPPER(' . $nivelSubquery . ") LIKE '%SUPERIOR%'");
+                });
+            } elseif (str_contains($cursoSolicitadoUp, 'MEDIO')) {
+                // Asignados con carreras.Nivel MEDIO, o sin asignar con Curso_Solicitado MEDIO
+                $q->where(function ($ww) use ($nivelSubquery) {
+                    $ww->whereRaw('UPPER(' . $nivelSubquery . ") LIKE '%MEDIO%'");
+                });
             } elseif (str_contains($cursoSolicitadoUp, 'CAPACITACIÓN') || str_contains($cursoSolicitadoUp, 'CAPACITACION')) {
-                $q->where('infoestudiantesifas.Curso_Solicitado', 'not like', '%SUPERIOR%');
+                // Asignados con carreras.Nivel CAPACITACIÓN, o sin asignar con Curso_Solicitado != SUPERIOR y != MEDIO
+                $q->where(function ($ww) use ($nivelSubquery) {
+                    $ww->whereRaw('UPPER(' . $nivelSubquery . ") LIKE '%CAPAC%'");
+                });
             } else {
                 $q->where('infoestudiantesifas.Curso_Solicitado', $cursoSolicitadoStr);
             }
