@@ -985,7 +985,7 @@ class AsistenciaSesionController extends Controller
 
     /**
      * Indica si el docente/administrativo autenticado tiene al menos una materia
-     * con asistencia habilitada cuyo ModoAsistencia NO contiene "QR".
+     * con asistencia habilitada cuyo ModoAsistencia contiene "QR".
      *
      * Se usa para mostrar/ocultar el botón flotante "Llamar asistencia".
      */
@@ -1015,12 +1015,12 @@ class AsistenciaSesionController extends Controller
                 ->where('c.instituciones_id', $instId);
         }
 
-        // Asistencia habilitada != NORMAL y SIN QR
+        // Asistencia habilitada != NORMAL y CON QR
         $tiene = $base
             ->whereNotNull('m.ModoAsistencia')
             ->where('m.ModoAsistencia', '!=', '')
             ->where(DB::raw('UPPER(TRIM(m.ModoAsistencia))'), '!=', 'NORMAL')
-            ->whereRaw("UPPER(TRIM(m.ModoAsistencia)) NOT LIKE '%QR%'")
+            ->whereRaw("UPPER(TRIM(m.ModoAsistencia)) LIKE '%QR%'")
             ->exists();
 
         return response()->json(['ok' => true, 'can_llamar' => (bool) $tiene]);
