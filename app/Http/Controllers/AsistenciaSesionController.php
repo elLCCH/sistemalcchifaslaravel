@@ -926,6 +926,107 @@ class AsistenciaSesionController extends Controller
     }
 
     /**
+     * Indica si el estudiante autenticado tiene materias del AÑO PREDETERMINADO
+     * cuyo ModoAsistencia requiere asistencia por QR.
+     *
+     * Se usa para mostrar/ocultar el botón flotante y accesos rápidos del offcanvas.
+     */
+    public function estudianteCanScan(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['ok' => false, 'message' => 'No autenticado.'], 401);
+        }
+
+        $isEstudiante = method_exists($user, 'getTable') && $user->getTable() === 'estudiantesifas';
+        if (!$isEstudiante) {
+            $isEstudiante = ($user instanceof \App\Models\Estudiantesifas);
+        }
+        if (!$isEstudiante) {
+            return response()->json(['ok' => false, 'message' => 'Solo estudiantes.'], 403);
+        }
+
+        $anioPred = DB::table('anios')
+            ->where('Predeterminado', 'PREDETERMINADO')
+            ->orderByDesc('id')
+            ->first(['id']);
+
+        if (!$anioPred) {
+            return response()->json(['ok' => true, 'can_scan' => false, 'reason' => 'NO_ANIO_PREDETERMINADO']);
+        }
+
+        $infoEst = DB::table('infoestudiantesifas')
+            ->where('estudiantesifas_id', $user->id)
+            ->first(['id']);
+
+        if (!$infoEst) {
+            return response()->json(['ok' => true, 'can_scan' => false, 'reason' => 'NO_INFO_ESTUDIANTE']);
+        }
+
+        $modos = [
+            'POR QR (ESTRICTO)',
+            'POR QR Y REGISTRO VIRTUAL',
+        ];
+
+        $tiene = DB::table('calificaciones as cal')
+            ->join('materias as m', 'cal.materias_id', '=', 'm.id')
+            ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+            ->where('cal.infoestudiantesifas_id', (int) $infoEst->id)
+            ->where('p.anio_id', (int) $anioPred->id)
+            ->whereIn(DB::raw('UPPER(TRIM(m.ModoAsistencia))'), $modos)
+            ->exists();
+
+        return response()->json([
+            'ok' => true,
+            'can_scan' => (bool) $tiene,
+            'anio_id' => (int) $anioPred->id,
+        ]);
+    }
+
+    /**
+     * Indica si el docente/administrativo autenticado tiene al menos una materia
+     * con asistencia habilitada cuyo ModoAsistencia NO contiene "QR".
+     *
+     * Se usa para mostrar/ocultar el botón flotante "Llamar asistencia".
+     */
+    public function docenteCanLlamar(Request $request)
+    {
+        $user = $request->user();
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Solo docentes o administrativos.'], 403);
+        }
+
+        $instId = (int) ($user->instituciones_id ?? 0);
+
+        $base = null;
+        if ($isDocente) {
+            $base = DB::table('planteldocentesmaterias as pdm')
+                ->join('materias as m', 'pdm.materias_id', '=', 'm.id')
+                ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+                ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+                ->where('pdm.planteldocentes_id', (int) $user->id)
+                ->where('c.instituciones_id', $instId);
+        } else {
+            $base = DB::table('materias as m')
+                ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+                ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+                ->where('c.instituciones_id', $instId);
+        }
+
+        // Asistencia habilitada != NORMAL y SIN QR
+        $tiene = $base
+            ->whereNotNull('m.ModoAsistencia')
+            ->where('m.ModoAsistencia', '!=', '')
+            ->where(DB::raw('UPPER(TRIM(m.ModoAsistencia))'), '!=', 'NORMAL')
+            ->whereRaw("UPPER(TRIM(m.ModoAsistencia)) NOT LIKE '%QR%'")
+            ->exists();
+
+        return response()->json(['ok' => true, 'can_llamar' => (bool) $tiene]);
+    }
+
+    /**
      * Materias del docente autenticado (para el botón flotante de "Llamar asistencia").
      * Solo devuelve materias con modo de asistencia != NORMAL.
      */

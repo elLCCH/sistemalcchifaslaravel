@@ -38,6 +38,12 @@ Route::prefix('asistencias')->middleware(['auth:sanctum'])->group(function () {
     // Mis asistencias (estudiante) por materia
     Route::get('mis-asistencias/materia/{materiaId}', [AsistenciaSesionController::class, 'misAsistenciasMateria']);
 
+    // UX: mostrar/ocultar botones de Scan (estudiante) según materias del año predeterminado
+    Route::get('estudiante/can-scan', [AsistenciaSesionController::class, 'estudianteCanScan']);
+
+    // UX: mostrar/ocultar botón "Llamar asistencia" (docente/admin) si tiene materias SIN QR
+    Route::get('docente/can-llamar', [AsistenciaSesionController::class, 'docenteCanLlamar']);
+
     // Materias del docente/admin con asistencia habilitada (para botón flotante)
     Route::get('mis-materias', [AsistenciaSesionController::class, 'misMaterias']);
 
