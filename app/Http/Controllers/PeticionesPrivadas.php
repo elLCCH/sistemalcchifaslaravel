@@ -487,6 +487,26 @@ class PeticionesPrivadas extends Controller
         ]);
     }
 
+    function CargarNivelesPorAnio(Request $request)
+    {
+        $anioId = (int) $request->input('anio_id', $request->query('anio_id', 0));
+        if ($anioId <= 0) {
+            return response()->json(['message' => 'anio_id es requerido'], 422);
+        }
+
+        $niveles = DB::table('plandeestudios')
+            ->join('carreras', 'carreras.id', '=', 'plandeestudios.carreras_id')
+            ->where('plandeestudios.anio_id', $anioId)
+            ->whereNotNull('carreras.Nivel')
+            ->where('carreras.Nivel', '!=', '')
+            ->distinct()
+            ->pluck('carreras.Nivel')
+            ->sort()
+            ->values();
+
+        return response()->json(['data' => $niveles]);
+    }
+
     function CargarListaPreliminarAlumnos2026(Request $request)
     {
         $user = $request->user();

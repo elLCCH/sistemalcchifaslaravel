@@ -680,8 +680,7 @@ class SesionAvanceEstudiantilController extends Controller
 
         $query = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId);
 
-        // Estudiantes no ven sesiones sin asistencia (Ninguno)
-        $query->whereNotNull('asistencia');
+        // Estudiantes ven todas las sesiones (incluyendo las que no tienen asistencia registrada)
 
         if ($tipo) {
             $query->where('tipo_asignacion', $tipo);

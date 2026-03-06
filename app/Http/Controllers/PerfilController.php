@@ -523,7 +523,7 @@ class PerfilController extends Controller
 
         $infos = DB::table('infoestudiantesifas')
             ->where('estudiantesifas_id', (int) $user->id)
-            ->select(['id', 'instituciones_id'])
+            ->select(['id', 'instituciones_id', 'Curso_Solicitado', 'Paralelo_Solicitado', 'Turno'])
             ->get();
 
         if ($infos->count() === 0) {
@@ -596,6 +596,9 @@ class PerfilController extends Controller
                 'institucion_nombre' => $inst?->Nombre,
                 'institucion_logo' => $inst?->Logo,
                 'infoestudiantesifas_id' => $infoId,
+                'curso' => $info->Curso_Solicitado ?? null,
+                'paralelo' => $info->Paralelo_Solicitado ?? null,
+                'turno' => $info->Turno ?? null,
                 'gestion' => $gestion,
                 'anio_asignacion' => $anioAsignacion,
                 'min_mes_companeros' => $minMesCompaneros,

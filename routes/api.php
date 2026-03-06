@@ -491,6 +491,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     Route::post('/CargarEstudiantesMezcladosMateriasPrivado', [PeticionesPrivadas::class, 'CargarEstudiantesMezcladosMateriasPrivado'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
     Route::post('/CargarInfoPlanesAniosCarrerasInstitucionesPrivado', [PeticionesPrivadas::class, 'CargarInfoPlanesAniosCarrerasInstitucionesPrivado'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
     Route::post('/CargarInformacionCuadroInscripciones', [PeticionesPrivadas::class, 'CargarInformacionCuadroInscripciones'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
+    Route::post('/CargarNivelesPorAnio', [PeticionesPrivadas::class, 'CargarNivelesPorAnio'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
     Route::post('/CargarListaPreliminarAlumnos2026', [PeticionesPrivadas::class, 'CargarListaPreliminarAlumnos2026'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
 
     // =========================
