@@ -333,10 +333,12 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     // PagostalleresController
     // =========================
     Route::get('/pagostalleres', [PagostalleresController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
+    Route::get('/pagostalleres/mis-talleristas', [PagostalleresController::class, 'misTalleristas'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER,DOCENTE,ADMINISTRADOR(A)']);
     Route::get('/pagostalleres/by-tallerista/{talleristaId}', [PagostalleresController::class, 'byTallerista'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
     Route::get('/pagostalleres/{id}', [PagostalleresController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
     Route::post('/pagostalleres', [PagostalleresController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
     Route::put('/pagostalleres/{id}', [PagostalleresController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER']);
+    Route::patch('/pagostalleres/{id}/observacion', [PagostalleresController::class, 'actualizarObservacion'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES,DOCENTE_DE_TALLER,DOCENTE,ADMINISTRADOR(A)']);
     Route::delete('/pagostalleres/{id}', [PagostalleresController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),INSCRIPCIÓN_DE_TALLERES']);
 
     // =========================
@@ -390,7 +392,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
     // PlanteldocentesController
     // =========================
     Route::get('/planteldocentes', [PlanteldocentesController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
-    Route::get('/planteldocentes/{id}', [PlanteldocentesController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A)']);
+    Route::get('/planteldocentes/{id}', [PlanteldocentesController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
     Route::post('/planteldocentes', [PlanteldocentesController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::put('/planteldocentes/{id}', [PlanteldocentesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::delete('/planteldocentes/{id}', [PlanteldocentesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);

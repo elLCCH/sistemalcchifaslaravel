@@ -1141,6 +1141,138 @@ class AsistenciaSesionController extends Controller
     }
 
     /**
+     * Retorna las materias asignadas de un estudiante (para seleccionar en el reporte de asistencias).
+     */
+    public function materiasEstudiante(Request $request, $infoId)
+    {
+        $user = $request->user();
+        $isAdmin = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        $isDocente = ($user instanceof Planteldocentes);
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Acceso no permitido.'], 403);
+        }
+
+        $infoId = (int) $infoId;
+
+        $materias = DB::table('calificaciones as c')
+            ->join('materias as m', 'c.materias_id', '=', 'm.id')
+            ->join('plandeestudios as pe', 'm.plandeestudios_id', '=', 'pe.id')
+            ->where('c.infoestudiantesifas_id', $infoId)
+            ->select([
+                'm.id as materia_id',
+                'pe.NombreMateria as nombre_materia',
+                'pe.SiglaMateria as sigla_materia',
+                'pe.LvlCurso as lvl_curso',
+                'm.Paralelo as paralelo',
+                'm.Turno as turno',
+                'pe.ModoMateria as modo_materia',
+            ])
+            ->distinct()
+            ->orderBy('pe.NombreMateria')
+            ->get();
+
+        return response()->json(['ok' => true, 'materias' => $materias]);
+    }
+
+    /**
+     * Reporte de asistencias de UN SOLO ESTUDIANTE en todas sus materias, en un rango de fechas.
+     * Devuelve un array de materias, cada una con sus registros de asistencia ordenados por fecha.
+     */
+    public function reporteAsistenciasEstudiante(Request $request, $infoId)
+    {
+        $user = $request->user();
+        $isAdmin = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        $isDocente = ($user instanceof Planteldocentes);
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Acceso no permitido.'], 403);
+        }
+
+        $infoId = (int) $infoId;
+        $fechaInicio = $request->input('fecha_inicio');
+        $fechaFin = $request->input('fecha_fin');
+
+        if (!$fechaInicio || !$fechaFin) {
+            return response()->json(['ok' => false, 'message' => 'Debe indicar fecha_inicio y fecha_fin.'], 422);
+        }
+
+        // Obtener materias del estudiante
+        $materias = DB::table('calificaciones as c')
+            ->join('materias as m', 'c.materias_id', '=', 'm.id')
+            ->join('plandeestudios as pe', 'm.plandeestudios_id', '=', 'pe.id')
+            ->where('c.infoestudiantesifas_id', $infoId)
+            ->select([
+                'm.id as materia_id',
+                'pe.NombreMateria as nombre_materia',
+                'pe.SiglaMateria as sigla_materia',
+                'pe.LvlCurso as lvl_curso',
+                'm.Paralelo as paralelo',
+                'm.Turno as turno',
+            ])
+            ->distinct()
+            ->orderBy('pe.NombreMateria')
+            ->get();
+
+        $instId = (int) ($user->instituciones_id ?? 0);
+        $resultado = [];
+
+        foreach ($materias as $mat) {
+            $aulas = AulaVirtual::query()
+                ->where('materias_id', (int) $mat->materia_id)
+                ->when($instId > 0, fn ($q) => $q->where('instituciones_id', $instId))
+                ->pluck('id');
+
+            if ($aulas->isEmpty()) continue;
+
+            $sesiones = AsistenciaSesion::query()
+                ->whereIn('aulas_virtuales_id', $aulas->all())
+                ->whereDate('fecha', '>=', $fechaInicio)
+                ->whereDate('fecha', '<=', $fechaFin)
+                ->orderBy('fecha')
+                ->get();
+
+            if ($sesiones->isEmpty()) continue;
+
+            $registros = [];
+            $resumen = ['P' => 0, 'A' => 0, 'F' => 0, 'L' => 0, 'SR' => 0];
+
+            foreach ($sesiones as $s) {
+                $reg = AsistenciaRegistro::query()
+                    ->where('asistencias_sesiones_id', (int) $s->id)
+                    ->where('infoestudiantesifas_id', $infoId)
+                    ->first(['estado_asistencia', 'metodo', 'fecha_registro']);
+
+                $estado = $reg ? strtoupper(trim((string) $reg->estado_asistencia)) : '';
+                if ($estado && isset($resumen[$estado])) {
+                    $resumen[$estado]++;
+                } elseif (!$estado) {
+                    $resumen['SR']++;
+                }
+
+                $registros[] = [
+                    'fecha' => $s->fecha ? $s->fecha->format('Y-m-d') : null,
+                    'hora_registro' => $reg && $reg->fecha_registro
+                        ? (new \DateTime($reg->fecha_registro))->format('H:i')
+                        : null,
+                    'estado' => $estado ?: 'SR',
+                    'metodo' => $reg ? $reg->metodo : null,
+                ];
+            }
+
+            $resultado[] = [
+                'materia_nombre' => $mat->nombre_materia,
+                'sigla' => $mat->sigla_materia ?? '',
+                'curso' => $mat->lvl_curso ?? '',
+                'paralelo' => $mat->paralelo ?? '',
+                'turno' => $mat->turno ?? '',
+                'registros' => $registros,
+                'resumen' => $resumen,
+            ];
+        }
+
+        return response()->json(['ok' => true, 'materias' => $resultado]);
+    }
+
+    /**
      * Reporte de asistencias por materia en un rango de fechas.
      * Devuelve una matriz: estudiantes × fechas con el estado de asistencia.
      */
@@ -1246,5 +1378,40 @@ class AsistenciaSesionController extends Controller
             'fechas' => $fechas,
             'estudiantes' => $estudiantes,
         ]);
+    }
+
+    /**
+     * Lista las materias (aulas virtuales) que tienen sesiones de asistencia
+     * registradas en la institución del usuario autenticado.
+     */
+    public function materiasConSesiones(Request $request)
+    {
+        $user = $request->user();
+        $isAdmin = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        $isDocente = ($user instanceof Planteldocentes);
+        if (!$user || (!$isAdmin && !$isDocente)) {
+            return response()->json(['ok' => false, 'message' => 'Sin permisos.'], 403);
+        }
+
+        $instId = (int) $user->instituciones_id;
+
+        $materias = DB::table('aulas_virtuales as av')
+            ->join('materias as m', 'm.id', '=', 'av.materias_id')
+            ->join('asistencias_sesiones as s', 's.aulas_virtuales_id', '=', 'av.id')
+            ->where('av.instituciones_id', $instId)
+            ->select([
+                'av.materias_id',
+                'm.Nombre_Materia as nombre_materia',
+                'm.Sigla as sigla',
+                'av.Lvl_Curso as lvl_curso',
+                'av.Paralelo as paralelo',
+                'av.Turno as turno',
+            ])
+            ->groupBy('av.materias_id', 'm.Nombre_Materia', 'm.Sigla', 'av.Lvl_Curso', 'av.Paralelo', 'av.Turno')
+            ->orderBy('av.Lvl_Curso')
+            ->orderBy('m.Nombre_Materia')
+            ->get();
+
+        return response()->json(['ok' => true, 'materias' => $materias]);
     }
 }

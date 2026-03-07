@@ -298,4 +298,58 @@ class LicenciasestudiantesifasController extends Controller
 
         return response()->json(['ok' => true]);
     }
+
+    /**
+     * Aplicar TODAS las licencias activas de la institución del usuario (bulk).
+     * Opcionalmente filtra por anios_id.
+     */
+    public function aplicarTodas(Request $request)
+    {
+        $institucionId = $request->user()->instituciones_id ?? null;
+        if (!$institucionId) {
+            return response()->json(['ok' => false, 'message' => 'No se pudo determinar la institución del usuario.'], 409);
+        }
+
+        $aniosId = $request->input('anios_id');
+
+        $query = Licenciasestudiantesifas::where('instituciones_id', (int) $institucionId)
+            ->where(function ($q) {
+                $q->whereNull('estado')
+                  ->orWhereRaw("UPPER(TRIM(estado)) = 'ACTIVO'")
+                  ->orWhere('estado', '');
+            });
+
+        if ($aniosId) {
+            $query->where('anios_id', (int) $aniosId);
+        }
+
+        $licencias = $query->get();
+
+        if ($licencias->isEmpty()) {
+            return response()->json(['ok' => true, 'message' => 'No hay licencias activas para aplicar.', 'total_licencias' => 0, 'stats' => []]);
+        }
+
+        $totalStats = [
+            'licencias_procesadas' => 0,
+            'sesiones_revisadas' => 0,
+            'registros_insertados' => 0,
+            'registros_actualizados' => 0,
+        ];
+
+        DB::transaction(function () use ($licencias, &$totalStats) {
+            foreach ($licencias as $licencia) {
+                $stats = $this->aplicarLicenciaEnAsistencias($licencia);
+                $totalStats['licencias_procesadas']++;
+                $totalStats['sesiones_revisadas'] += $stats['sesiones_revisadas'];
+                $totalStats['registros_insertados'] += $stats['registros_insertados'];
+                $totalStats['registros_actualizados'] += $stats['registros_actualizados'];
+            }
+        });
+
+        return response()->json([
+            'ok' => true,
+            'total_licencias' => $totalStats['licencias_procesadas'],
+            'stats' => $totalStats,
+        ]);
+    }
 }

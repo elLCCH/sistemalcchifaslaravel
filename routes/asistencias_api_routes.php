@@ -24,6 +24,12 @@ Route::prefix('asistencias')->middleware(['auth:sanctum'])->group(function () {
     // Reporte de asistencias por materia (docente/admin) - rango de fechas
     Route::get('materias/{materiaId}/reporte', [AsistenciaSesionController::class, 'reporteAsistenciasMateria']);
 
+    // Materias asignadas de un estudiante (para selector de reporte de asistencias)
+    Route::get('estudiante/{infoId}/materias', [AsistenciaSesionController::class, 'materiasEstudiante']);
+
+    // Reporte de asistencias de UN estudiante en todas sus materias (docente/admin)
+    Route::get('estudiante/{infoId}/reporte-asistencias', [AsistenciaSesionController::class, 'reporteAsistenciasEstudiante']);
+
     // Sesiones (docentes/admin)
     Route::get('sesiones', [AsistenciaSesionController::class, 'index']);
     Route::post('sesiones', [AsistenciaSesionController::class, 'store']);
@@ -47,6 +53,9 @@ Route::prefix('asistencias')->middleware(['auth:sanctum'])->group(function () {
     // Materias del docente/admin con asistencia habilitada (para botón flotante)
     Route::get('mis-materias', [AsistenciaSesionController::class, 'misMaterias']);
 
+    // Materias con sesiones de asistencia registradas (admin/docente)
+    Route::get('materias-con-sesiones', [AsistenciaSesionController::class, 'materiasConSesiones']);
+
     // QR rotativo
     Route::post('sesiones/{id}/qr', [AsistenciaQrTokenController::class, 'create']);
     Route::get('sesiones/{id}/qr/status', [AsistenciaQrTokenController::class, 'tokenStatus']);
@@ -64,6 +73,7 @@ Route::prefix('asistencias')->middleware(['auth:sanctum'])->group(function () {
     Route::get('licencias', [LicenciasestudiantesifasController::class, 'index'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
     Route::get('licencias/buscar-estudiantes', [LicenciasestudiantesifasController::class, 'buscarEstudiantes'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
     Route::post('licencias', [LicenciasestudiantesifasController::class, 'store'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
+    Route::post('licencias/aplicar-todas', [LicenciasestudiantesifasController::class, 'aplicarTodas'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
     Route::post('licencias/{id}/aplicar', [LicenciasestudiantesifasController::class, 'aplicar'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
     Route::delete('licencias/{id}', [LicenciasestudiantesifasController::class, 'destroy'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
 });

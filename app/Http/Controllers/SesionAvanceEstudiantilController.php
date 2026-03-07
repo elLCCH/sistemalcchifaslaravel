@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\SesionAvanceEstudiantil;
 use App\Models\Planteldocentes;
+use App\Models\Planteladministrativos;
+use App\Models\Usuarioslcchs;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
@@ -109,13 +111,18 @@ class SesionAvanceEstudiantilController extends Controller
     }
 
     /** Query base de estudiantes asignados a un docente por tipo. */
-    private function queryMisEstudiantesBase(Planteldocentes $user, string $tipo)
+    private function queryMisEstudiantesBase($userOrDocenteId, string $tipo, ?int $instId = null)
     {
         $col = $this->columnaDocentePorTipo($tipo);
         if (!$col) return null;
 
-        $docenteId = (int) $user->id;
-        $instId    = (int) $user->instituciones_id;
+        if ($userOrDocenteId instanceof Planteldocentes) {
+            $docenteId = (int) $userOrDocenteId->id;
+            $instId    = (int) $userOrDocenteId->instituciones_id;
+        } else {
+            $docenteId = (int) $userOrDocenteId;
+            $instId    = (int) $instId;
+        }
 
         $selectBase = [
             'info.id as infoestudiantesifas_id',
@@ -157,12 +164,26 @@ class SesionAvanceEstudiantilController extends Controller
     public function misEstudiantesTotales(Request $request)
     {
         $user = $request->user();
-        if (!($user instanceof Planteldocentes)) {
-            return response()->json(['message' => 'Solo los docentes pueden ver sus estudiantes.'], 403);
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+
+        if (!$isDocente && !$isAdmin) {
+            return response()->json(['message' => 'Solo los docentes o administrativos pueden ver estudiantes.'], 403);
         }
 
-        $docenteId = (int) $user->id;
-        $instId    = (int) $user->instituciones_id;
+        if ($isAdmin) {
+            $adminDocenteId = (int) $request->query('planteldocentes_id', 0);
+            if ($adminDocenteId <= 0) {
+                return response()->json(['message' => 'Debe indicar planteldocentes_id.'], 422);
+            }
+            $docente = Planteldocentes::find($adminDocenteId);
+            if (!$docente) return response()->json(['message' => 'Docente no encontrado.'], 404);
+            $docenteId = (int) $docente->id;
+            $instId    = (int) $docente->instituciones_id;
+        } else {
+            $docenteId = (int) $user->id;
+            $instId    = (int) $user->instituciones_id;
+        }
 
         $base = DB::table('infoestudiantesifas')->where('instituciones_id', $instId);
 
@@ -181,8 +202,11 @@ class SesionAvanceEstudiantilController extends Controller
     public function misEstudiantesFiltros(Request $request)
     {
         $user = $request->user();
-        if (!($user instanceof Planteldocentes)) {
-            return response()->json(['message' => 'Solo los docentes pueden ver sus estudiantes.'], 403);
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+
+        if (!$isDocente && !$isAdmin) {
+            return response()->json(['message' => 'Solo los docentes o administrativos pueden ver estudiantes.'], 403);
         }
 
         $tipo = (string) $request->query('tipo_asignacion', '');
@@ -191,8 +215,19 @@ class SesionAvanceEstudiantilController extends Controller
         $col = $this->columnaDocentePorTipo($tipo);
         if (!$col) return response()->json(['message' => 'tipo_asignacion inválido.'], 422);
 
-        $docenteId = (int) $user->id;
-        $instId    = (int) $user->instituciones_id;
+        if ($isAdmin) {
+            $adminDocenteId = (int) $request->query('planteldocentes_id', 0);
+            if ($adminDocenteId <= 0) {
+                return response()->json(['message' => 'Debe indicar planteldocentes_id.'], 422);
+            }
+            $docente = Planteldocentes::find($adminDocenteId);
+            if (!$docente) return response()->json(['message' => 'Docente no encontrado.'], 404);
+            $docenteId = (int) $docente->id;
+            $instId    = (int) $docente->instituciones_id;
+        } else {
+            $docenteId = (int) $user->id;
+            $instId    = (int) $user->instituciones_id;
+        }
 
         $q = DB::table('infoestudiantesifas as info')
             ->where("info.$col", $docenteId)
@@ -305,14 +340,27 @@ class SesionAvanceEstudiantilController extends Controller
     public function misEstudiantesPaginado(Request $request)
     {
         $user = $request->user();
-        if (!($user instanceof Planteldocentes)) {
-            return response()->json(['message' => 'Solo los docentes pueden ver sus estudiantes.'], 403);
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+
+        if (!$isDocente && !$isAdmin) {
+            return response()->json(['message' => 'Solo los docentes o administrativos pueden ver estudiantes.'], 403);
         }
 
         $tipo = (string) $request->query('tipo_asignacion', '');
         if (!$tipo) return response()->json(['message' => 'tipo_asignacion requerido.'], 422);
 
-        $q = $this->queryMisEstudiantesBase($user, $tipo);
+        if ($isAdmin) {
+            $adminDocenteId = (int) $request->query('planteldocentes_id', 0);
+            if ($adminDocenteId <= 0) {
+                return response()->json(['message' => 'Debe indicar planteldocentes_id.'], 422);
+            }
+            $docente = Planteldocentes::find($adminDocenteId);
+            if (!$docente) return response()->json(['message' => 'Docente no encontrado.'], 404);
+            $q = $this->queryMisEstudiantesBase($docente->id, $tipo, (int) $docente->instituciones_id);
+        } else {
+            $q = $this->queryMisEstudiantesBase($user, $tipo);
+        }
         if (!$q) return response()->json(['message' => 'tipo_asignacion inválido.'], 422);
 
         $perPage = (int) $request->query('per_page', 15);
@@ -369,7 +417,10 @@ class SesionAvanceEstudiantilController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        if (!($user instanceof Planteldocentes)) {
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+
+        if (!$isDocente && !$isAdmin) {
             return response()->json(['message' => 'No autorizado'], 403);
         }
 
@@ -381,8 +432,18 @@ class SesionAvanceEstudiantilController extends Controller
             return response()->json(['message' => 'Parámetros inválidos.'], 422);
         }
 
+        if ($isAdmin) {
+            $adminDocenteId = (int) $request->query('planteldocentes_id', 0);
+            if ($adminDocenteId <= 0) {
+                return response()->json(['message' => 'Debe indicar planteldocentes_id.'], 422);
+            }
+            $docenteId = $adminDocenteId;
+        } else {
+            $docenteId = (int) $user->id;
+        }
+
         $query = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId)
-            ->where('planteldocentes_id', (int) $user->id)
+            ->where('planteldocentes_id', $docenteId)
             ->where('tipo_asignacion', $tipo);
 
         if ($eval !== null && $eval !== '') {
@@ -565,13 +626,28 @@ class SesionAvanceEstudiantilController extends Controller
     public function resumenBaterias(Request $request)
     {
         $user = $request->user();
-        if (!($user instanceof Planteldocentes)) {
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+
+        if (!$isDocente && !$isAdmin) {
             return response()->json(['message' => 'No autorizado'], 403);
         }
 
         $tipo = $request->query('tipo_asignacion', '');
         if (!$tipo) {
             return response()->json(['message' => 'tipo_asignacion requerido.'], 422);
+        }
+
+        if ($isAdmin) {
+            $adminDocenteId = (int) $request->query('planteldocentes_id', 0);
+            if ($adminDocenteId <= 0) {
+                return response()->json(['message' => 'Debe indicar planteldocentes_id.'], 422);
+            }
+            $docente = Planteldocentes::find($adminDocenteId);
+            if (!$docente) return response()->json(['message' => 'Docente no encontrado.'], 404);
+            $docenteId = (int) $docente->id;
+        } else {
+            $docenteId = (int) $user->id;
         }
 
         $rows = DB::table('sesiones_avance_estudiantil')
@@ -585,7 +661,7 @@ class SesionAvanceEstudiantilController extends Controller
                 DB::raw("SUM(CASE WHEN asistencia = 'F' THEN 1 ELSE 0 END) as faltas"),
                 DB::raw("SUM(CASE WHEN asistencia = 'L' THEN 1 ELSE 0 END) as licencias")
             )
-            ->where('planteldocentes_id', (int) $user->id)
+            ->where('planteldocentes_id', (int) $docenteId)
             ->where('tipo_asignacion', $tipo)
             ->groupBy('infoestudiantesifas_id', 'evaluacion')
             ->get();
@@ -615,7 +691,10 @@ class SesionAvanceEstudiantilController extends Controller
     public function comparacion(Request $request)
     {
         $user = $request->user();
-        if (!($user instanceof Planteldocentes)) {
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+
+        if (!$isDocente && !$isAdmin) {
             return response()->json(['message' => 'No autorizado'], 403);
         }
 
@@ -627,8 +706,20 @@ class SesionAvanceEstudiantilController extends Controller
             return response()->json(['message' => 'Parámetros inválidos.'], 422);
         }
 
+        if ($isAdmin) {
+            $adminDocenteId = (int) $request->input('planteldocentes_id', 0);
+            if ($adminDocenteId <= 0) {
+                return response()->json(['message' => 'Debe indicar planteldocentes_id.'], 422);
+            }
+            $docente = Planteldocentes::find($adminDocenteId);
+            if (!$docente) return response()->json(['message' => 'Docente no encontrado.'], 404);
+            $docenteId = (int) $docente->id;
+        } else {
+            $docenteId = (int) $user->id;
+        }
+
         $query = SesionAvanceEstudiantil::whereIn('infoestudiantesifas_id', array_map('intval', $infoIds))
-            ->where('planteldocentes_id', (int) $user->id)
+            ->where('planteldocentes_id', $docenteId)
             ->where('tipo_asignacion', $tipo);
 
         if ($eval !== null && $eval !== '' && (int) $eval > 0) {

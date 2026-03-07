@@ -332,6 +332,12 @@ class AsistenciaScanController extends Controller
         $minutos = (int) abs(now()->diffInMinutes($sesion->hora_ingreso));
         $estado = ($minutos <= (int) $sesion->tiempo_espera_minutos) ? 'PRESENTE' : 'ATRASO';
 
+        // Si el estudiante tiene licencia vigente, marcar como PERMISO
+        $fechaSesion = (string) ($sesion->fecha ?? date('Y-m-d'));
+        if ($this->estudianteTieneLicencia($infoestudiantesifasId, $fechaSesion)) {
+            $estado = 'PERMISO';
+        }
+
         // Validación GPS
         $gpsValido = 0;
         $distancia = null;
