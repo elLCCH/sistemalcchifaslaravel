@@ -107,6 +107,9 @@ Route::prefix('v1/sesiones-avance')->middleware('auth:sanctum')->group(function 
     Route::post('/comparacion',    [SesionAvanceEstudiantilController::class, 'comparacion']);
     Route::get('/mis-sesiones',    [SesionAvanceEstudiantilController::class, 'misSesionesEstudiante']);
     Route::post('/terminar-clase', [SesionAvanceEstudiantilController::class, 'terminarClase']);
+    Route::post('/deshacer-terminar-clase', [SesionAvanceEstudiantilController::class, 'deshacerTerminarClase']);
+    Route::get('/terminar-clase-historial', [SesionAvanceEstudiantilController::class, 'terminarClaseHistorial']);
+    Route::get('/licencias-docente', [SesionAvanceEstudiantilController::class, 'licenciasDocente']);
     Route::get('/asistencias-docente', [SesionAvanceEstudiantilController::class, 'asistenciasDocente']);
     Route::get('/',               [SesionAvanceEstudiantilController::class, 'index']);
     Route::post('/',              [SesionAvanceEstudiantilController::class, 'store']);

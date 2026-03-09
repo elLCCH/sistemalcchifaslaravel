@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\SesionAvanceEstudiantil;
+use App\Models\TerminarClaseLog;
 use App\Models\Planteldocentes;
 use App\Models\Planteladministrativos;
 use App\Models\Usuarioslcchs;
@@ -865,13 +866,14 @@ class SesionAvanceEstudiantilController extends Controller
         }
 
         $creadas = 0;
+        $idsCreados = [];
         foreach ($sinSesion as $infoId) {
             $infoId = (int) $infoId;
             $ultima = $ultimaPorEst[$infoId] ?? null;
             $numeroClase = $ultima ? (((int) $ultima->numero_clase) + 1) : 1;
             $avanceTexto = $ultima ? ($ultima->avance_texto ?? '') : '';
 
-            SesionAvanceEstudiantil::create([
+            $sesion = SesionAvanceEstudiantil::create([
                 'infoestudiantesifas_id' => $infoId,
                 'planteldocentes_id'     => (int) $user->id,
                 'tipo_asignacion'        => $tipo,
@@ -883,13 +885,240 @@ class SesionAvanceEstudiantilController extends Controller
                 'sugerencia'             => 'NO ASISTIÓ A LA CLASE',
                 'asistencia'             => 'F',
             ]);
+            $idsCreados[] = (int) $sesion->id;
             $creadas++;
+        }
+
+        // Registrar log para poder deshacer
+        if ($creadas > 0) {
+            TerminarClaseLog::create([
+                'planteldocentes_id'   => (int) $user->id,
+                'instituciones_id'     => (int) $user->instituciones_id,
+                'tipo_asignacion'      => $tipo,
+                'evaluacion'           => $evaluacion,
+                'fecha'                => $fecha,
+                'cursos_json'          => !empty($cursos) ? json_encode($cursos) : null,
+                'sesiones_creadas_ids' => json_encode($idsCreados),
+                'cantidad_creadas'     => $creadas,
+            ]);
         }
 
         return response()->json([
             'message' => "Clase terminada. Se marcaron $creadas estudiantes como falta.",
             'creadas' => $creadas,
         ]);
+    }
+
+    // ─────────────────────────────────────────────────────
+    // DESHACER TERMINAR CLASE (rollback)
+    // Solo permite deshacer acciones del mismo día (hoy)
+    // ─────────────────────────────────────────────────────
+    public function deshacerTerminarClase(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof Planteldocentes)) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $hoy = now()->toDateString();
+
+        // Buscar el último log NO deshecho del docente, creado HOY
+        $log = TerminarClaseLog::where('planteldocentes_id', (int) $user->id)
+            ->whereNull('deshecho_at')
+            ->whereDate('created_at', $hoy)
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$log) {
+            return response()->json([
+                'message' => 'No hay acciones de "Terminar Clase" para deshacer hoy.',
+                'eliminadas' => 0,
+            ], 404);
+        }
+
+        $ids = json_decode($log->sesiones_creadas_ids, true);
+        if (!is_array($ids) || empty($ids)) {
+            $log->update(['deshecho_at' => now(), 'deshecho_por' => (int) $user->id]);
+            return response()->json([
+                'message' => 'Log encontrado pero sin sesiones asociadas.',
+                'eliminadas' => 0,
+            ]);
+        }
+
+        // Eliminar solo las sesiones que fueron creadas por esta acción
+        $eliminadas = SesionAvanceEstudiantil::whereIn('id', $ids)
+            ->where('planteldocentes_id', (int) $user->id)
+            ->where('asistencia', 'F')
+            ->delete();
+
+        $log->update(['deshecho_at' => now(), 'deshecho_por' => (int) $user->id]);
+
+        return response()->json([
+            'message' => "Se deshizo la acción. Se eliminaron $eliminadas registros de falta.",
+            'eliminadas' => $eliminadas,
+            'log_id' => $log->id,
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────
+    // HISTORIAL DE TERMINAR CLASE (para UI de deshacer)
+    // Retorna los logs del día actual del docente
+    // ─────────────────────────────────────────────────────
+    public function terminarClaseHistorial(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof Planteldocentes)) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $hoy = now()->toDateString();
+
+        $logs = TerminarClaseLog::where('planteldocentes_id', (int) $user->id)
+            ->whereDate('created_at', $hoy)
+            ->orderByDesc('id')
+            ->get(['id', 'tipo_asignacion', 'evaluacion', 'fecha', 'cantidad_creadas', 'deshecho_at', 'created_at']);
+
+        return response()->json(['data' => $logs]);
+    }
+
+    // ─────────────────────────────────────────────────────
+    // LICENCIAS DOCENTE: ver estudiantes con licencia activa
+    // Disponible para planteldocentes y planteladministrativos
+    // ─────────────────────────────────────────────────────
+    public function licenciasDocente(Request $request)
+    {
+        $user = $request->user();
+        $esDocente = $user instanceof Planteldocentes;
+        $esAdmin   = $user instanceof Planteladministrativos || $user instanceof Usuarioslcchs;
+
+        if (!$esDocente && !$esAdmin) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $instId = (int) ($user->instituciones_id ?? 0);
+        if (!$instId) {
+            return response()->json(['message' => 'No se pudo determinar la institución.'], 409);
+        }
+
+        $hoy = now()->toDateString();
+
+        // Licencias activas (hoy dentro del rango)
+        $licencias = DB::table('licenciasestudiantesifas as lic')
+            ->join('infoestudiantesifas as ie', 'ie.id', '=', 'lic.infoestudiantesifas_id')
+            ->join('estudiantesifas as e', 'e.id', '=', 'ie.estudiantesifas_id')
+            ->where('lic.instituciones_id', $instId)
+            ->where('lic.estado', 'ACTIVO')
+            ->where('lic.fecha_inicio', '<=', $hoy)
+            ->where('lic.fecha_fin', '>=', $hoy)
+            ->select([
+                'lic.id as licencia_id',
+                'lic.fecha_inicio',
+                'lic.fecha_fin',
+                'lic.motivo',
+                'lic.registrado_por',
+                'ie.id as infoestudiantesifas_id',
+                'ie.planteldocadmins_id',
+                'ie.planteldocadmins_idPC',
+                'ie.planteldocadmins_idOtros',
+                'ie.Curso_Solicitado',
+                'ie.Paralelo_Solicitado',
+                'ie.Turno',
+                'ie.InstrumentoMusical',
+                'e.CI',
+                'e.Ap_Paterno',
+                'e.Ap_Materno',
+                'e.Nombre',
+                'e.Foto',
+            ])
+            ->orderBy('e.Ap_Paterno')
+            ->orderBy('e.Ap_Materno')
+            ->orderBy('e.Nombre')
+            ->get();
+
+        // Determinar relación con el docente y materias compartidas
+        $docenteId = $esDocente ? (int) $user->id : null;
+
+        // Obtener materias del docente (si es docente)
+        $materiasDocente = collect();
+        if ($docenteId) {
+            $materiasDocente = DB::table('planteldocentesmaterias as pdm')
+                ->join('materias as m', 'm.id', '=', 'pdm.materias_id')
+                ->join('plandeestudios as pe', 'pe.id', '=', 'm.plandeestudios_id')
+                ->leftJoin('anios as a', 'a.id', '=', 'pe.anio_id')
+                ->where('pdm.planteldocentes_id', $docenteId)
+                ->select([
+                    'm.id as materia_id',
+                    'pe.NombreMateria',
+                    'm.Paralelo as materia_paralelo',
+                    'm.Turno as materia_turno',
+                    'pe.LvlCurso as Curso',
+                    'pe.SiglaMateria as Sigla',
+                    'a.Anio',
+                ])
+                ->get()
+                ->keyBy('materia_id');
+        }
+
+        $materiasDocenteIds = $materiasDocente->keys()->toArray();
+
+        // Obtener calificaciones de los estudiantes con licencia que coincidan con materias del docente
+        $infoIds = $licencias->pluck('infoestudiantesifas_id')->unique()->toArray();
+        $calificacionesPorEst = [];
+        if ($docenteId && !empty($infoIds) && !empty($materiasDocenteIds)) {
+            $cals = DB::table('calificaciones')
+                ->whereIn('infoestudiantesifas_id', $infoIds)
+                ->whereIn('materias_id', $materiasDocenteIds)
+                ->select(['infoestudiantesifas_id', 'materias_id'])
+                ->get();
+            foreach ($cals as $c) {
+                $key = (int) $c->infoestudiantesifas_id;
+                if (!isset($calificacionesPorEst[$key])) $calificacionesPorEst[$key] = [];
+                $calificacionesPorEst[$key][] = (int) $c->materias_id;
+            }
+        }
+
+        // Enriquecer resultados
+        $resultado = $licencias->map(function ($lic) use ($docenteId, $calificacionesPorEst, $materiasDocente) {
+            $item = (array) $lic;
+
+            // Relación directa con el docente
+            $relacion = null;
+            if ($docenteId) {
+                if ((int) ($lic->planteldocadmins_id ?? 0) === $docenteId) {
+                    $relacion = 'Tu Est. Especialidad';
+                } elseif ((int) ($lic->planteldocadmins_idPC ?? 0) === $docenteId) {
+                    $relacion = 'Tu Est. Prac. Conj.';
+                } elseif ((int) ($lic->planteldocadmins_idOtros ?? 0) === $docenteId) {
+                    $relacion = 'Tu Est. Complementario';
+                }
+            }
+            $item['relacion_docente'] = $relacion;
+
+            // Materias compartidas (para todos los estudiantes, directos o no)
+            $materiasCompartidas = [];
+            $infoId = (int) $lic->infoestudiantesifas_id;
+            if ($docenteId && isset($calificacionesPorEst[$infoId])) {
+                foreach ($calificacionesPorEst[$infoId] as $matId) {
+                    $mat = $materiasDocente->get($matId);
+                    if ($mat) {
+                        $materiasCompartidas[] = [
+                            'materia_id' => $matId,
+                            'nombre' => $mat->NombreMateria,
+                            'curso' => $mat->Curso,
+                            'paralelo' => $mat->materia_paralelo,
+                            'sigla' => $mat->Sigla,
+                            'anio' => $mat->Anio,
+                        ];
+                    }
+                }
+            }
+            $item['materias_compartidas'] = $materiasCompartidas;
+            $item['cant_materias_compartidas'] = count($materiasCompartidas);
+
+            return $item;
+        });
+
+        return response()->json(['data' => $resultado->values()]);
     }
 
     // ─────────────────────────────────────────────────────
