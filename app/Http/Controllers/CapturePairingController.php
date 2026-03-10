@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\CapturePairing;
 use App\Models\CaptureSession;
 use Illuminate\Http\Request;
@@ -12,6 +13,11 @@ use Illuminate\Support\Str;
 
 class CapturePairingController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
     private const INACTIVITY_SECONDS = 15 * 60; // 15 minutos
 
     private function expireIfInactive(CapturePairing $pairing): void

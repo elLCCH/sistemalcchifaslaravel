@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\Instituciones;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -9,6 +10,11 @@ use Illuminate\Support\Facades\DB;
 
 class BrandingController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
     private function normalizeName(string $value): string
     {
         $upper = mb_strtoupper($value);

@@ -2,11 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\Project;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 
 class ProjectController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
     /**
      * Obtener todos los proyectos
      */

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\CaptureSession;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -11,6 +12,11 @@ use Illuminate\Support\Str;
 
 class CaptureSessionController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
     private const MAX_UPLOAD_BYTES = 30 * 1024 * 1024; // 30MB
 
     public function store(Request $request)

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\AsistenciaRegistro;
 use App\Models\AsistenciaSesion;
 use App\Models\AsistenciaQrToken;
@@ -10,12 +11,18 @@ use App\Models\Planteldocentes;
 use App\Models\Planteladministrativos;
 use App\Models\Usuarioslcchs;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 class AsistenciaSesionController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
     private string $modoInstrumentosEspecialidad = 'MODO INSTRUMENTOS DE ESPECIALIDAD';
     private string $modoPracticaConjuntos = 'MODO PRÁCTICA DE CONJUNTOS';
     private string $modoInstrumentoComplementario = 'MODO INSTRUMENTO COMPLEMENTARIO';

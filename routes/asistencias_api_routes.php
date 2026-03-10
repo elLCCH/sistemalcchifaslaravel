@@ -7,13 +7,14 @@ use App\Http\Controllers\AsistenciaScanController;
 use App\Http\Controllers\PermisoAsistenciaController;
 use App\Http\Controllers\LicenciasestudiantesifasController;
 use App\Http\Middleware\CheckAbilities;
+use App\Http\Middleware\UpdateTokenExpiration;
 
 // ============================================================
 // Asistencias - API
 // Prefijo: /api/asistencias
 // ============================================================
 
-Route::prefix('asistencias')->middleware(['auth:sanctum'])->group(function () {
+Route::prefix('asistencias')->middleware(['auth:sanctum', UpdateTokenExpiration::class])->group(function () {
 
     // Abrir/crear sesión por materia (docente)
     Route::post('materias/{materiaId}/sesion', [AsistenciaSesionController::class, 'openByMateria']);

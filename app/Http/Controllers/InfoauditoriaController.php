@@ -2,11 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\Infoauditoria;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 
 class InfoauditoriaController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
     public function index(Request $request)
     {
         $perPage = (int) ($request->query('per_page', 30));

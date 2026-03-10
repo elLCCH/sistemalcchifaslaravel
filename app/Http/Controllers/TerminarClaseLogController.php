@@ -2,11 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\TerminarClaseLog;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 
 class TerminarClaseLogController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
     /**
      * Display a listing of the resource.
      */

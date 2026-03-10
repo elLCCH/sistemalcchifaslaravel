@@ -8,6 +8,7 @@ use App\Http\Controllers\CalificacionesController;
 use App\Http\Controllers\InstitucionesController;
 use App\Http\Controllers\UsuarioslcchsController;
 use App\Http\Middleware\CheckAbilities;
+use App\Http\Middleware\UpdateTokenExpiration;
 
 use App\Http\Controllers\CarrerasController;
 use App\Http\Controllers\ControlesController;
@@ -61,15 +62,15 @@ Route::prefix("v1/auth")->group(function(){ //el prefijo vi/auth funciona como e
     // Route::post('/verify-email', [AuthController::class, 'verifyEmail']); //v1/auth/verify-email
     // Route::post('/resend-verification', [AuthController::class, 'resendVerification']); //v1/auth/resend-verification
     // Route::post('/update-profile', [AuthController::class, 'updateProfile']); //v1/auth/update-profile
-    Route::post('/cambiar-clave', [AuthController::class, 'cambiarClave'])->middleware('auth:sanctum'); //cambiar clave de usuario ESTO SUELE SER PARA PERMITIR EL AUTORIZADO
-    Route::get('/user', [AuthController::class, 'getUser'])->middleware('auth:sanctum'); //v1/auth/user
+    Route::post('/cambiar-clave', [AuthController::class, 'cambiarClave'])->middleware(['auth:sanctum', UpdateTokenExpiration::class]); //cambiar clave de usuario ESTO SUELE SER PARA PERMITIR EL AUTORIZADO
+    Route::get('/user', [AuthController::class, 'getUser'])->middleware(['auth:sanctum', UpdateTokenExpiration::class]); //v1/auth/user
 });
 
 // ============================================================
 // Seguridad: Google Authenticator (TOTP)
 // Vinculación/desvinculación para el usuario autenticado
 // ============================================================
-Route::prefix('v1/security')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1/security')->middleware(['auth:sanctum', UpdateTokenExpiration::class])->group(function () {
     Route::get('/2fa/status', [TwoFactorController::class, 'status']);
     Route::post('/2fa/enroll/start', [TwoFactorController::class, 'enrollStart']);
     Route::post('/2fa/enroll/confirm', [TwoFactorController::class, 'enrollConfirm']);
@@ -85,7 +86,7 @@ Route::prefix('v1/password-recovery')->group(function () {
     Route::post('/reset', [PasswordRecoveryController::class, 'reset']);
 });
 
-Route::prefix('v1/perfil')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1/perfil')->middleware(['auth:sanctum', UpdateTokenExpiration::class])->group(function () {
     Route::get('/materias', [PerfilController::class, 'materias']);
     Route::get('/deudas', [PerfilController::class, 'deudas']);
     Route::put('/materias/{materiaId}', [PerfilController::class, 'updateMateriaDocente']);
@@ -97,7 +98,7 @@ Route::prefix('v1/perfil')->middleware('auth:sanctum')->group(function () {
 // ============================================================
 // Sesiones de Avance Estudiantil (docente)
 // ============================================================
-Route::prefix('v1/sesiones-avance')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1/sesiones-avance')->middleware(['auth:sanctum', UpdateTokenExpiration::class])->group(function () {
     Route::get('/mis-estudiantes', [SesionAvanceEstudiantilController::class, 'misEstudiantes']);
     Route::get('/mis-estudiantes-totales', [SesionAvanceEstudiantilController::class, 'misEstudiantesTotales']);
     Route::get('/mis-estudiantes-filtros', [SesionAvanceEstudiantilController::class, 'misEstudiantesFiltros']);
@@ -119,7 +120,7 @@ Route::prefix('v1/sesiones-avance')->middleware('auth:sanctum')->group(function 
     Route::post('/copiar-ultima', [SesionAvanceEstudiantilController::class, 'copiarUltima']);
 });
 
-Route::prefix('v1/branding')->middleware('auth:sanctum')->group(function () {
+Route::prefix('v1/branding')->middleware(['auth:sanctum', UpdateTokenExpiration::class])->group(function () {
     Route::get('/assets', 'App\\Http\\Controllers\\BrandingController@assets');
     // Endpoints legacy (string)
     Route::get('/ObtenerLogo', 'App\\Http\\Controllers\\BrandingController@ObtenerLogo');
@@ -132,7 +133,7 @@ Route::prefix('v1/branding')->middleware('auth:sanctum')->group(function () {
 
 
 
-Route::middleware(['auth:sanctum', AuditMiddleware::class])->group(function () {
+Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration::class])->group(function () {
     // =========================
     // InfoauditoriaController
     // =========================
@@ -755,7 +756,7 @@ Route::prefix('articles')->group(function () {
 
 Route::get('/user', function (Request $request) {
     return $request->user();
-})->middleware('auth:sanctum');
+})->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
 
 // ============================================================
 // LChaula - Rutas API (Classroom)

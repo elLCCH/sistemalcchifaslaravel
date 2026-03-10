@@ -39,7 +39,7 @@ class UpdateTokenExpiration
         }
 
         // Renovar expiración (sliding expiration)
-        $personalAccessToken->expires_at = $now->copy()->addMinutes(60);
+        $personalAccessToken->expires_at = $now->copy()->addMinutes(180);
         $personalAccessToken->save();
 
         return $next($request);

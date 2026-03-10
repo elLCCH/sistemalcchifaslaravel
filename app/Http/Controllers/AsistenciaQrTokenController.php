@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\UpdateTokenExpiration;
 use App\Models\AsistenciaQrToken;
 use App\Models\AsistenciaRegistro;
 use App\Models\AsistenciaSesion;
 use App\Models\Planteldocentes;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -14,6 +16,11 @@ use Illuminate\Support\Str;
 
 class AsistenciaQrTokenController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
+    }
+
     private string $modoInstrumentosEspecialidad = 'MODO INSTRUMENTOS DE ESPECIALIDAD';
     private string $modoPracticaConjuntos = 'MODO PRÁCTICA DE CONJUNTOS';
     private string $modoInstrumentoComplementario = 'MODO INSTRUMENTO COMPLEMENTARIO';
