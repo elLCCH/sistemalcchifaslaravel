@@ -204,7 +204,7 @@ class MateriasController extends Controller
             'nivel' => ['nullable', 'string'],
             'lvlcurso' => ['required', 'string'],
             'paralelo_actual' => ['required', 'string'],
-            'paralelo_nuevo' => ['required', 'string'],
+            'paralelo_nuevo' => ['nullable', 'string'],
             'instituciones_id' => ['nullable', 'integer', 'min:1'],
             'Turno' => ['nullable', 'string'],
             'ModoAsistencia' => ['nullable', 'string'],
@@ -217,11 +217,13 @@ class MateriasController extends Controller
         $nivel = trim((string) ($validated['nivel'] ?? ''));
         $lvlCurso = trim((string) $validated['lvlcurso']);
         $paraleloActual = trim((string) $validated['paralelo_actual']);
-        $paraleloNuevo = trim((string) $validated['paralelo_nuevo']);
+        $paraleloNuevo = trim((string) ($validated['paralelo_nuevo'] ?? ''));
 
-        if ($resolucion === '' || $lvlCurso === '' || $paraleloActual === '' || $paraleloNuevo === '') {
+        if ($resolucion === '' || $lvlCurso === '' || $paraleloActual === '') {
             return response()->json(['message' => 'Datos incompletos'], 422);
         }
+
+        $cambiaParalelo = ($paraleloNuevo !== '' && $paraleloNuevo !== $paraleloActual);
 
         $institucionId = $this->resolveInstitucionId($request, $user);
 
@@ -249,28 +251,33 @@ class MateriasController extends Controller
         }
 
         // Validación global del filtro: no permitir que el paralelo nuevo ya exista en el mismo Año+Resolución (+ institución)
-        $existsQuery = Materias::query()
-            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
-            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('plandeestudios.anio_id', $anioId)
-            ->where('carreras.Resolucion', $resolucion)
-            ->where('plandeestudios.LvlCurso', $lvlCurso)
-            ->where('materias.Paralelo', $paraleloNuevo)
-            ->whereNotIn('materias.id', $ids->all());
+        if ($cambiaParalelo) {
+            $existsQuery = Materias::query()
+                ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+                ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+                ->where('plandeestudios.anio_id', $anioId)
+                ->where('carreras.Resolucion', $resolucion)
+                ->where('plandeestudios.LvlCurso', $lvlCurso)
+                ->where('materias.Paralelo', $paraleloNuevo)
+                ->whereNotIn('materias.id', $ids->all());
 
-        if ($nivel !== '') {
-            $existsQuery->where('carreras.Nivel', $nivel);
+            if ($nivel !== '') {
+                $existsQuery->where('carreras.Nivel', $nivel);
+            }
+
+            if (!empty($institucionId)) {
+                $existsQuery->where('carreras.instituciones_id', $institucionId);
+            }
+
+            if ($existsQuery->exists()) {
+                return response()->json(['message' => 'Ese paralelo ya existe para el mismo Año y Resolución'], 422);
+            }
         }
 
-        if (!empty($institucionId)) {
-            $existsQuery->where('carreras.instituciones_id', $institucionId);
+        $updateData = [];
+        if ($cambiaParalelo) {
+            $updateData['Paralelo'] = $paraleloNuevo;
         }
-
-        if ($existsQuery->exists()) {
-            return response()->json(['message' => 'Ese paralelo ya existe para el mismo Año y Resolución'], 422);
-        }
-
-        $updateData = ['Paralelo' => $paraleloNuevo];
 
         if (array_key_exists('Turno', $validated)) {
             $turno = trim((string) ($validated['Turno'] ?? ''));
@@ -298,6 +305,52 @@ class MateriasController extends Controller
             if ($estadoEnv !== '') {
                 $updateData['EstadoEnvio'] = $estadoEnv;
             }
+        }
+
+        $updated = Materias::query()
+            ->whereIn('id', $ids->all())
+            ->update($updateData);
+
+        return response()->json(['updated' => $updated]);
+    }
+
+    /**
+     * Actualizar campos (Turno, ModoAsistencia, EstadoHabilitacion) en materias seleccionadas por IDs.
+     */
+    public function bulkUpdateCampos(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            abort(401);
+        }
+
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['required', 'integer', 'min:1'],
+            'Turno' => ['nullable', 'string'],
+            'ModoAsistencia' => ['nullable', 'string'],
+            'EstadoHabilitacion' => ['nullable', 'string'],
+        ]);
+
+        $ids = collect($validated['ids'])->map(fn ($x) => (int) $x)->unique()->values();
+
+        $updateData = [];
+
+        if (array_key_exists('Turno', $validated)) {
+            $v = trim((string) ($validated['Turno'] ?? ''));
+            if ($v !== '') $updateData['Turno'] = $v;
+        }
+        if (array_key_exists('ModoAsistencia', $validated)) {
+            $v = trim((string) ($validated['ModoAsistencia'] ?? ''));
+            if ($v !== '') $updateData['ModoAsistencia'] = $v;
+        }
+        if (array_key_exists('EstadoHabilitacion', $validated)) {
+            $v = trim((string) ($validated['EstadoHabilitacion'] ?? ''));
+            if ($v !== '') $updateData['EstadoHabilitacion'] = $v;
+        }
+
+        if (empty($updateData)) {
+            return response()->json(['message' => 'No se especificaron campos para actualizar'], 422);
         }
 
         $updated = Materias::query()

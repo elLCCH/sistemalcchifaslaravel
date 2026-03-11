@@ -518,6 +518,7 @@ class AsistenciaSesionController extends Controller
                 'e.Ap_Paterno as ap_paterno',
                 'e.Ap_Materno as ap_materno',
                 'e.Nombre as nombre',
+                'e.Foto as foto',
                 'ar.estado_asistencia as estado_asistencia',
                 'ar.metodo as metodo',
                 'ar.fecha_registro as fecha_registro',
@@ -525,19 +526,24 @@ class AsistenciaSesionController extends Controller
 
         // `tiene_permiso` se considera SOLO cuando ya existe un registro PERMISO en esta sesión.
         // (La licencia se "aplica" explícitamente desde secretaría.)
-        $estudiantes = $rows->map(function ($r) {
+        // `tiene_licencia_vigente` indica si tiene licencia en la fecha de la sesión (para UI).
+        $fechaSesion = (string) ($sesion->fecha ?? date('Y-m-d'));
+        $estudiantes = $rows->map(function ($r) use ($fechaSesion) {
             $infoId = (int) $r->infoestudiantesifas_id;
             $estadoReg = strtoupper(trim((string) ($r->estado_asistencia ?? '')));
             $tienePermiso = ($estadoReg === 'PERMISO');
+            $tieneLicenciaVigente = $this->estudianteTieneLicencia($infoId, $fechaSesion);
 
             return [
                 'infoestudiantesifas_id' => $infoId,
                 'estudiantesifas_id' => (int) $r->estudiantesifas_id,
                 'nombre_completo' => trim(($r->ap_paterno ?? '') . ' ' . ($r->ap_materno ?? '') . ' ' . ($r->nombre ?? '')),
+                'foto' => $r->foto,
                 'estado_asistencia' => $r->estado_asistencia,
                 'metodo' => $r->metodo,
                 'fecha_registro' => $r->fecha_registro,
                 'tiene_permiso' => $tienePermiso,
+                'tiene_licencia_vigente' => $tieneLicenciaVigente,
             ];
         });
 
@@ -588,6 +594,16 @@ class AsistenciaSesionController extends Controller
             if ($sesion->estado !== 'ABIERTA') {
                 return response()->json(['ok' => false, 'message' => 'La sesión no está abierta.'], 409);
             }
+
+            // Validar que el docente está dentro del tiempo permitido (minutos_falta)
+            if ($sesion->qr_iniciado_at) {
+                $inicio = new \DateTime($sesion->hora_ingreso);
+                $maxMinutos = (int) ($sesion->minutos_falta ?? 40);
+                $limite = (clone $inicio)->modify("+{$maxMinutos} minutes");
+                if (new \DateTime() >= $limite) {
+                    return response()->json(['ok' => false, 'message' => 'El tiempo de la sesión ha expirado. No se pueden hacer más cambios.'], 409);
+                }
+            }
         }
 
         $validator = Validator::make($request->all(), [
@@ -619,6 +635,30 @@ class AsistenciaSesionController extends Controller
         }
 
         $estado = $map[$estadoIn];
+
+        // Para REGISTRO VIRTUAL y POR QR Y REGISTRO VIRTUAL: auto-calcular P/A según tiempo transcurrido
+        if (!$isAdmin && ($estado === 'PRESENTE' || $estado === 'ATRASO') && $sesion->qr_iniciado_at) {
+            $inicio = new \DateTime($sesion->hora_ingreso);
+            $ahora = new \DateTime();
+            $diffMinutos = ($ahora->getTimestamp() - $inicio->getTimestamp()) / 60;
+            $tiempoEspera = (int) ($sesion->tiempo_espera_minutos ?? 20);
+
+            if ($diffMinutos <= $tiempoEspera) {
+                $estado = 'PRESENTE';
+            } else {
+                $estado = 'ATRASO';
+            }
+        }
+
+        // Si el docente intenta marcar FALTA, verificar si tiene licencia vigente
+        $tieneLicencia = false;
+        $fechaSesion = (string) ($sesion->fecha ?? date('Y-m-d'));
+        if ($estado === 'FALTA') {
+            $tieneLicencia = $this->estudianteTieneLicencia($infoId, $fechaSesion);
+            if ($tieneLicencia) {
+                $estado = 'PERMISO';
+            }
+        }
 
         // Verifica pertenencia del estudiante a la sesión según materia y modo
         $base = $this->estudiantesQueryPorSesion($sesion);
@@ -668,7 +708,12 @@ class AsistenciaSesionController extends Controller
             $registro->save();
         }
 
-        return response()->json(['ok' => true, 'registro' => $registro]);
+        return response()->json([
+            'ok' => true,
+            'registro' => $registro,
+            'tiene_licencia' => $tieneLicencia,
+            'estado_aplicado' => $estado,
+        ]);
     }
 
     /**
@@ -992,7 +1037,7 @@ class AsistenciaSesionController extends Controller
 
     /**
      * Indica si el docente/administrativo autenticado tiene al menos una materia
-     * con asistencia habilitada cuyo ModoAsistencia contiene "QR".
+     * con asistencia habilitada (QR, REGISTRO VIRTUAL, o mixto).
      *
      * Se usa para mostrar/ocultar el botón flotante "Llamar asistencia".
      */
@@ -1022,12 +1067,11 @@ class AsistenciaSesionController extends Controller
                 ->where('c.instituciones_id', $instId);
         }
 
-        // Asistencia habilitada != NORMAL y CON QR
+        // Asistencia habilitada != NORMAL (QR o REGISTRO VIRTUAL)
         $tiene = $base
             ->whereNotNull('m.ModoAsistencia')
             ->where('m.ModoAsistencia', '!=', '')
             ->where(DB::raw('UPPER(TRIM(m.ModoAsistencia))'), '!=', 'NORMAL')
-            ->whereRaw("UPPER(TRIM(m.ModoAsistencia)) LIKE '%QR%'")
             ->exists();
 
         return response()->json(['ok' => true, 'can_llamar' => (bool) $tiene]);

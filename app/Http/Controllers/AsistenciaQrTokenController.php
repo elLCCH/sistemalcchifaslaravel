@@ -127,8 +127,9 @@ class AsistenciaQrTokenController extends Controller
         }
 
         $modo = $this->normModoAsistencia($row->materia_modo_asistencia ?? null);
-        if (!str_contains($modo, 'QR')) {
-            return response()->json(['ok' => false, 'message' => 'Esta sesión/materia no usa QR.'], 409);
+        // Permitir QR para modos con QR, y también para REGISTRO VIRTUAL (para inicializar el timer)
+        if (!str_contains($modo, 'QR') && $modo !== 'REGISTRO VIRTUAL') {
+            return response()->json(['ok' => false, 'message' => 'Esta sesión/materia no usa QR ni registro virtual.'], 409);
         }
 
         $validator = Validator::make($request->all(), [
