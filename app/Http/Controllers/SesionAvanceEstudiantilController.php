@@ -454,13 +454,13 @@ class SesionAvanceEstudiantilController extends Controller
         $perPage = (int) $request->query('per_page', 0);
         if ($perPage > 0) {
             $paginated = $query->orderBy('fecha', 'desc')
-                ->orderBy('numero_clase', 'desc')
+                ->orderBy('id', 'desc')
                 ->paginate($perPage);
             return response()->json($paginated);
         }
 
         $sesiones = $query->orderBy('fecha', 'desc')
-            ->orderBy('numero_clase', 'desc')
+            ->orderBy('id', 'desc')
             ->get();
 
         return response()->json(['data' => $sesiones]);
@@ -481,7 +481,6 @@ class SesionAvanceEstudiantilController extends Controller
             'tipo_asignacion'        => 'required|string|in:ESPECIALIDAD,PRACTICA_CONJUNTOS,COMPLEMENTARIO',
             'evaluacion'             => 'required|integer|min:1|max:4',
             'fecha'                  => 'required|date',
-            'numero_clase'           => 'required|integer|min:1',
             'avance_texto'           => 'nullable|string',
             'estrellas'              => 'nullable|integer|min:0|max:5',
             'sugerencia'             => 'nullable|string',
@@ -536,7 +535,6 @@ class SesionAvanceEstudiantilController extends Controller
 
         $validated = $request->validate([
             'fecha'          => 'sometimes|date',
-            'numero_clase'   => 'sometimes|integer|min:1',
             'evaluacion'     => 'sometimes|integer|min:1|max:4',
             'avance_texto'   => 'nullable|string',
             'estrellas'      => 'nullable|integer|min:0|max:5',
@@ -596,7 +594,7 @@ class SesionAvanceEstudiantilController extends Controller
             ->where('tipo_asignacion', $tipo)
             ->where('evaluacion', $eval)
             ->orderBy('fecha', 'desc')
-            ->orderBy('numero_clase', 'desc')
+            ->orderBy('id', 'desc')
             ->first();
 
         if (!$ultima) {
@@ -609,7 +607,6 @@ class SesionAvanceEstudiantilController extends Controller
             'tipo_asignacion'        => $tipo,
             'evaluacion'             => $eval,
             'fecha'                  => now()->toDateString(),
-            'numero_clase'           => $ultima->numero_clase + 1,
             'avance_texto'           => $ultima->avance_texto,
             'estrellas'              => null,
             'sugerencia'             => null,
@@ -728,7 +725,7 @@ class SesionAvanceEstudiantilController extends Controller
         }
 
         $sesiones = $query->orderBy('fecha', 'desc')
-            ->orderBy('numero_clase', 'desc')
+            ->orderBy('id', 'desc')
             ->get();
 
         // Agrupar por infoestudiantesifas_id
@@ -784,13 +781,13 @@ class SesionAvanceEstudiantilController extends Controller
         $perPage = (int) $request->query('per_page', 0);
         if ($perPage > 0) {
             $paginated = $query->orderBy('fecha', 'desc')
-                ->orderBy('numero_clase', 'desc')
+                ->orderBy('id', 'desc')
                 ->paginate($perPage);
             return response()->json($paginated);
         }
 
         $sesiones = $query->orderBy('fecha', 'desc')
-            ->orderBy('numero_clase', 'desc')
+            ->orderBy('id', 'desc')
             ->get();
 
         return response()->json(['data' => $sesiones]);
@@ -798,7 +795,7 @@ class SesionAvanceEstudiantilController extends Controller
 
     // ─────────────────────────────────────────────────────
     // TERMINAR CLASE: marca F (falta) a estudiantes sin sesión en la fecha indicada.
-    // Autocompleta por estudiante tomando su última sesión registrada (número + avance_texto).
+    // Autocompleta por estudiante tomando su última sesión registrada (avance_texto).
     // ─────────────────────────────────────────────────────
     public function terminarClase(Request $request)
     {
@@ -854,8 +851,8 @@ class SesionAvanceEstudiantilController extends Controller
             ->where('evaluacion', $evaluacion)
             ->whereIn('infoestudiantesifas_id', $sinSesion)
             ->orderBy('fecha', 'desc')
-            ->orderBy('numero_clase', 'desc')
-            ->get(['infoestudiantesifas_id', 'numero_clase', 'avance_texto']);
+            ->orderBy('id', 'desc')
+            ->get(['infoestudiantesifas_id', 'avance_texto']);
 
         $ultimaPorEst = [];
         foreach ($ultimas as $row) {
@@ -870,7 +867,6 @@ class SesionAvanceEstudiantilController extends Controller
         foreach ($sinSesion as $infoId) {
             $infoId = (int) $infoId;
             $ultima = $ultimaPorEst[$infoId] ?? null;
-            $numeroClase = $ultima ? (((int) $ultima->numero_clase) + 1) : 1;
             $avanceTexto = $ultima ? ($ultima->avance_texto ?? '') : '';
 
             $sesion = SesionAvanceEstudiantil::create([
@@ -879,10 +875,9 @@ class SesionAvanceEstudiantilController extends Controller
                 'tipo_asignacion'        => $tipo,
                 'evaluacion'             => $evaluacion,
                 'fecha'                  => $fecha,
-                'numero_clase'           => $numeroClase,
                 'avance_texto'           => $avanceTexto,
                 'estrellas'              => 0,
-                'sugerencia'             => 'NO ASISTIÓ A LA CLASE',
+                'sugerencia'             => 'NO VINO A CLASES',
                 'asistencia'             => 'F',
             ]);
             $idsCreados[] = (int) $sesion->id;
@@ -1147,8 +1142,8 @@ class SesionAvanceEstudiantilController extends Controller
         }
 
         $sesiones = $query->orderBy('evaluacion', 'asc')
-            ->orderBy('numero_clase', 'asc')
             ->orderBy('fecha', 'asc')
+            ->orderBy('id', 'asc')
             ->get();
 
         // Obtener nombres de estudiantes
@@ -1170,16 +1165,16 @@ class SesionAvanceEstudiantilController extends Controller
             ->get()
             ->keyBy('id');
 
-        // Agrupar por evaluación → número_clase → [registros]
+        // Agrupar por evaluación → fecha → [registros]
         $grouped = [];
         foreach ($sesiones as $s) {
             $ev = (int) $s->evaluacion;
-            $nc = (int) $s->numero_clase;
+            $f  = $s->fecha;
             if (!isset($grouped[$ev])) $grouped[$ev] = [];
-            if (!isset($grouped[$ev][$nc])) $grouped[$ev][$nc] = [];
+            if (!isset($grouped[$ev][$f])) $grouped[$ev][$f] = [];
             $est = $estudiantes[(int) $s->infoestudiantesifas_id] ?? null;
             $nombre = $est ? trim("{$est->Ap_Paterno} {$est->Ap_Materno} {$est->Nombre}") : "ID {$s->infoestudiantesifas_id}";
-            $grouped[$ev][$nc][] = [
+            $grouped[$ev][$f][] = [
                 'infoestudiantesifas_id' => (int) $s->infoestudiantesifas_id,
                 'nombre'     => $nombre,
                 'ci'         => $est?->CI ?? '',
@@ -1193,6 +1188,149 @@ class SesionAvanceEstudiantilController extends Controller
         }
 
         return response()->json(['data' => $grouped, 'estudiantes' => $estudiantes->values()]);
+    }
+
+    /**
+     * Estabilizar sesiones: para las fechas indicadas y los estudiantes dados,
+     * crear sesiones de falta donde no existan.
+     */
+    public function estabilizarSesiones(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof Planteldocentes)) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $infoIds = $request->input('info_ids', []);
+        $tipo    = $request->input('tipo_asignacion', '');
+        $fechas  = $request->input('fechas', []);
+        $eval    = (int) $request->input('evaluacion', 1);
+
+        if (!is_array($infoIds) || count($infoIds) < 1 || !$tipo || !is_array($fechas) || count($fechas) < 1) {
+            return response()->json(['message' => 'Parámetros inválidos.'], 422);
+        }
+
+        $docenteId = (int) $user->id;
+        $creadas = 0;
+        $idsCreados = [];
+
+        // Ordenar fechas cronológicamente
+        sort($fechas);
+
+        foreach ($infoIds as $infoId) {
+            $infoId = (int) $infoId;
+            if ($infoId <= 0) continue;
+
+            foreach ($fechas as $fecha) {
+                $fecha = trim((string) $fecha);
+                if (!$fecha) continue;
+
+                // Verificar si ya existe sesión en esa fecha
+                $existe = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId)
+                    ->where('planteldocentes_id', $docenteId)
+                    ->where('tipo_asignacion', $tipo)
+                    ->where('evaluacion', $eval)
+                    ->where('fecha', $fecha)
+                    ->exists();
+
+                if (!$existe) {
+                    // Buscar última sesión anterior a esta fecha para copiar avance_texto
+                    $ultimaAnterior = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId)
+                        ->where('planteldocentes_id', $docenteId)
+                        ->where('tipo_asignacion', $tipo)
+                        ->where('evaluacion', $eval)
+                        ->where('fecha', '<', $fecha)
+                        ->orderBy('fecha', 'desc')
+                        ->orderBy('id', 'desc')
+                        ->first(['avance_texto']);
+
+                    $sesion = SesionAvanceEstudiantil::create([
+                        'infoestudiantesifas_id' => $infoId,
+                        'planteldocentes_id'     => $docenteId,
+                        'tipo_asignacion'        => $tipo,
+                        'evaluacion'             => $eval,
+                        'fecha'                  => $fecha,
+                        'avance_texto'           => $ultimaAnterior->avance_texto ?? '',
+                        'estrellas'              => 0,
+                        'sugerencia'             => 'NO VINO A CLASES',
+                        'asistencia'             => 'F',
+                    ]);
+                    $idsCreados[] = (int) $sesion->id;
+                    $creadas++;
+                }
+            }
+        }
+
+        // Registrar log para poder deshacer
+        if ($creadas > 0) {
+            TerminarClaseLog::create([
+                'planteldocentes_id'   => (int) $user->id,
+                'instituciones_id'     => (int) $user->instituciones_id,
+                'tipo_asignacion'      => $tipo,
+                'evaluacion'           => $eval,
+                'fecha'                => now()->toDateString(),
+                'cursos_json'          => json_encode(['ESTABILIZAR']),
+                'sesiones_creadas_ids' => json_encode($idsCreados),
+                'cantidad_creadas'     => $creadas,
+            ]);
+        }
+
+        return response()->json([
+            'message' => "Estabilización completada. Se crearon $creadas registros de falta.",
+            'creadas' => $creadas,
+        ]);
+    }
+
+    /**
+     * Deshacer última estabilización del docente (hoy).
+     * Elimina las sesiones-falta creadas.
+     */
+    public function deshacerEstabilizar(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof Planteldocentes)) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+
+        $hoy = now()->toDateString();
+
+        $log = TerminarClaseLog::where('planteldocentes_id', (int) $user->id)
+            ->whereNull('deshecho_at')
+            ->whereDate('created_at', $hoy)
+            ->where('cursos_json', json_encode(['ESTABILIZAR']))
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$log) {
+            return response()->json([
+                'message' => 'No hay estabilizaciones para deshacer hoy.',
+                'eliminadas' => 0,
+            ], 404);
+        }
+
+        $ids = json_decode($log->sesiones_creadas_ids, true);
+        $eliminadas = 0;
+
+        if (is_array($ids) && !empty($ids)) {
+            // Recopilar combinaciones afectadas
+            $afectados = SesionAvanceEstudiantil::whereIn('id', $ids)
+                ->where('planteldocentes_id', (int) $user->id)
+                ->where('asistencia', 'F')
+                ->get(['id', 'infoestudiantesifas_id', 'tipo_asignacion', 'evaluacion']);
+
+            $eliminadas = SesionAvanceEstudiantil::whereIn('id', $ids)
+                ->where('planteldocentes_id', (int) $user->id)
+                ->where('asistencia', 'F')
+                ->delete();
+        }
+
+        $log->update(['deshecho_at' => now(), 'deshecho_por' => (int) $user->id]);
+
+        return response()->json([
+            'message' => "Se deshizo la estabilización. Se eliminaron $eliminadas registros de falta.",
+            'eliminadas' => $eliminadas,
+            'log_id' => $log->id,
+        ]);
     }
 
     /**

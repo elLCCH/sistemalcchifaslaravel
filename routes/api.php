@@ -112,6 +112,8 @@ Route::prefix('v1/sesiones-avance')->middleware(['auth:sanctum', UpdateTokenExpi
     Route::get('/terminar-clase-historial', [SesionAvanceEstudiantilController::class, 'terminarClaseHistorial']);
     Route::get('/licencias-docente', [SesionAvanceEstudiantilController::class, 'licenciasDocente']);
     Route::get('/asistencias-docente', [SesionAvanceEstudiantilController::class, 'asistenciasDocente']);
+    Route::post('/estabilizar',   [SesionAvanceEstudiantilController::class, 'estabilizarSesiones']);
+    Route::post('/deshacer-estabilizar', [SesionAvanceEstudiantilController::class, 'deshacerEstabilizar']);
     Route::get('/',               [SesionAvanceEstudiantilController::class, 'index']);
     Route::post('/',              [SesionAvanceEstudiantilController::class, 'store']);
     Route::get('/{id}',           [SesionAvanceEstudiantilController::class, 'show']);
