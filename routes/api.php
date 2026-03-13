@@ -49,6 +49,7 @@ use App\Http\Controllers\PeticionesPublicas;
 use App\Http\Controllers\EstadisticasAsignacionesController;
 use App\Http\Controllers\SesionAvanceEstudiantilController;
 use App\Http\Controllers\ConsultadorBDController;
+use App\Http\Controllers\IntegrationApiController;
 use App\Http\Middleware\AuditMiddleware;
 
 Route::post('/verify-token', [TokenController::class, 'verify']);
@@ -104,6 +105,7 @@ Route::prefix('v1/sesiones-avance')->middleware(['auth:sanctum', UpdateTokenExpi
     Route::get('/mis-estudiantes-filtros', [SesionAvanceEstudiantilController::class, 'misEstudiantesFiltros']);
     Route::get('/mis-estudiantes-cursos', [SesionAvanceEstudiantilController::class, 'misEstudiantesCursos']);
     Route::get('/mis-estudiantes-paginado', [SesionAvanceEstudiantilController::class, 'misEstudiantesPaginado']);
+    Route::get('/mis-estudiantes-todos-ids', [SesionAvanceEstudiantilController::class, 'misEstudiantesTodosIds']);
     Route::get('/resumen-baterias', [SesionAvanceEstudiantilController::class, 'resumenBaterias']);
     Route::post('/comparacion',    [SesionAvanceEstudiantilController::class, 'comparacion']);
     Route::get('/mis-sesiones',    [SesionAvanceEstudiantilController::class, 'misSesionesEstudiante']);
@@ -133,6 +135,36 @@ Route::prefix('v1/branding')->middleware(['auth:sanctum', UpdateTokenExpiration:
 //     Route::resource('usuarioslcchs', usuarioslcchsController::class);
 // });
 
+// ============================================================
+// Módulo de Integración API (conexión con sistemas externos)
+// ============================================================
+Route::prefix('v1/integracion')->middleware(['auth:sanctum', UpdateTokenExpiration::class])->group(function () {
+    // Configuraciones
+    Route::get('/configs',             [IntegrationApiController::class, 'configs']);
+    Route::post('/configs',            [IntegrationApiController::class, 'createConfig']);
+    Route::put('/configs/{id}',        [IntegrationApiController::class, 'updateConfig']);
+    Route::delete('/configs/{id}',     [IntegrationApiController::class, 'deleteConfig']);
+    Route::post('/configs/{id}/credentials', [IntegrationApiController::class, 'setCredentials']);
+    Route::post('/configs/{id}/regenerate-webhook', [IntegrationApiController::class, 'regenerateWebhookSecret']);
+    Route::post('/configs/{id}/test',  [IntegrationApiController::class, 'testConnection']);
+
+    // Preview de datos
+    Route::get('/preview/students',    [IntegrationApiController::class, 'previewStudentData']);
+    Route::get('/preview/daily',       [IntegrationApiController::class, 'previewDailyChanges']);
+    Route::get('/preview/catalog',     [IntegrationApiController::class, 'previewCatalog']);
+
+    // Envío de datos
+    Route::post('/send/{configId}/students', [IntegrationApiController::class, 'sendStudentData']);
+    Route::post('/send/{configId}/daily',    [IntegrationApiController::class, 'sendDailyChanges']);
+
+    // Logs y estadísticas
+    Route::get('/stats',               [IntegrationApiController::class, 'stats']);
+    Route::get('/logs',                [IntegrationApiController::class, 'allLogs']);
+    Route::get('/logs/{configId}',     [IntegrationApiController::class, 'logs']);
+});
+
+// Webhook público (no requiere auth de nuestro sistema — valida por secret)
+Route::post('v1/webhook/{slug}', [IntegrationApiController::class, 'receiveWebhook']);
 
 
 Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration::class])->group(function () {

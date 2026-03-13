@@ -407,6 +407,47 @@ class SesionAvanceEstudiantilController extends Controller
         return response()->json($paginated);
     }
 
+    /**
+     * Retorna SOLO los IDs de todos los estudiantes que coinciden con los filtros activos (sin paginación).
+     * Útil para "Seleccionar todos" y "Comparar todos".
+     */
+    public function misEstudiantesTodosIds(Request $request)
+    {
+        $user = $request->user();
+        $isDocente = ($user instanceof Planteldocentes);
+        $isAdmin   = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        if (!$isDocente && !$isAdmin) return response()->json(['message' => 'No autorizado.'], 403);
+
+        $tipo = (string) $request->query('tipo_asignacion', '');
+        if (!$tipo) return response()->json(['message' => 'tipo_asignacion requerido.'], 422);
+
+        if ($isAdmin) {
+            $adminDocenteId = (int) $request->query('planteldocentes_id', 0);
+            if ($adminDocenteId <= 0) return response()->json(['message' => 'Debe indicar planteldocentes_id.'], 422);
+            $docente = Planteldocentes::find($adminDocenteId);
+            if (!$docente) return response()->json(['message' => 'Docente no encontrado.'], 404);
+            $q = $this->queryMisEstudiantesBase($docente->id, $tipo, (int) $docente->instituciones_id);
+        } else {
+            $q = $this->queryMisEstudiantesBase($user, $tipo);
+        }
+        if (!$q) return response()->json(['message' => 'tipo_asignacion inválido.'], 422);
+
+        $cursos = $this->normArray($request->query('cursos', []));
+        $paralelos = $this->normArray($request->query('paralelos', []));
+        $turnos = $this->normArray($request->query('turnos', []));
+        $instrumentos = $this->normArray($request->query('instrumentos', []));
+
+        if (!empty($cursos)) $q->whereIn('info.Curso_Solicitado', $cursos);
+        if (!empty($paralelos)) $q->whereIn('info.Paralelo_Solicitado', $paralelos);
+        if (!empty($turnos)) $q->whereIn('info.Turno', $turnos);
+        if (!empty($instrumentos)) $q->whereIn('info.InstrumentoMusical', $instrumentos);
+
+        $q->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre');
+        $results = $q->get();
+
+        return response()->json(['data' => $results]);
+    }
+
     // ─────────────────────────────────────────────────────
     // CRUD de sesiones de avance
     // ─────────────────────────────────────────────────────
@@ -997,14 +1038,12 @@ class SesionAvanceEstudiantilController extends Controller
 
         $hoy = now()->toDateString();
 
-        // Licencias activas (hoy dentro del rango)
+        // Todas las licencias activas, ordenadas por fecha descendente
         $licencias = DB::table('licenciasestudiantesifas as lic')
             ->join('infoestudiantesifas as ie', 'ie.id', '=', 'lic.infoestudiantesifas_id')
             ->join('estudiantesifas as e', 'e.id', '=', 'ie.estudiantesifas_id')
             ->where('lic.instituciones_id', $instId)
             ->where('lic.estado', 'ACTIVO')
-            ->where('lic.fecha_inicio', '<=', $hoy)
-            ->where('lic.fecha_fin', '>=', $hoy)
             ->select([
                 'lic.id as licencia_id',
                 'lic.fecha_inicio',
@@ -1025,6 +1064,8 @@ class SesionAvanceEstudiantilController extends Controller
                 'e.Nombre',
                 'e.Foto',
             ])
+            ->orderByDesc('lic.fecha_fin')
+            ->orderByDesc('lic.fecha_inicio')
             ->orderBy('e.Ap_Paterno')
             ->orderBy('e.Ap_Materno')
             ->orderBy('e.Nombre')
@@ -1073,8 +1114,11 @@ class SesionAvanceEstudiantilController extends Controller
         }
 
         // Enriquecer resultados
-        $resultado = $licencias->map(function ($lic) use ($docenteId, $calificacionesPorEst, $materiasDocente) {
+        $resultado = $licencias->map(function ($lic) use ($docenteId, $calificacionesPorEst, $materiasDocente, $hoy) {
             $item = (array) $lic;
+
+            // Indicar si la licencia está vigente hoy
+            $item['vigente'] = ($lic->fecha_inicio <= $hoy && $lic->fecha_fin >= $hoy);
 
             // Relación directa con el docente
             $relacion = null;
@@ -1169,10 +1213,11 @@ class SesionAvanceEstudiantilController extends Controller
         $grouped = [];
         foreach ($sesiones as $s) {
             $ev = (int) $s->evaluacion;
-            $f  = $s->fecha;
+            $f  = (string) ($s->fecha ?? '');
+            if ($f === '') continue; // saltar sesiones sin fecha
             if (!isset($grouped[$ev])) $grouped[$ev] = [];
             if (!isset($grouped[$ev][$f])) $grouped[$ev][$f] = [];
-            $est = $estudiantes[(int) $s->infoestudiantesifas_id] ?? null;
+            $est = $estudiantes->get((int) $s->infoestudiantesifas_id);
             $nombre = $est ? trim("{$est->Ap_Paterno} {$est->Ap_Materno} {$est->Nombre}") : "ID {$s->infoestudiantesifas_id}";
             $grouped[$ev][$f][] = [
                 'infoestudiantesifas_id' => (int) $s->infoestudiantesifas_id,
