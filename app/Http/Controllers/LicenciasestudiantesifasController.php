@@ -286,6 +286,45 @@ class LicenciasestudiantesifasController extends Controller
         return response()->json(['ok' => true, 'estudiantes' => $out]);
     }
 
+    public function update(Request $request, $id)
+    {
+        $licencia = Licenciasestudiantesifas::find($id);
+        if (!$licencia) {
+            return response()->json(['ok' => false, 'message' => 'Licencia no encontrada'], 404);
+        }
+
+        $institucionId = $request->user()->instituciones_id ?? null;
+        if (!$institucionId) {
+            return response()->json(['ok' => false, 'message' => 'No se pudo determinar la institución del usuario.'], 409);
+        }
+
+        if ((int) $licencia->instituciones_id !== (int) $institucionId) {
+            return response()->json(['ok' => false, 'message' => 'No tienes permiso para modificar esta licencia.'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'fecha_inicio' => 'sometimes|date',
+            'fecha_fin' => 'sometimes|date',
+            'motivo' => 'nullable|string|max:255',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['ok' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        $data = $validator->validated();
+
+        if (isset($data['fecha_inicio']) && isset($data['fecha_fin'])) {
+            if (strtotime($data['fecha_fin']) < strtotime($data['fecha_inicio'])) {
+                return response()->json(['ok' => false, 'message' => 'Rango de fechas inválido.'], 422);
+            }
+        }
+
+        $licencia->update($data);
+
+        return response()->json(['ok' => true, 'licencia' => $licencia]);
+    }
+
     public function destroy(Request $request, $id)
     {
         $licencia = Licenciasestudiantesifas::find($id);

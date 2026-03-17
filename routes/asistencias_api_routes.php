@@ -76,5 +76,6 @@ Route::prefix('asistencias')->middleware(['auth:sanctum', UpdateTokenExpiration:
     Route::post('licencias', [LicenciasestudiantesifasController::class, 'store'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
     Route::post('licencias/aplicar-todas', [LicenciasestudiantesifasController::class, 'aplicarTodas'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
     Route::post('licencias/{id}/aplicar', [LicenciasestudiantesifasController::class, 'aplicar'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
+    Route::put('licencias/{id}', [LicenciasestudiantesifasController::class, 'update'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
     Route::delete('licencias/{id}', [LicenciasestudiantesifasController::class, 'destroy'])->middleware([CheckAbilities::class . ':SECRETARIO(A),RECTOR(A)']);
 });
