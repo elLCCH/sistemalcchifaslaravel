@@ -19,6 +19,44 @@ class SesionAvanceEstudiantilController extends Controller
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
 
+    /** Obtener el ID del año predeterminado. */
+    private ?int $anioPredeterminadoIdCache = null;
+
+    private function getAnioPredeterminadoId(): ?int
+    {
+        if ($this->anioPredeterminadoIdCache === null) {
+            $this->anioPredeterminadoIdCache = DB::table('anios')
+                ->where('Predeterminado', 'PREDETERMINADO')
+                ->orderByDesc('id')
+                ->value('id');
+        }
+        return $this->anioPredeterminadoIdCache;
+    }
+
+    /** Resolver anio_id desde request o usar predeterminado. */
+    private function resolveAnioId(Request $request): ?int
+    {
+        $anioId = $request->query('anios_id');
+        if ($anioId !== null && $anioId !== '') {
+            return (int) $anioId;
+        }
+        return $this->getAnioPredeterminadoId();
+    }
+
+    /** Scope: filtrar infoestudiantesifas por año vía calificaciones → materias → plandeestudios. */
+    private function scopeAnio($query, ?int $anioId, string $infoAlias = 'info'): void
+    {
+        if (!$anioId) return;
+        $query->whereExists(function ($sub) use ($anioId, $infoAlias) {
+            $sub->select(DB::raw(1))
+                ->from('calificaciones as _cal')
+                ->join('materias as _m', '_cal.materias_id', '=', '_m.id')
+                ->join('plandeestudios as _p', '_m.plandeestudios_id', '=', '_p.id')
+                ->whereColumn('_cal.infoestudiantesifas_id', "$infoAlias.id")
+                ->where('_p.anio_id', $anioId);
+        });
+    }
+
     // ─────────────────────────────────────────────────────
     // MIS ESTUDIANTES: devuelve los 3 grupos de estudiantes
     // asignados al docente autenticado.
@@ -32,6 +70,7 @@ class SesionAvanceEstudiantilController extends Controller
 
         $docenteId = (int) $user->id;
         $instId    = (int) $user->instituciones_id;
+        $anioId    = $this->resolveAnioId($request);
 
         // Campos base de cada estudiante
         $selectBase = [
@@ -54,12 +93,13 @@ class SesionAvanceEstudiantilController extends Controller
         ];
 
         // 1) Instrumento de Especialidad (planteldocadmins_id)
-        $especialidad = DB::table('infoestudiantesifas as info')
+        $qEsp = DB::table('infoestudiantesifas as info')
             ->join('estudiantesifas as e', 'info.estudiantesifas_id', '=', 'e.id')
             ->join('instituciones as i', 'info.instituciones_id', '=', 'i.id')
             ->where('info.planteldocadmins_id', $docenteId)
-            ->where('info.instituciones_id', $instId)
-            ->select($selectBase)
+            ->where('info.instituciones_id', $instId);
+        $this->scopeAnio($qEsp, $anioId);
+        $especialidad = $qEsp->select($selectBase)
             ->orderBy('e.Ap_Paterno')
             ->orderBy('e.Ap_Materno')
             ->orderBy('e.Nombre')
@@ -67,12 +107,13 @@ class SesionAvanceEstudiantilController extends Controller
             ->map(fn ($r) => (array) $r + ['tipo_asignacion' => 'ESPECIALIDAD']);
 
         // 2) Práctica de Conjuntos (planteldocadmins_idPC)
-        $practica = DB::table('infoestudiantesifas as info')
+        $qPra = DB::table('infoestudiantesifas as info')
             ->join('estudiantesifas as e', 'info.estudiantesifas_id', '=', 'e.id')
             ->join('instituciones as i', 'info.instituciones_id', '=', 'i.id')
             ->where('info.planteldocadmins_idPC', $docenteId)
-            ->where('info.instituciones_id', $instId)
-            ->select($selectBase)
+            ->where('info.instituciones_id', $instId);
+        $this->scopeAnio($qPra, $anioId);
+        $practica = $qPra->select($selectBase)
             ->orderBy('e.Ap_Paterno')
             ->orderBy('e.Ap_Materno')
             ->orderBy('e.Nombre')
@@ -80,22 +121,27 @@ class SesionAvanceEstudiantilController extends Controller
             ->map(fn ($r) => (array) $r + ['tipo_asignacion' => 'PRACTICA_CONJUNTOS']);
 
         // 3) Instrumento Complementario (planteldocadmins_idOtros)
-        $complementario = DB::table('infoestudiantesifas as info')
+        $qCom = DB::table('infoestudiantesifas as info')
             ->join('estudiantesifas as e', 'info.estudiantesifas_id', '=', 'e.id')
             ->join('instituciones as i', 'info.instituciones_id', '=', 'i.id')
             ->where('info.planteldocadmins_idOtros', $docenteId)
-            ->where('info.instituciones_id', $instId)
-            ->select($selectBase)
+            ->where('info.instituciones_id', $instId);
+        $this->scopeAnio($qCom, $anioId);
+        $complementario = $qCom->select($selectBase)
             ->orderBy('e.Ap_Paterno')
             ->orderBy('e.Ap_Materno')
             ->orderBy('e.Nombre')
             ->get()
             ->map(fn ($r) => (array) $r + ['tipo_asignacion' => 'COMPLEMENTARIO']);
 
+        $anioNombre = $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null;
+
         return response()->json([
             'especialidad'    => $especialidad->values(),
             'practica'        => $practica->values(),
             'complementario'  => $complementario->values(),
+            'anio_id'         => $anioId,
+            'anio_nombre'     => $anioNombre,
         ]);
     }
 
@@ -144,12 +190,13 @@ class SesionAvanceEstudiantilController extends Controller
             'i.ColorBajo as color_bajo',
         ];
 
-        return DB::table('infoestudiantesifas as info')
+        $q = DB::table('infoestudiantesifas as info')
             ->join('estudiantesifas as e', 'info.estudiantesifas_id', '=', 'e.id')
             ->join('instituciones as i', 'info.instituciones_id', '=', 'i.id')
             ->where("info.$col", $docenteId)
-            ->where('info.instituciones_id', $instId)
-            ->select($selectBase);
+            ->where('info.instituciones_id', $instId);
+        $this->scopeAnio($q, $this->getAnioPredeterminadoId());
+        return $q->select($selectBase);
     }
 
     private function normArray($v): array
@@ -186,16 +233,23 @@ class SesionAvanceEstudiantilController extends Controller
             $instId    = (int) $user->instituciones_id;
         }
 
-        $base = DB::table('infoestudiantesifas')->where('instituciones_id', $instId);
+        $anioId = $this->resolveAnioId($request);
 
-        $especialidad = (clone $base)->where('planteldocadmins_id', $docenteId)->count();
-        $practica     = (clone $base)->where('planteldocadmins_idPC', $docenteId)->count();
-        $complement   = (clone $base)->where('planteldocadmins_idOtros', $docenteId)->count();
+        $base = DB::table('infoestudiantesifas as info')->where('info.instituciones_id', $instId);
+        $this->scopeAnio($base, $anioId);
+
+        $especialidad = (clone $base)->where('info.planteldocadmins_id', $docenteId)->count();
+        $practica     = (clone $base)->where('info.planteldocadmins_idPC', $docenteId)->count();
+        $complement   = (clone $base)->where('info.planteldocadmins_idOtros', $docenteId)->count();
+
+        $anioNombre = $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null;
 
         return response()->json([
             'especialidad'   => (int) $especialidad,
             'practica'       => (int) $practica,
             'complementario' => (int) $complement,
+            'anio_id'        => $anioId,
+            'anio_nombre'    => $anioNombre,
         ]);
     }
 
@@ -230,9 +284,12 @@ class SesionAvanceEstudiantilController extends Controller
             $instId    = (int) $user->instituciones_id;
         }
 
+        $anioId = $this->resolveAnioId($request);
+
         $q = DB::table('infoestudiantesifas as info')
             ->where("info.$col", $docenteId)
             ->where('info.instituciones_id', $instId);
+        $this->scopeAnio($q, $anioId);
 
         $cursos = (clone $q)
             ->select('info.Curso_Solicitado')
@@ -301,11 +358,13 @@ class SesionAvanceEstudiantilController extends Controller
 
         $docenteId = (int) $user->id;
         $instId    = (int) $user->instituciones_id;
+        $anioId    = $this->resolveAnioId($request);
 
         $rows = DB::table('infoestudiantesifas as info')
             ->where("info.$col", $docenteId)
-            ->where('info.instituciones_id', $instId)
-            ->select([
+            ->where('info.instituciones_id', $instId);
+        $this->scopeAnio($rows, $anioId);
+        $rows = $rows->select([
                 'info.Curso_Solicitado',
                 'info.Paralelo_Solicitado',
                 'info.Turno',
@@ -791,11 +850,13 @@ class SesionAvanceEstudiantilController extends Controller
         $infoId = null;
 
         if ($user instanceof \App\Models\Estudiantesifas) {
-            // Buscar infoestudiantesifas del estudiante
-            $info = DB::table('infoestudiantesifas')
-                ->where('estudiantesifas_id', (int) $user->id)
-                ->select('id')
-                ->first();
+            // Buscar infoestudiantesifas del estudiante (filtrado por año predeterminado)
+            $anioId = $this->getAnioPredeterminadoId();
+            $infoQuery = DB::table('infoestudiantesifas as info')
+                ->where('info.estudiantesifas_id', (int) $user->id)
+                ->select('info.id');
+            $this->scopeAnio($infoQuery, $anioId);
+            $info = $infoQuery->first();
 
             if (!$info) {
                 return response()->json(['message' => 'No se encontró información del estudiante.'], 404);
@@ -1399,6 +1460,19 @@ class SesionAvanceEstudiantilController extends Controller
         $q = DB::table('infoestudiantesifas')
             ->where($column, $docenteId)
             ->where('instituciones_id', $instId);
+
+        // Filtrar por año predeterminado
+        $anioId = $this->getAnioPredeterminadoId();
+        if ($anioId) {
+            $q->whereExists(function ($sub) use ($anioId) {
+                $sub->select(DB::raw(1))
+                    ->from('calificaciones as _cal')
+                    ->join('materias as _m', '_cal.materias_id', '=', '_m.id')
+                    ->join('plandeestudios as _p', '_m.plandeestudios_id', '=', '_p.id')
+                    ->whereColumn('_cal.infoestudiantesifas_id', 'infoestudiantesifas.id')
+                    ->where('_p.anio_id', $anioId);
+            });
+        }
 
         // Filtro opcional por curso+paralelo+turno (keys: "CURSO||PARALELO||TURNO")
         // Compatibilidad: también acepta "CURSO||TURNO".

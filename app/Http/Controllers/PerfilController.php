@@ -25,6 +25,17 @@ class PerfilController extends Controller
             return response()->json(['message' => 'No autenticado'], 401);
         }
 
+        // Resolver año: parámetro explícito o predeterminado
+        $anioId = $request->query('anios_id');
+        if ($anioId !== null && $anioId !== '') {
+            $anioId = (int) $anioId;
+        } else {
+            $anioId = DB::table('anios')
+                ->where('Predeterminado', 'PREDETERMINADO')
+                ->orderByDesc('id')
+                ->value('id');
+        }
+
         $modoInstrumentosEspecialidad = 'MODO INSTRUMENTOS DE ESPECIALIDAD';
         $modoPracticaConjuntos = 'MODO PRÁCTICA DE CONJUNTOS';
         $modoInstrumentoComplementario = 'MODO INSTRUMENTO COMPLEMENTARIO';
@@ -89,6 +100,7 @@ class PerfilController extends Controller
                 ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
                 ->where('pdm.planteldocentes_id', (int) $user->id)
                 ->where('c.instituciones_id', (int) $user->instituciones_id)
+                ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->select([
                     'm.id as materia_id',
                     'm.Paralelo as materia_paralelo',
@@ -128,6 +140,7 @@ class PerfilController extends Controller
                 ->where('info.instituciones_id', (int) $user->instituciones_id)
                 ->where('c.instituciones_id', (int) $user->instituciones_id)
                 ->where('p.ModoMateria', $modoInstrumentosEspecialidad)
+                ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->distinct()
                 ->select([
                     'm.id as materia_id',
@@ -167,6 +180,7 @@ class PerfilController extends Controller
                 ->where('info.instituciones_id', (int) $user->instituciones_id)
                 ->where('c.instituciones_id', (int) $user->instituciones_id)
                 ->where('p.ModoMateria', $modoPracticaConjuntos)
+                ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->distinct()
                 ->select([
                     'm.id as materia_id',
@@ -206,6 +220,7 @@ class PerfilController extends Controller
                 ->where('info.instituciones_id', (int) $user->instituciones_id)
                 ->where('c.instituciones_id', (int) $user->instituciones_id)
                 ->where('p.ModoMateria', $modoInstrumentoComplementario)
+                ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->distinct()
                 ->select([
                     'm.id as materia_id',
@@ -243,6 +258,8 @@ class PerfilController extends Controller
             return response()->json([
                 'tipo' => 'planteldocentes',
                 'data' => $this->groupByInstitucion($merged),
+                'anio_id' => $anioId,
+                'anio_nombre' => $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null,
             ]);
         }
 
@@ -269,6 +286,7 @@ class PerfilController extends Controller
                 ->leftJoin('planteldocentes as d_ot', 'ot.docente_id', '=', 'd_ot.id')
                 ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
                 ->where('c.instituciones_id', (int) $user->instituciones_id)
+                ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->select([
                     'm.id as materia_id',
                     'm.Paralelo as materia_paralelo',
@@ -297,6 +315,8 @@ class PerfilController extends Controller
             return response()->json([
                 'tipo' => 'planteladministrativos',
                 'data' => $this->groupByInstitucion($rows->get()),
+                'anio_id' => $anioId,
+                'anio_nombre' => $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null,
             ]);
         }
 
@@ -322,6 +342,7 @@ class PerfilController extends Controller
                 })
                 ->leftJoin('planteldocentes as d_ot', 'ot.docente_id', '=', 'd_ot.id')
                 ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
+                ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->select([
                     'm.id as materia_id',
                     'm.Paralelo as materia_paralelo',
@@ -351,6 +372,8 @@ class PerfilController extends Controller
             return response()->json([
                 'tipo' => 'superlcchs',
                 'data' => $this->groupByInstitucion($rows->get()),
+                'anio_id' => $anioId,
+                'anio_nombre' => $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null,
             ]);
         }
 
@@ -384,6 +407,7 @@ class PerfilController extends Controller
                 ->leftJoin('planteldocentes as d_ot', 'info.planteldocadmins_idOtros', '=', 'd_ot.id')
                 ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
                 ->whereIn('cal.infoestudiantesifas_id', $infoIds)
+                ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->select([
                     'cal.id as calificacion_id',
                     'cal.infoestudiantesifas_id',
@@ -422,6 +446,8 @@ class PerfilController extends Controller
             return response()->json([
                 'tipo' => 'estudiantesifas',
                 'data' => $this->groupByInstitucion($rows->get()),
+                'anio_id' => $anioId,
+                'anio_nombre' => $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null,
             ]);
         }
 
