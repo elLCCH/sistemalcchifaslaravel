@@ -557,4 +557,10 @@ CREATE TABLE `pagoslcch` (
   INDEX idx_pagoslcch_fecha (fechapago)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+ALTER TABLE pagoslcch
+  ADD COLUMN TipoComprobante VARCHAR(20) NULL DEFAULT 'RECIBO' AFTER estadopago,
+  ADD COLUMN CodigoFactura VARCHAR(50) NULL AFTER TipoComprobante,
+  ADD COLUMN FirmaEntrega VARCHAR(2000) NULL AFTER CodigoFactura,
+  ADD COLUMN FirmaRecibe VARCHAR(2000) NULL AFTER FirmaEntrega;
+
 SET FOREIGN_KEY_CHECKS = 1;

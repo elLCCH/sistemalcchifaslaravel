@@ -51,3 +51,8 @@ CREATE TABLE `pagostalleres` (
   FOREIGN KEY (talleristas_id) REFERENCES talleristas(id) ON UPDATE CASCADE ON DELETE RESTRICT,
   FOREIGN KEY (planteldocentes_id) REFERENCES planteldocentes(id) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `pagostalleres`
+  ADD COLUMN `TipoComprobante` VARCHAR(20) NULL DEFAULT 'RECIBO' AFTER `ComprobantePago`,
+  ADD COLUMN `FirmaEntrega` VARCHAR(2000) NULL AFTER `TipoComprobante`,
+  ADD COLUMN `FirmaRecibe` VARCHAR(2000) NULL AFTER `FirmaEntrega`;

@@ -21,5 +21,8 @@ class Pagostalleres extends Model
         'DetallePago',
         'Observacion',
         'ComprobantePago',
+        'TipoComprobante',
+        'FirmaEntrega',
+        'FirmaRecibe',
     ];
 }

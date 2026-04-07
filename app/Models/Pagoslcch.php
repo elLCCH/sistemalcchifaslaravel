@@ -26,5 +26,9 @@ class Pagoslcch extends Model
         'file',
         'observacion',
         'estadopago',
+        'TipoComprobante',
+        'CodigoFactura',
+        'FirmaEntrega',
+        'FirmaRecibe',
     ];
 }

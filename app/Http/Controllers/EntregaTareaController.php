@@ -248,19 +248,27 @@ class EntregaTareaController extends Controller
 
             $estudiantes = Estudiantesifas::query()
                 ->whereIn('id', $estudianteIds)
-                ->get(['id', 'Nombres', 'Apellidos', 'foto'])
+                ->get(['id', 'Nombre', 'Ap_Paterno', 'Ap_Materno', 'Foto'])
                 ->keyBy('id');
 
-            return $entregas->map(function ($entrega) use ($infos, $estudiantes) {
+            $result = $entregas->map(function ($entrega) use ($infos, $estudiantes) {
                 $info = $infos->get($entrega->infoestudiantesifas_id);
                 $est  = $info ? $estudiantes->get($info->estudiantesifas_id) : null;
 
-                $entrega->estudiante_nombres   = $est->Nombres ?? null;
-                $entrega->estudiante_apellidos  = $est->Apellidos ?? null;
-                $entrega->estudiante_foto       = $est->foto ?? null;
+                $entrega->estudiante_ap_paterno = $est->Ap_Paterno ?? null;
+                $entrega->estudiante_ap_materno = $est->Ap_Materno ?? null;
+                $entrega->estudiante_nombre     = $est->Nombre ?? null;
+                $entrega->estudiante_foto       = $est->Foto ?? null;
 
                 return $entrega;
             });
+
+            // Ordenar por Ap_Paterno, Ap_Materno, Nombre
+            return $result->sortBy([
+                [fn ($a, $b) => strcasecmp((string) ($a->estudiante_ap_paterno ?? ''), (string) ($b->estudiante_ap_paterno ?? '')), 'asc'],
+                [fn ($a, $b) => strcasecmp((string) ($a->estudiante_ap_materno ?? ''), (string) ($b->estudiante_ap_materno ?? '')), 'asc'],
+                [fn ($a, $b) => strcasecmp((string) ($a->estudiante_nombre ?? ''), (string) ($b->estudiante_nombre ?? '')), 'asc'],
+            ])->values();
         } catch (\Throwable $e) {
             Log::error('EntregaTarea entregasConEstudiante: error enriqueciendo', [
                 'tareaId' => $tareaId, 'error' => $e->getMessage()

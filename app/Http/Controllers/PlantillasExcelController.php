@@ -19,7 +19,7 @@ class PlantillasExcelController extends Controller
      * - Categoria   => MODO (ej: "MODO INSTRUMENTOS DE ESPECIALIDAD")
      * - ParaI       => Título de la plantilla
      * - Edades      => Ruta del archivo Excel (NO se normaliza a mayúsculas)
-     * - NivelCurso  => Celda inicial (ej: "B10")
+    * - NivelCurso  => Lista ordenada de refs Excel (ej: "B10, C3, C4, ...")
      * - Estado / Visibilidad
      */
     public function __construct()
@@ -43,6 +43,28 @@ class PlantillasExcelController extends Controller
         }
 
         return strtoupper($value);
+    }
+
+    private function parseTemplateRefs(?string $value, int $expectedCount = 15): array
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return array_merge(['B10'], array_fill(0, max(0, $expectedCount - 1), ''));
+        }
+
+        $parts = array_map(function ($item) {
+            return $this->upperTrim((string) $item) ?? '';
+        }, explode(',', $raw));
+
+        if ($expectedCount > 0) {
+            $parts = array_slice(array_pad($parts, $expectedCount, ''), 0, $expectedCount);
+        }
+
+        if (($parts[0] ?? '') === '') {
+            $parts[0] = 'B10';
+        }
+
+        return $parts;
     }
 
     private function allowedModos(): array
@@ -257,20 +279,7 @@ class PlantillasExcelController extends Controller
             return response()->json(['error' => 'rows requerido (array)'], 422);
         }
 
-        $nivelCursoRaw = trim((string) ($row->NivelCurso ?? 'B10'));
-        if ($nivelCursoRaw === '') {
-            $nivelCursoRaw = 'B10';
-        }
-
-        $refs = array_values(array_filter(array_map(function ($x) {
-            return trim((string) $x);
-        }, preg_split('/\s*,\s*/', $nivelCursoRaw) ?: []), function ($x) {
-            return $x !== '';
-        }));
-        if (count($refs) === 0) {
-            $refs = ['B10'];
-        }
-
+        $refs = $this->parseTemplateRefs((string) ($row->NivelCurso ?? ''));
         $startCell = $refs[0];
 
         // Nombre de descarga
@@ -387,20 +396,7 @@ class PlantillasExcelController extends Controller
         }
 
         // Reusar la misma lógica de refs de la plantilla
-        $nivelCursoRaw = trim((string) ($row->NivelCurso ?? 'B10'));
-        if ($nivelCursoRaw === '') {
-            $nivelCursoRaw = 'B10';
-        }
-
-        $refs = array_values(array_filter(array_map(function ($x) {
-            return trim((string) $x);
-        }, preg_split('/\s*,\s*/', $nivelCursoRaw) ?: []), function ($x) {
-            return $x !== '';
-        }));
-        if (count($refs) === 0) {
-            $refs = ['B10'];
-        }
-
+        $refs = $this->parseTemplateRefs((string) ($row->NivelCurso ?? ''));
         $startCell = $refs[0];
 
         try {
