@@ -126,6 +126,48 @@ class InfoestudiantesifasController extends Controller
         return $v !== '' ? $v : $fallback;
     }
 
+    private function resolverModoMateriaPorFiltroDocente($docenteId, $docenteIdPC, $docenteIdOtros): ?string
+    {
+        if ($docenteIdPC !== null && $docenteIdPC !== '' && (int) $docenteIdPC > 0) {
+            return 'MODO PRACTICA DE CONJUNTOS';
+        }
+
+        if ($docenteIdOtros !== null && $docenteIdOtros !== '' && (int) $docenteIdOtros > 0) {
+            return 'MODO INSTRUMENTO COMPLEMENTARIO';
+        }
+
+        if ($docenteId !== null && $docenteId !== '' && (int) $docenteId > 0) {
+            return 'MODO INSTRUMENTOS DE ESPECIALIDAD';
+        }
+
+        return null;
+    }
+
+    private function buildSiglaMateriaSubquery(?string $modoMateria): string
+    {
+        $filterModo = '';
+        if (!empty($modoMateria)) {
+            $modoNormalizado = trim((string) $modoMateria);
+            $modoNormalizado = function_exists('mb_strtoupper')
+                ? mb_strtoupper($modoNormalizado, 'UTF-8')
+                : strtoupper($modoNormalizado);
+
+            $filterModo = ' AND pe.SiglaMateria IS NOT NULL AND TRIM(pe.SiglaMateria) <> \'\''
+                . ' AND UPPER(TRIM(pe.ModoMateria)) = ' . DB::getPdo()->quote($modoNormalizado);
+        }
+
+        return "(
+            SELECT pe.SiglaMateria
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios pe ON pe.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = pe.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id" . $filterModo . "
+            ORDER BY a.Anio DESC, pe.id DESC
+            LIMIT 1
+        )";
+    }
+
     private function cursoEsTecnicoSuperior(string $cursoSolicitado): bool
     {
         return stripos($cursoSolicitado, 'SUPERIOR') !== false;
@@ -1000,6 +1042,8 @@ class InfoestudiantesifasController extends Controller
             $docenteFiltro = $docenteId;
         }
 
+        $modoMateriaFiltro = $this->resolverModoMateriaPorFiltroDocente($docenteId, $docenteIdPC, $docenteIdOtros);
+
         // Campos permitidos para ordenar (alias "Anio" se maneja con orderByRaw)
         $allowedSort = [
             'id',
@@ -1081,6 +1125,8 @@ class InfoestudiantesifasController extends Controller
             LIMIT 1
         )";
 
+        $siglaMateriaSubquery = $this->buildSiglaMateriaSubquery($modoMateriaFiltro);
+
         $query = Infoestudiantesifas::query()
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
             ->leftJoin('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
@@ -1101,6 +1147,7 @@ class InfoestudiantesifasController extends Controller
                 DB::raw($resolucionSubquery . " as Resolucion"),
                 DB::raw($cursoAsignadoSubquery . " as CursoAsignado"),
                 DB::raw($paraleloAsignadoSubquery . " as ParaleloAsignado"),
+                DB::raw($siglaMateriaSubquery . " as SiglaMateria"),
             ])
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);

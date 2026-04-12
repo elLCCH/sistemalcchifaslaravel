@@ -12,6 +12,8 @@ use ZipArchive;
 
 class PlantillasExcelController extends Controller
 {
+    private const TEMPLATE_REF_COUNT = 17;
+
     /**
      * CRUD independiente para Plantillas Excel, usando la tabla `controles`.
      *
@@ -45,7 +47,7 @@ class PlantillasExcelController extends Controller
         return strtoupper($value);
     }
 
-    private function parseTemplateRefs(?string $value, int $expectedCount = 15): array
+    private function parseTemplateRefs(?string $value, int $expectedCount = self::TEMPLATE_REF_COUNT): array
     {
         $raw = trim((string) $value);
         if ($raw === '') {
@@ -495,6 +497,8 @@ class PlantillasExcelController extends Controller
             (string) ($payload['horasTotales'] ?? ''),
             (string) ($payload['mencion'] ?? ''),
             (string) ($payload['tituloOficial'] ?? ''),
+            (string) ($payload['instrumentoPrincipal'] ?? $payload['InstrumentoMusical'] ?? ''),
+            (string) ($payload['instrumentoSecundario'] ?? $payload['InstrumentoMusicalSecundario'] ?? ''),
         ];
 
         $metaRefs = array_slice($refs, 1);
