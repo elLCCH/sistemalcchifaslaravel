@@ -167,15 +167,81 @@ class InfoestudiantesifasController extends Controller
         };
     }
 
+    /**
+     * Genera fragmento SQL para filtrar por ModoMateria en plandeestudios.
+     * @param string $plandeAlias Alias de la tabla plandeestudios en el subquery ('pe' o 'p').
+     */
+    private function buildModoMateriaFilterSQL(?string $modoMateria, string $plandeAlias = 'pe'): string
+    {
+        if (empty($modoMateria)) {
+            return '';
+        }
+
+        $modosPermitidos = $this->resolverAliasModoMateria($modoMateria);
+        $quotedModos = array_map(static fn ($modo) => DB::getPdo()->quote($modo), $modosPermitidos);
+
+        return ' AND UPPER(TRIM(' . $plandeAlias . '.ModoMateria)) IN (' . implode(', ', $quotedModos) . ')';
+    }
+
+    /**
+     * Keywords de NombreMateria asociados a cada modo, para fallback cuando
+     * ModoMateria no está configurado correctamente en plandeestudios.
+     */
+    private function getNombreMateriaKeywordsForMode(?string $modoMateria): array
+    {
+        $modoNorm = function_exists('mb_strtoupper')
+            ? mb_strtoupper(trim((string) $modoMateria), 'UTF-8')
+            : strtoupper(trim((string) $modoMateria));
+
+        return match (true) {
+            in_array($modoNorm, ['MODO INSTRUMENTOS DE ESPECIALIDAD'], true) => [
+                'INSTRUMENTO DE ESPECIALIDAD',
+                'INSTRUMENTOS DE ESPECIALIDAD',
+            ],
+            in_array($modoNorm, ['MODO INSTRUMENTO COMPLEMENTARIO', 'MODO OTROS'], true) => [
+                'INSTRUMENTO COMPLEMENTARIO',
+            ],
+            in_array($modoNorm, ['MODO PRACTICA DE CONJUNTOS', 'MODO PRÁCTICA DE CONJUNTOS'], true) => [
+                'PRÁCTICA COLECTIVA',
+                'PRACTICA COLECTIVA',
+                'PRÁCTICA DE CONJUNTOS',
+                'PRACTICA DE CONJUNTOS',
+                'ENSAMBLE',
+            ],
+            default => [],
+        };
+    }
+
     private function buildSiglaMateriaSubquery(?string $modoMateria): string
     {
-        $filterModo = '';
-        if (!empty($modoMateria)) {
-            $modosPermitidos = $this->resolverAliasModoMateria($modoMateria);
-            $quotedModos = array_map(static fn ($modo) => DB::getPdo()->quote($modo), $modosPermitidos);
+        if (empty($modoMateria)) {
+            return "(
+                SELECT pe.SiglaMateria
+                FROM calificaciones c
+                INNER JOIN materias m ON m.id = c.materias_id
+                INNER JOIN plandeestudios pe ON pe.id = m.plandeestudios_id
+                INNER JOIN anios a ON a.id = pe.anio_id
+                WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+                ORDER BY a.Anio DESC, pe.id DESC
+                LIMIT 1
+            )";
+        }
 
-            $filterModo = ' AND pe.SiglaMateria IS NOT NULL AND TRIM(pe.SiglaMateria) <> \'\''
-                . ' AND UPPER(TRIM(pe.ModoMateria)) IN (' . implode(', ', $quotedModos) . ')';
+        // Condición primaria: filtrar por ModoMateria
+        $modosPermitidos = $this->resolverAliasModoMateria($modoMateria);
+        $quotedModos = array_map(static fn ($modo) => DB::getPdo()->quote($modo), $modosPermitidos);
+        $modoCondition = 'UPPER(TRIM(pe.ModoMateria)) IN (' . implode(', ', $quotedModos) . ')';
+
+        // Condición fallback: filtrar por NombreMateria (para cuando ModoMateria no está configurado)
+        $keywords = $this->getNombreMateriaKeywordsForMode($modoMateria);
+        $nombreConditions = array_map(
+            fn ($kw) => 'UPPER(pe.NombreMateria) LIKE ' . DB::getPdo()->quote('%' . mb_strtoupper($kw, 'UTF-8') . '%'),
+            $keywords
+        );
+
+        $orCondition = $modoCondition;
+        if (!empty($nombreConditions)) {
+            $orCondition = '(' . $modoCondition . ' OR ' . implode(' OR ', $nombreConditions) . ')';
         }
 
         return "(
@@ -184,7 +250,9 @@ class InfoestudiantesifasController extends Controller
             INNER JOIN materias m ON m.id = c.materias_id
             INNER JOIN plandeestudios pe ON pe.id = m.plandeestudios_id
             INNER JOIN anios a ON a.id = pe.anio_id
-            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id" . $filterModo . "
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+                AND pe.SiglaMateria IS NOT NULL AND TRIM(pe.SiglaMateria) <> ''
+                AND " . $orCondition . "
             ORDER BY a.Anio DESC, pe.id DESC
             LIMIT 1
         )";
