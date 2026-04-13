@@ -12,7 +12,7 @@ use ZipArchive;
 
 class PlantillasExcelController extends Controller
 {
-    private const TEMPLATE_REF_COUNT = 17;
+    private const TEMPLATE_REF_COUNT = 18;
 
     /**
      * CRUD independiente para Plantillas Excel, usando la tabla `controles`.
@@ -515,6 +515,7 @@ class PlantillasExcelController extends Controller
             (string) ($payload['tituloOficial'] ?? ''),
             (string) ($payload['instrumentoPrincipal'] ?? $payload['InstrumentoMusical'] ?? ''),
             (string) ($payload['instrumentoSecundario'] ?? $payload['InstrumentoMusicalSecundario'] ?? ''),
+            (string) ($payload['paralelo'] ?? ''),
         ];
 
         $metaRefs = array_slice($refs, 1);
