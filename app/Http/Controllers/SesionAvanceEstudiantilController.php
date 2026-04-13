@@ -1068,14 +1068,18 @@ class SesionAvanceEstudiantilController extends Controller
             return response()->json(['message' => 'No autorizado'], 403);
         }
 
-        $hoy = now()->toDateString();
+        try {
+            $hoy = now()->toDateString();
 
-        $logs = TerminarClaseLog::where('planteldocentes_id', (int) $user->id)
-            ->whereDate('created_at', $hoy)
-            ->orderByDesc('id')
-            ->get(['id', 'tipo_asignacion', 'evaluacion', 'fecha', 'cantidad_creadas', 'deshecho_at', 'created_at']);
+            $logs = TerminarClaseLog::where('planteldocentes_id', (int) $user->id)
+                ->whereDate('created_at', $hoy)
+                ->orderByDesc('id')
+                ->get(['id', 'tipo_asignacion', 'evaluacion', 'fecha', 'cantidad_creadas', 'deshecho_at', 'created_at']);
 
-        return response()->json(['data' => $logs]);
+            return response()->json(['data' => $logs]);
+        } catch (\Throwable $e) {
+            return response()->json(['data' => []]);
+        }
     }
 
     // ─────────────────────────────────────────────────────

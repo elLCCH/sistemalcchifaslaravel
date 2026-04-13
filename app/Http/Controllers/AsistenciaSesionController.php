@@ -1140,7 +1140,7 @@ class AsistenciaSesionController extends Controller
     /**
      * Eliminar sesión.
      * - Administrativos/super: pueden eliminar cualquier sesión.
-     * - Docentes: solo pueden eliminar sus propias sesiones si NO tienen registros de asistencia.
+        * - Docentes: solo pueden eliminar sus propias sesiones creadas hoy.
      * Borra registros de asistencia (si los hay), tokens QR y la sesión misma.
      */
     public function destroy(Request $request, $id)
@@ -1169,10 +1169,11 @@ class AsistenciaSesionController extends Controller
                     return response()->json(['ok' => false, 'message' => 'Solo puedes eliminar tus propias sesiones.'], 403);
                 }
 
-                // Docentes solo pueden eliminar si no hay registros de asistencia
-                $tieneRegistros = AsistenciaRegistro::where('asistencias_sesiones_id', (int) $sesion->id)->exists();
-                if ($tieneRegistros) {
-                    return response()->json(['ok' => false, 'message' => 'No se puede eliminar: la sesión ya tiene registros de asistencia. Solo puedes eliminar sesiones sin asistencia registrada.'], 409);
+                // Docentes solo pueden eliminar sesiones creadas hoy
+                $hoy = date('Y-m-d');
+                $createdDate = substr((string) ($sesion->created_at ?? ''), 0, 10);
+                if ($createdDate !== $hoy) {
+                    return response()->json(['ok' => false, 'message' => 'No se puede eliminar: solo puedes eliminar sesiones creadas hoy.'], 409);
                 }
             }
 
@@ -1393,7 +1394,12 @@ class AsistenciaSesionController extends Controller
         $nombres = DB::table('infoestudiantesifas as ie')
             ->join('estudiantesifas as e', 'e.id', '=', 'ie.estudiantesifas_id')
             ->whereIn('ie.id', $allIds)
-            ->get(['ie.id as infoestudiantesifas_id', DB::raw("CONCAT(e.Ap_Paterno, ' ', e.Ap_Materno, ' ', e.Nombre) as nombre_completo")])
+            ->get([
+                'ie.id as infoestudiantesifas_id',
+                'e.Ap_Paterno as ap_paterno',
+                'e.Ap_Materno as ap_materno',
+                'e.Nombre as nombres',
+            ])
             ->keyBy('infoestudiantesifas_id');
 
         // Construir la matriz
@@ -1409,7 +1415,11 @@ class AsistenciaSesionController extends Controller
         $estudiantes = [];
         foreach ($allIds as $infoId) {
             $infoId = (int) $infoId;
-            $nombre = $nombres[$infoId]->nombre_completo ?? '—';
+            $n = $nombres[$infoId] ?? null;
+            $apP = trim((string) ($n->ap_paterno ?? ''));
+            $apM = trim((string) ($n->ap_materno ?? ''));
+            $nom = trim((string) ($n->nombres ?? ''));
+            $nombre = trim(preg_replace('/\s+/', ' ', $apP . ' ' . $apM . ' ' . $nom)) ?: '—';
             $asistencias = [];
             foreach ($fechas as $f) {
                 $asistencias[$f] = $matrix[$infoId][$f] ?? null;
@@ -1417,12 +1427,33 @@ class AsistenciaSesionController extends Controller
             $estudiantes[] = [
                 'infoestudiantesifas_id' => $infoId,
                 'nombre_completo' => $nombre,
+                'ap_paterno' => $apP,
+                'ap_materno' => $apM,
+                'nombres' => $nom,
                 'asistencias' => $asistencias,
             ];
         }
 
-        // Ordenar por nombre
-        usort($estudiantes, fn ($a, $b) => strcasecmp($a['nombre_completo'], $b['nombre_completo']));
+        // Ordenar por apellido paterno, materno y nombres.
+        // Si no tiene paterno, sube al inicio.
+        usort($estudiantes, function ($a, $b) {
+            $aSinP = empty($a['ap_paterno']) ? 0 : 1;
+            $bSinP = empty($b['ap_paterno']) ? 0 : 1;
+            if ($aSinP !== $bSinP) return $aSinP <=> $bSinP;
+
+            $cmpP = strcasecmp((string) ($a['ap_paterno'] ?? ''), (string) ($b['ap_paterno'] ?? ''));
+            if ($cmpP !== 0) return $cmpP;
+
+            $cmpM = strcasecmp((string) ($a['ap_materno'] ?? ''), (string) ($b['ap_materno'] ?? ''));
+            if ($cmpM !== 0) return $cmpM;
+
+            return strcasecmp((string) ($a['nombres'] ?? ''), (string) ($b['nombres'] ?? ''));
+        });
+
+        $estudiantes = array_map(function ($e) {
+            unset($e['ap_paterno'], $e['ap_materno'], $e['nombres']);
+            return $e;
+        }, $estudiantes);
 
         return response()->json([
             'ok' => true,
@@ -1464,5 +1495,250 @@ class AsistenciaSesionController extends Controller
             ->get();
 
         return response()->json(['ok' => true, 'materias' => $materias]);
+    }
+
+    // ============================================================
+    // IMPORTACIÓN GRUPAL DE ASISTENCIAS
+    // Solo para materias con modo "REGISTRO DE IMPORTACIÓN VIRTUAL"
+    // ============================================================
+
+    /**
+     * Crear sesiones de asistencia para múltiples fechas de una sola vez.
+     * POST /api/asistencias/materias/{materiaId}/sesiones-grupo
+     * Body: { fechas: ['2026-04-01', '2026-04-03', ...] }
+     */
+    public function crearSesionesGrupo(Request $request, $materiaId)
+    {
+        $user = $request->user();
+        $isAdmin = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        $isDocente = ($user instanceof Planteldocentes);
+
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Acceso no permitido.'], 403);
+        }
+
+        $materiaId = (int) $materiaId;
+        $validator = Validator::make($request->all(), [
+            'fechas' => 'required|array|min:1|max:60',
+            'fechas.*' => 'required|date_format:Y-m-d',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['ok' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        $fechas = $validator->validated()['fechas'];
+
+        // Validar materia y modo
+        $mat = DB::table('materias as m')
+            ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+            ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+            ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+            ->where('m.id', $materiaId)
+            ->first(['m.id as materia_id', 'm.ModoAsistencia as materia_modo_asistencia', 'p.ModoMateria as plande_modo_materia', 'p.NombreMateria as nombre_materia', 'p.SiglaMateria as sigla_materia', 'i.id as instituciones_id']);
+
+        if (!$mat) {
+            return response()->json(['ok' => false, 'message' => 'Materia no encontrada.'], 404);
+        }
+
+        $modo = $this->normModoAsistencia($mat->materia_modo_asistencia ?? null);
+        if (!str_contains($modo, 'IMPORTACIÓN VIRTUAL') && !$isAdmin) {
+            return response()->json(['ok' => false, 'message' => 'Esta materia no está en modo REGISTRO DE IMPORTACIÓN VIRTUAL.'], 409);
+        }
+
+        $institucionId = (int) ($mat->instituciones_id ?? 0);
+        if ($isDocente && (int) $user->instituciones_id !== $institucionId) {
+            return response()->json(['ok' => false, 'message' => 'No tienes acceso a esta institución.'], 403);
+        }
+
+        // Asegurar aula virtual
+        $aula = AulaVirtual::where('instituciones_id', $institucionId)->where('materias_id', $materiaId)->first();
+        if (!$aula) {
+            $aula = AulaVirtual::create([
+                'instituciones_id' => $institucionId,
+                'materias_id' => $materiaId,
+                'nombre' => trim(($mat->sigla_materia ?? '') . ' ' . ($mat->nombre_materia ?? '')),
+                'descripcion' => 'Aula automática para asistencias',
+                'estado' => 'ACTIVO',
+                'visibilidad' => 'VISIBLE',
+            ]);
+        }
+
+        $docenteId = $isDocente ? (int) $user->id : ((int) DB::table('planteldocentesmaterias')->where('materias_id', $materiaId)->value('planteldocentes_id') ?: 0);
+
+        $creadas = [];
+        $existentes = [];
+
+        DB::transaction(function () use ($fechas, $aula, $institucionId, $docenteId, &$creadas, &$existentes) {
+            foreach ($fechas as $fecha) {
+                $existing = AsistenciaSesion::where('aulas_virtuales_id', (int) $aula->id)->whereDate('fecha', $fecha)->first();
+                if ($existing) {
+                    $existentes[] = $fecha;
+                } else {
+                    $sesion = AsistenciaSesion::create([
+                        'instituciones_id' => $institucionId,
+                        'aulas_virtuales_id' => (int) $aula->id,
+                        'planteldocentes_id' => $docenteId,
+                        'fecha' => $fecha,
+                        'hora_ingreso' => $fecha . ' 08:00:00',
+                        'tiempo_espera_minutos' => 20,
+                        'minutos_falta' => 40,
+                        'gps_requerido' => 0,
+                        'radio_metros' => 150,
+                        'estado' => 'ABIERTA',
+                        'visibilidad' => 'VISIBLE',
+                    ]);
+                    $creadas[] = ['id' => $sesion->id, 'fecha' => $fecha];
+                }
+            }
+        });
+
+        return response()->json([
+            'ok' => true,
+            'creadas' => $creadas,
+            'existentes' => $existentes,
+            'message' => count($creadas) . ' sesiones creadas' . (count($existentes) > 0 ? ', ' . count($existentes) . ' ya existían' : ''),
+        ]);
+    }
+
+    /**
+     * Marcar asistencia masiva para múltiples estudiantes y sesiones (fechas).
+     * POST /api/asistencias/materias/{materiaId}/marcar-grupo
+     * Body: { registros: [ { infoestudiantesifas_id: 1, fecha: '2026-04-01', estado: 'P' }, ... ] }
+     */
+    public function marcarGrupo(Request $request, $materiaId)
+    {
+        $user = $request->user();
+        $isAdmin = ($user instanceof Planteladministrativos) || ($user instanceof Usuarioslcchs);
+        $isDocente = ($user instanceof Planteldocentes);
+
+        if (!$user || (!$isDocente && !$isAdmin)) {
+            return response()->json(['ok' => false, 'message' => 'Acceso no permitido.'], 403);
+        }
+
+        $materiaId = (int) $materiaId;
+
+        $validator = Validator::make($request->all(), [
+            'registros' => 'required|array|min:1|max:5000',
+            'registros.*.infoestudiantesifas_id' => 'required|integer|min:1',
+            'registros.*.fecha' => 'required|date_format:Y-m-d',
+            'registros.*.estado' => 'required|string|in:P,A,F,L,-',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['ok' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        $registros = $validator->validated()['registros'];
+
+        // Validar materia y modo
+        $mat = DB::table('materias as m')
+            ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+            ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+            ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+            ->where('m.id', $materiaId)
+            ->first(['m.id as materia_id', 'm.ModoAsistencia as materia_modo_asistencia', 'i.id as instituciones_id']);
+
+        if (!$mat) {
+            return response()->json(['ok' => false, 'message' => 'Materia no encontrada.'], 404);
+        }
+
+        $modo = $this->normModoAsistencia($mat->materia_modo_asistencia ?? null);
+        if (!str_contains($modo, 'IMPORTACIÓN VIRTUAL') && !$isAdmin) {
+            return response()->json(['ok' => false, 'message' => 'Solo se permite en modo REGISTRO DE IMPORTACIÓN VIRTUAL.'], 409);
+        }
+
+        $institucionId = (int) ($mat->instituciones_id ?? 0);
+
+        // Obtener aula
+        $aula = AulaVirtual::where('instituciones_id', $institucionId)->where('materias_id', $materiaId)->first();
+        if (!$aula) {
+            return response()->json(['ok' => false, 'message' => 'No hay sesiones creadas para esta materia.'], 409);
+        }
+
+        // Indexar sesiones por fecha
+        $allFechas = array_unique(array_column($registros, 'fecha'));
+        $sesiones = AsistenciaSesion::where('aulas_virtuales_id', (int) $aula->id)
+            ->whereIn('fecha', $allFechas)
+            ->get()
+            ->keyBy(fn($s) => substr((string) $s->fecha, 0, 10));
+
+        // Restricción de edición para docente: solo puede editar sesiones creadas HOY
+        $hoy = date('Y-m-d');
+
+        $mapEstado = [
+            'P' => 'PRESENTE',
+            'A' => 'ATRASO',
+            'F' => 'FALTA',
+            'L' => 'PERMISO',
+            '-' => null, // eliminar registro
+        ];
+
+        $saved = 0;
+        $deleted = 0;
+        $skipped = 0;
+
+        DB::transaction(function () use ($registros, $sesiones, $mapEstado, $isAdmin, $hoy, &$saved, &$deleted, &$skipped) {
+            foreach ($registros as $reg) {
+                $fecha = $reg['fecha'];
+                $sesion = $sesiones[$fecha] ?? null;
+                if (!$sesion) {
+                    $skipped++;
+                    continue;
+                }
+
+                // Docentes solo pueden modificar sesiones creadas hoy
+                if (!$isAdmin) {
+                    $createdDate = substr((string) ($sesion->created_at ?? ''), 0, 10);
+                    if ($createdDate !== $hoy) {
+                        $skipped++;
+                        continue;
+                    }
+                }
+
+                $infoId = (int) $reg['infoestudiantesifas_id'];
+                $estadoLetra = $reg['estado'];
+                $estado = $mapEstado[$estadoLetra] ?? null;
+
+                if ($estadoLetra === '-') {
+                    // Eliminar registro si existe
+                    $del = AsistenciaRegistro::where('asistencias_sesiones_id', (int) $sesion->id)
+                        ->where('infoestudiantesifas_id', $infoId)
+                        ->delete();
+                    if ($del) $deleted++;
+                    continue;
+                }
+
+                // Si marca FALTA y tiene licencia → PERMISO
+                if ($estado === 'FALTA') {
+                    $fechaSesion = substr((string) $sesion->fecha, 0, 10);
+                    if ($this->estudianteTieneLicencia($infoId, $fechaSesion)) {
+                        $estado = 'PERMISO';
+                    }
+                }
+
+                AsistenciaRegistro::updateOrCreate(
+                    [
+                        'asistencias_sesiones_id' => (int) $sesion->id,
+                        'infoestudiantesifas_id' => $infoId,
+                    ],
+                    [
+                        'estado_asistencia' => $estado,
+                        'metodo' => 'MANUAL',
+                        'fecha_registro' => now(),
+                        'gps_valido' => 0,
+                        'estado' => 'ACTIVO',
+                        'visibilidad' => 'VISIBLE',
+                    ]
+                );
+                $saved++;
+            }
+        });
+
+        return response()->json([
+            'ok' => true,
+            'saved' => $saved,
+            'deleted' => $deleted,
+            'skipped' => $skipped,
+            'message' => "{$saved} asistencias guardadas" . ($deleted > 0 ? ", {$deleted} eliminadas" : '') . ($skipped > 0 ? ", {$skipped} omitidas" : ''),
+        ]);
     }
 }

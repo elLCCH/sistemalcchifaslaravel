@@ -25,6 +25,10 @@ Route::prefix('asistencias')->middleware(['auth:sanctum', UpdateTokenExpiration:
     // Reporte de asistencias por materia (docente/admin) - rango de fechas
     Route::get('materias/{materiaId}/reporte', [AsistenciaSesionController::class, 'reporteAsistenciasMateria']);
 
+    // Importación grupal de asistencias (modo REGISTRO DE IMPORTACIÓN VIRTUAL)
+    Route::post('materias/{materiaId}/sesiones-grupo', [AsistenciaSesionController::class, 'crearSesionesGrupo']);
+    Route::post('materias/{materiaId}/marcar-grupo', [AsistenciaSesionController::class, 'marcarGrupo']);
+
     // Materias asignadas de un estudiante (para selector de reporte de asistencias)
     Route::get('estudiante/{infoId}/materias', [AsistenciaSesionController::class, 'materiasEstudiante']);
 

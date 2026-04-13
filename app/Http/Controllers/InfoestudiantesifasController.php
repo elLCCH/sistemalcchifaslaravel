@@ -143,17 +143,39 @@ class InfoestudiantesifasController extends Controller
         return null;
     }
 
+    private function resolverAliasModoMateria(?string $modoMateria): array
+    {
+        $modoNormalizado = trim((string) $modoMateria);
+        if ($modoNormalizado === '') {
+            return [];
+        }
+
+        $modoNormalizado = function_exists('mb_strtoupper')
+            ? mb_strtoupper($modoNormalizado, 'UTF-8')
+            : strtoupper($modoNormalizado);
+
+        return match ($modoNormalizado) {
+            'MODO PRACTICA DE CONJUNTOS', 'MODO PRÁCTICA DE CONJUNTOS' => [
+                'MODO PRACTICA DE CONJUNTOS',
+                'MODO PRÁCTICA DE CONJUNTOS',
+            ],
+            'MODO INSTRUMENTO COMPLEMENTARIO', 'MODO OTROS' => [
+                'MODO INSTRUMENTO COMPLEMENTARIO',
+                'MODO OTROS',
+            ],
+            default => [$modoNormalizado],
+        };
+    }
+
     private function buildSiglaMateriaSubquery(?string $modoMateria): string
     {
         $filterModo = '';
         if (!empty($modoMateria)) {
-            $modoNormalizado = trim((string) $modoMateria);
-            $modoNormalizado = function_exists('mb_strtoupper')
-                ? mb_strtoupper($modoNormalizado, 'UTF-8')
-                : strtoupper($modoNormalizado);
+            $modosPermitidos = $this->resolverAliasModoMateria($modoMateria);
+            $quotedModos = array_map(static fn ($modo) => DB::getPdo()->quote($modo), $modosPermitidos);
 
             $filterModo = ' AND pe.SiglaMateria IS NOT NULL AND TRIM(pe.SiglaMateria) <> \'\''
-                . ' AND UPPER(TRIM(pe.ModoMateria)) = ' . DB::getPdo()->quote($modoNormalizado);
+                . ' AND UPPER(TRIM(pe.ModoMateria)) IN (' . implode(', ', $quotedModos) . ')';
         }
 
         return "(
