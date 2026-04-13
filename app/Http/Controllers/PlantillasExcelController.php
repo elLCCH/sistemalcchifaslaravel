@@ -69,6 +69,22 @@ class PlantillasExcelController extends Controller
         return $parts;
     }
 
+    private function normalizeExcelRef(string $rawRef): array
+    {
+        $rawRef = trim((string) $rawRef);
+        $wrapParens = false;
+
+        if (preg_match('/^\((.+)\)$/', $rawRef, $pm)) {
+            $wrapParens = true;
+            $rawRef = trim((string) ($pm[1] ?? ''));
+        }
+
+        $rawRef = str_replace('$', '', $rawRef);
+        $rawRef = $this->upperTrim($rawRef) ?? '';
+
+        return [$rawRef, $wrapParens];
+    }
+
     private function allowedModos(): array
     {
         return [
@@ -282,7 +298,7 @@ class PlantillasExcelController extends Controller
         }
 
         $refs = $this->parseTemplateRefs((string) ($row->NivelCurso ?? ''));
-        $startCell = $refs[0];
+        [$startCell, ] = $this->normalizeExcelRef((string) ($refs[0] ?? ''));
 
         // Nombre de descarga
         try {
@@ -399,7 +415,7 @@ class PlantillasExcelController extends Controller
 
         // Reusar la misma lógica de refs de la plantilla
         $refs = $this->parseTemplateRefs((string) ($row->NivelCurso ?? ''));
-        $startCell = $refs[0];
+        [$startCell, ] = $this->normalizeExcelRef((string) ($refs[0] ?? ''));
 
         try {
             [$colLetters, $rowNum] = Coordinate::coordinateFromString($startCell);
@@ -511,12 +527,7 @@ class PlantillasExcelController extends Controller
                 continue;
             }
 
-            $wrapParens = false;
-            $ref = $rawRef;
-            if (preg_match('/^\((.+)\)$/', $ref, $pm)) {
-                $wrapParens = true;
-                $ref = trim($pm[1]);
-            }
+            [$ref, $wrapParens] = $this->normalizeExcelRef($rawRef);
 
             try {
                 [$cLetters, $rNum] = Coordinate::coordinateFromString($ref);
