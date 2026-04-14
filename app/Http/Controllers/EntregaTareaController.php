@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class EntregaTareaController extends Controller
 {
@@ -391,5 +392,52 @@ class EntregaTareaController extends Controller
         }
 
         return response()->json(['success' => true, 'data' => $entrega, 'message' => 'Entrega registrada']);
+    }
+
+    /**
+     * Eliminar entrega (solo si no tiene archivos o el estudiante lo solicita).
+     */
+    public function destroy(Request $request, $entregaId)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'No autenticado'], 401);
+        }
+
+        $entrega = EntregaTarea::find((int) $entregaId);
+        if (!$entrega) {
+            return response()->json(['success' => false, 'message' => 'Entrega no encontrada'], 404);
+        }
+
+        // Verificar permisos
+        if ($user instanceof Estudiantesifas) {
+            $infoId = (int) Infoestudiantesifas::query()
+                ->where('estudiantesifas_id', (int) $user->id)
+                ->orderByDesc('id')
+                ->value('id');
+
+            if ((int) $entrega->infoestudiantesifas_id !== $infoId) {
+                return response()->json(['success' => false, 'message' => 'No autorizado'], 403);
+            }
+        } elseif (!($user instanceof Planteladministrativos) && !($user instanceof Usuarioslcchs)) {
+            return response()->json(['success' => false, 'message' => 'No autorizado'], 403);
+        }
+
+        try {
+            // Eliminar calificación asociada si existe
+            try {
+                if (Schema::hasTable('calificaciones_tareas')) {
+                    DB::table('calificaciones_tareas')->where('entregas_tareas_id', (int) $entrega->id)->delete();
+                }
+            } catch (\Throwable $e) {
+                Log::warning('EntregaTarea destroy: error eliminando calificación', ['error' => $e->getMessage()]);
+            }
+
+            $entrega->delete();
+            return response()->json(['success' => true, 'message' => 'Entrega eliminada']);
+        } catch (\Throwable $e) {
+            Log::error('EntregaTarea destroy: error', ['entregaId' => $entregaId, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Error al eliminar: ' . $e->getMessage()], 500);
+        }
     }
 }

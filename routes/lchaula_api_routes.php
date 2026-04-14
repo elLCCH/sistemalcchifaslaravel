@@ -44,6 +44,7 @@ Route::prefix('lchaula')->group(function () {
     // Entregas
     Route::get('tareas/{tareaId}/entregas', [EntregaTareaController::class, 'index']);
     Route::post('tareas/{tareaId}/entregar', [EntregaTareaController::class, 'submit']);
+    Route::delete('entregas/{entregaId}', [EntregaTareaController::class, 'destroy']);
 
     // Calificación
     Route::post('entregas/{entregaId}/calificar', [CalificacionTareaController::class, 'store']);
