@@ -611,6 +611,10 @@ class CalificacionesController extends Controller
                 'carreras.LimiteMaxPractico',
                 'carreras.NotaAprobacion',
                 'carreras.NotaMinRevalida',
+                'carreras.NombreCarrera',
+                'carreras.Area',
+                'carreras.Resolucion',
+                'carreras.Nivel as Malla',
                 'carreras.instituciones_id as instituciones_id',
             ])
             ->first();
