@@ -737,4 +737,139 @@ class CalifhistoriasConsultaController extends Controller
             ],
         ]);
     }
+
+    // =====================================================
+    // HISTORIAL UNIFICADO: historico (califhistorias) + nuevo sistema (calificaciones)
+    // =====================================================
+
+    public function historialUnificado(Request $request)
+    {
+        $validated = $request->validate([
+            'ci'             => ['required', 'string'],
+            'institucion'    => ['nullable', 'string'],
+            'institucion_id' => ['nullable', 'integer'],
+            'per_page'       => ['nullable', 'integer'],
+        ]);
+
+        $ciDigits = preg_replace('/\D+/', '', $validated['ci'] ?? '') ?? '';
+        if ($ciDigits === '') {
+            return response()->json(['data' => ['data' => [], 'total' => 0]]);
+        }
+
+        $ciPattern = $this->digitsLikePattern($ciDigits);
+        $perPage   = min(max((int) ($validated['per_page'] ?? 300), 1), 1000);
+
+        // --- 1. Datos históricos (califhistorias) ---
+        $queryOld = Califhistorias::query()
+            ->where('CI', 'like', $ciPattern);
+
+        if (!empty($validated['institucion'])) {
+            $queryOld->where('Institucion', $validated['institucion']);
+        }
+
+        $oldRows = $queryOld
+            ->orderBy('Anio')
+            ->orderByRaw("CAST(NULLIF(Rango,'') AS UNSIGNED) ASC")
+            ->orderBy('NombreCurso')
+            ->limit($perPage)
+            ->get()
+            ->map(fn ($r) => array_merge($r->toArray(), ['_fuente' => 'historico']));
+
+        // --- 2. Datos del nuevo sistema (calificaciones) ---
+        $newRows = collect([]);
+
+        // Resolver institution_id
+        $instId = null;
+        if (!empty($validated['institucion_id'])) {
+            $instId = (int) $validated['institucion_id'];
+        } elseif (!empty($validated['institucion'])) {
+            $instId = DB::table('instituciones')
+                ->where('Nombre', $validated['institucion'])
+                ->value('id');
+        }
+
+        if ($instId) {
+            $newRows = DB::table('calificaciones as cal')
+                ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+                ->join('estudiantesifas as est', 'info.estudiantesifas_id', '=', 'est.id')
+                ->join('materias as mat', 'cal.materias_id', '=', 'mat.id')
+                ->join('plandeestudios as pde', 'mat.plandeestudios_id', '=', 'pde.id')
+                ->join('carreras as car', 'pde.carreras_id', '=', 'car.id')
+                ->join('instituciones as ins', 'car.instituciones_id', '=', 'ins.id')
+                ->join('anios as a', 'pde.anio_id', '=', 'a.id')
+                ->leftJoin('planteldocentes as pd_esp', 'info.planteldocadmins_id', '=', 'pd_esp.id')
+                ->where('car.instituciones_id', $instId)
+                ->where('est.CI', 'like', $ciPattern)
+                ->selectRaw("
+                    ins.Nombre                                           AS Institucion,
+                    a.Anio                                               AS Anio,
+                    car.Resolucion                                       AS Malla,
+                    'REGULAR'                                            AS Arrastre,
+                    (SELECT NULLIF(TRIM(CONCAT(
+                            COALESCE(pd2.Nombres,''), ' ',
+                            COALESCE(pd2.Apellidos,''))), '')
+                     FROM planteldocentesmaterias pdm2
+                     JOIN planteldocentes pd2 ON pdm2.planteldocentes_id = pd2.id
+                     WHERE pdm2.materias_id = mat.id
+                     LIMIT 1)                                            AS DocenteMateria,
+                    pde.LvlCurso                                         AS NivelCurso,
+                    pde.NombreMateria                                    AS NombreCurso,
+                    pde.SiglaMateria                                     AS Sigla,
+                    CAST(pde.Rango AS CHAR)                              AS Rango,
+                    pde.TipoMateria                                      AS Tipo,
+                    CAST(pde.Horas AS CHAR)                              AS Horas,
+                    'NUEVO'                                              AS Categoria,
+                    NULLIF(TRIM(CONCAT(
+                        COALESCE(pd_esp.Nombres,''), ' ',
+                        COALESCE(pd_esp.Apellidos,''))), '')             AS Docente_Especialidad,
+                    '0'                                                  AS Docente_Practica,
+                    CAST(COALESCE(cal.Teorico1,  0) AS CHAR)             AS Teorica1,
+                    CAST(COALESCE(cal.Teorico2,  0) AS CHAR)             AS Teorica2,
+                    CAST(COALESCE(cal.Teorico3,  0) AS CHAR)             AS Teorica3,
+                    CAST(COALESCE(cal.Teorico4,  0) AS CHAR)             AS Teorica4,
+                    CAST(COALESCE(cal.Practico1, 0) AS CHAR)             AS Practica1,
+                    CAST(COALESCE(cal.Practico2, 0) AS CHAR)             AS Practica2,
+                    CAST(COALESCE(cal.Practico3, 0) AS CHAR)             AS Practica3,
+                    CAST(COALESCE(cal.Practico4, 0) AS CHAR)             AS Practica4,
+                    CAST(COALESCE(cal.PromTeorico,  0) AS CHAR)          AS PromEvT,
+                    CAST(COALESCE(cal.PromPractico, 0) AS CHAR)          AS PromEvP,
+                    CAST(COALESCE(cal.Promedio,     0) AS CHAR)          AS Promedio,
+                    CAST(COALESCE(cal.PruebaRecuperacion, '') AS CHAR)   AS PruebaRecuperacion,
+                    est.Ap_Paterno                                       AS Ap_Paterno,
+                    est.Ap_Materno                                       AS Ap_Materno,
+                    est.Nombre                                           AS Nombre,
+                    est.Sexo                                             AS Sexo,
+                    est.CI                                               AS CI,
+                    info.InstrumentoMusical                              AS Especialidad,
+                    cal.EstadoRegistroMateria                            AS Observacion
+                ")
+                ->limit($perPage)
+                ->get()
+                ->map(fn ($r) => array_merge((array) $r, ['_fuente' => 'actual']));
+        }
+
+        // --- 3. Mezclar y ordenar ---
+        $all    = $oldRows->concat($newRows);
+        $sorted = $all->sort(function ($a, $b) {
+            $aA = is_array($a) ? $a : (array) $a;
+            $bA = is_array($b) ? $b : (array) $b;
+
+            $anioA = (int) ($aA['Anio'] ?? 0);
+            $anioB = (int) ($bA['Anio'] ?? 0);
+            if ($anioA !== $anioB) return $anioA <=> $anioB;
+
+            $rangoA = (int) ($aA['Rango'] ?? 0);
+            $rangoB = (int) ($bA['Rango'] ?? 0);
+            if ($rangoA !== $rangoB) return $rangoA <=> $rangoB;
+
+            return strcmp((string) ($aA['NombreCurso'] ?? ''), (string) ($bA['NombreCurso'] ?? ''));
+        })->values();
+
+        return response()->json([
+            'data' => [
+                'data'  => $sorted,
+                'total' => $sorted->count(),
+            ],
+        ]);
+    }
 }
