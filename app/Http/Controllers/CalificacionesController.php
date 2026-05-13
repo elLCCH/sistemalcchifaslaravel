@@ -443,6 +443,9 @@ class CalificacionesController extends Controller
             'items.*.Practico3' => ['nullable', 'integer', 'min:0', 'max:100'],
             'items.*.Practico4' => ['nullable', 'integer', 'min:0', 'max:100'],
             'items.*.PruebaRecuperacion' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'items.*.PromTeorico' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'items.*.PromPractico' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'items.*.Promedio' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
 
         $infoId = (int) $validated['infoestudiantesifas_id'];
@@ -527,41 +530,18 @@ class CalificacionesController extends Controller
                     }
                 }
 
-                // Recalcula promedios (misma lógica base del front)
-                $evals = range(1, $avgEvalCount);
-                $zeroEval = false;
-                foreach ($evals as $n) {
-                    $t = $row->{'Teorico'.$n};
-                    $p = $row->{'Practico'.$n};
-                    if ($t !== null && $p !== null && (int)$t === 0 && (int)$p === 0) {
-                        $zeroEval = true;
-                        break;
-                    }
+                // No recalcular promedios en backend: usar los valores enviados por el frontend si están presentes
+                if (array_key_exists('PromTeorico', $payload)) {
+                    $v = $payload['PromTeorico'];
+                    if ($v !== null) { $v = (int) $v; if ($v < 0) $v = 0; if ($v > 100) $v = 100; $row->PromTeorico = $v; } else { $row->PromTeorico = null; }
                 }
-
-                if ($zeroEval) {
-                    $row->PromTeorico = 0;
-                    $row->PromPractico = 0;
-                    $row->Promedio = 0;
-                } else {
-                    $teos = [];
-                    $pracs = [];
-                    foreach ($evals as $n) {
-                        $teos[] = $row->{'Teorico'.$n};
-                        $pracs[] = $row->{'Practico'.$n};
-                    }
-
-                    $row->PromTeorico = $avg($teos);
-                    $row->PromPractico = $avg($pracs);
-
-                    if ($row->PromTeorico === null && $row->PromPractico === null) {
-                        $row->Promedio = null;
-                    } else {
-                        $sum = ((int) ($row->PromTeorico ?? 0)) + ((int) ($row->PromPractico ?? 0));
-                        if ($sum < 0) $sum = 0;
-                        if ($sum > 100) $sum = 100;
-                        $row->Promedio = (int) round($sum);
-                    }
+                if (array_key_exists('PromPractico', $payload)) {
+                    $v = $payload['PromPractico'];
+                    if ($v !== null) { $v = (int) $v; if ($v < 0) $v = 0; if ($v > 100) $v = 100; $row->PromPractico = $v; } else { $row->PromPractico = null; }
+                }
+                if (array_key_exists('Promedio', $payload)) {
+                    $v = $payload['Promedio'];
+                    if ($v !== null) { $v = (int) $v; if ($v < 0) $v = 0; if ($v > 100) $v = 100; $row->Promedio = $v; } else { $row->Promedio = null; }
                 }
 
                 $row->save();
@@ -801,6 +781,9 @@ class CalificacionesController extends Controller
             'items.*.Practico3' => ['nullable', 'integer', 'min:0', 'max:100'],
             'items.*.Practico4' => ['nullable', 'integer', 'min:0', 'max:100'],
             'items.*.PruebaRecuperacion' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'items.*.PromTeorico' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'items.*.PromPractico' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'items.*.Promedio' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
 
         $materiaId = (int) $validated['materias_id'];
@@ -946,39 +929,18 @@ class CalificacionesController extends Controller
                     $row->PruebaRecuperacion = $payload['PruebaRecuperacion'];
                 }
 
-                $evals = range(1, $avgEvalCount);
-                $zeroEval = false;
-                foreach ($evals as $n) {
-                    $t = $row->{'Teorico'.$n};
-                    $p = $row->{'Practico'.$n};
-                    if ($t !== null && $p !== null && (int)$t === 0 && (int)$p === 0) {
-                        $zeroEval = true;
-                        break;
-                    }
+                // No recalcular promedios en backend: usar los valores enviados por el frontend si están presentes
+                if (array_key_exists('PromTeorico', $payload)) {
+                    $v = $payload['PromTeorico'];
+                    if ($v !== null) { $v = (int) $v; if ($v < 0) $v = 0; if ($v > 100) $v = 100; $row->PromTeorico = $v; } else { $row->PromTeorico = null; }
                 }
-
-                if ($zeroEval) {
-                    $row->PromTeorico = 0;
-                    $row->PromPractico = 0;
-                    $row->Promedio = 0;
-                } else {
-                    $teos = [];
-                    $pracs = [];
-                    foreach ($evals as $n) {
-                        $teos[] = $row->{'Teorico'.$n};
-                        $pracs[] = $row->{'Practico'.$n};
-                    }
-                    $row->PromTeorico = $avg($teos);
-                    $row->PromPractico = $avg($pracs);
-
-                    if ($row->PromTeorico === null && $row->PromPractico === null) {
-                        $row->Promedio = null;
-                    } else {
-                        $sum = ((int) ($row->PromTeorico ?? 0)) + ((int) ($row->PromPractico ?? 0));
-                        if ($sum < 0) $sum = 0;
-                        if ($sum > 100) $sum = 100;
-                        $row->Promedio = (int) round($sum);
-                    }
+                if (array_key_exists('PromPractico', $payload)) {
+                    $v = $payload['PromPractico'];
+                    if ($v !== null) { $v = (int) $v; if ($v < 0) $v = 0; if ($v > 100) $v = 100; $row->PromPractico = $v; } else { $row->PromPractico = null; }
+                }
+                if (array_key_exists('Promedio', $payload)) {
+                    $v = $payload['Promedio'];
+                    if ($v !== null) { $v = (int) $v; if ($v < 0) $v = 0; if ($v > 100) $v = 100; $row->Promedio = $v; } else { $row->Promedio = null; }
                 }
 
                 $row->save();
