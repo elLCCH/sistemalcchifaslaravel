@@ -149,6 +149,123 @@ class PublicHorariosController extends Controller
         return $q->get();
     }
 
+    /**
+     * Centralizador general por gestión, nivel, paralelo e institución.
+     */
+    public function centralizadorGeneral(Request $request)
+    {
+        $anioId = $request->input('Anio_id') ?? $request->input('anio_id');
+        $lvlCurso = trim((string) ($request->input('LvlCurso') ?? $request->input('lvl_curso') ?? $request->input('lvlCurso') ?? ''));
+        $paralelo = trim((string) ($request->input('Paralelo') ?? $request->input('paralelo') ?? ''));
+        $institucionId = $request->input('instituciones_id') ?? $request->input('Instituciones_id') ?? $request->input('institucion_id');
+
+        if (!$anioId || $lvlCurso === '' || $paralelo === '') {
+            return response()->json([
+                'message' => 'Anio_id, LvlCurso y Paralelo son requeridos',
+            ], 422);
+        }
+
+        $query = DB::table('calificaciones as c')
+            ->join('infoestudiantesifas as ie', 'ie.id', '=', 'c.infoestudiantesifas_id')
+            ->join('estudiantesifas as e', 'e.id', '=', 'ie.estudiantesifas_id')
+            ->join('materias as m', 'm.id', '=', 'c.materias_id')
+            ->join('plandeestudios as pe', 'pe.id', '=', 'm.plandeestudios_id')
+            ->join('carreras as ca', 'ca.id', '=', 'pe.carreras_id')
+            ->select([
+                'ie.instituciones_id',
+                'pe.anio_id',
+                'ie.id as infoestudiante_id',
+                'e.id as estudiante_id',
+                DB::raw("CONCAT(COALESCE(e.Ap_Paterno, ''), ' ', COALESCE(e.Ap_Materno, ''), ' ', COALESCE(e.Nombre, '')) as Estudiante"),
+                'e.CI',
+                'pe.LvlCurso',
+                'm.Paralelo',
+                'm.Turno',
+                'pe.NombreMateria',
+                'pe.SiglaMateria',
+                'c.Promedio',
+                'c.PruebaRecuperacion',
+                'c.EstadoRegistroMateria',
+                'ie.Observacion',
+                'ie.InstrumentoMusical as Especialidad',
+                'ca.NombreCarrera as Carrera',
+                'ca.Area',
+                'ca.Resolucion',
+            ])
+            ->where('pe.anio_id', '=', $anioId)
+            ->where('pe.LvlCurso', '=', $lvlCurso)
+            ->where('m.Paralelo', '=', $paralelo)
+            ->orderBy('pe.RangoLvlCurso')
+            ->orderBy('pe.LvlCurso')
+            ->orderBy('m.Paralelo')
+            ->orderByRaw("TRIM(COALESCE(e.Ap_Paterno, ''))")
+            ->orderByRaw("TRIM(COALESCE(e.Ap_Materno, ''))")
+            ->orderByRaw("TRIM(COALESCE(e.Nombre, ''))")
+            ->orderBy('pe.Rango')
+            ->orderBy('pe.NombreMateria');
+
+        if ($institucionId) {
+            $query->where(function ($sub) use ($institucionId) {
+                $sub->where('ie.instituciones_id', '=', $institucionId)
+                    ->orWhere('ca.instituciones_id', '=', $institucionId);
+            });
+        }
+
+        $rows = $query->get()->map(function ($row) {
+            $row->Estudiante = trim(preg_replace('/\s+/', ' ', (string) ($row->Estudiante ?? '')));
+            return $row;
+        })->values();
+
+        $firmasDocentesQuery = DB::table('materias as m')
+            ->join('plandeestudios as pe', 'pe.id', '=', 'm.plandeestudios_id')
+            ->join('carreras as ca', 'ca.id', '=', 'pe.carreras_id')
+            ->leftJoin('planteldocentesmaterias as pdm', 'pdm.materias_id', '=', 'm.id')
+            ->leftJoin('planteldocentes as pd', 'pd.id', '=', 'pdm.planteldocentes_id')
+            ->select([
+                'pe.NombreMateria',
+                'pe.TipoMateria',
+                'pe.Rango',
+                DB::raw("TRIM(CONCAT(COALESCE(pd.Nombres, ''), ' ', COALESCE(pd.Apellidos, ''))) as Docente"),
+            ])
+            ->where('pe.anio_id', '=', $anioId)
+            ->where('pe.LvlCurso', '=', $lvlCurso)
+            ->where('m.Paralelo', '=', $paralelo)
+            ->whereNotNull('pd.id')
+            ->orderBy('pe.Rango')
+            ->orderBy('pe.NombreMateria');
+
+        if ($institucionId) {
+            $firmasDocentesQuery->where('ca.instituciones_id', '=', $institucionId);
+        }
+
+        $firmasDocentes = $firmasDocentesQuery->get()
+            ->map(function ($row) {
+                $row->NombreMateria = trim((string) ($row->NombreMateria ?? ''));
+                $row->TipoMateria = trim((string) ($row->TipoMateria ?? ''));
+                $row->Docente = trim((string) ($row->Docente ?? ''));
+                return $row;
+            })
+            ->filter(function ($row) {
+                return $row->NombreMateria !== '' && $row->Docente !== '';
+            })
+            ->unique(function ($row) {
+                return ($row->NombreMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->Docente ?? '');
+            })
+            ->values();
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'anio_id' => (int) $anioId,
+                'lvl_curso' => $lvlCurso,
+                'paralelo' => $paralelo,
+                'institucion_id' => $institucionId !== null && $institucionId !== '' ? (int) $institucionId : null,
+                'total' => $rows->count(),
+                'firmas_docentes' => $firmasDocentes,
+            ],
+        ]);
+    }
+
    private function buildEstudiantesQuery()
     {
         return \App\Models\InfoEstudiantesIfas::query()

@@ -551,6 +551,7 @@ Route::get('/CargarInfoPublicaDocentes', [PeticionesPublicas::class, 'CargarInfo
 Route::get('/CargarInfoPublicaAdministrativos', [PeticionesPublicas::class, 'CargarInfoPublicaAdministrativos']);
 Route::post('/CargarEstudiantesMezcladosMateriasPublico', [PeticionesPublicas::class, 'CargarEstudiantesMezcladosMateriasPublico']);
 Route::post('/CargarMateriasEstudiantesMultiInstitucionPublico', [PeticionesPublicas::class, 'CargarMateriasEstudiantesMultiInstitucionPublico']);
+Route::post('/CentralizadorGeneral2026', [PublicHorariosController::class, 'centralizadorGeneral']);
 
 
 Route::post('/ListaEstudiantesCurso', [PublicHorariosController::class, 'estudiantesCurso']);
