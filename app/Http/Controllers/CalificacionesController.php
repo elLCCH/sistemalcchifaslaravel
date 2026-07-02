@@ -104,6 +104,16 @@ class CalificacionesController extends Controller
         return $n;
     }
 
+    private function getEvaluationMode($estado): string
+    {
+        $s = strtoupper(trim((string) ($estado ?? '')));
+        if ($s === '') return 'NORMAL';
+        if (str_contains($s, 'SEGUNDA INSTANCIA')) return 'SEGUNDA_INSTANCIA';
+        if (str_contains($s, 'EVALUACIÓN FINAL') || str_contains($s, 'EVALUACION FINAL')) return 'EVALUACION_FINAL';
+        if ($s === 'TODAS LAS EVALUACIONES' || $s === 'TODAS' || str_contains($s, 'TODO')) return 'TODAS';
+        return 'NORMAL';
+    }
+
     private function parseEnabledEvaluations($estado, int $evalCountMax): array
     {
         $out = [];
@@ -112,6 +122,7 @@ class CalificacionesController extends Controller
 
         $s = strtoupper($raw);
         if (str_contains($s, 'DESHABIL')) return $out;
+        if (str_contains($s, 'SEGUNDA INSTANCIA') || str_contains($s, 'EVALUACIÓN FINAL') || str_contains($s, 'EVALUACION FINAL')) return $out;
 
         if (str_contains($s, 'HABILIT') || str_contains($s, 'TODAS') || str_contains($s, 'TODO')) {
             for ($i = 1; $i <= max(1, min(4, $evalCountMax)); $i++) $out[] = $i;
@@ -843,6 +854,7 @@ class CalificacionesController extends Controller
         }
 
         // Evaluaciones habilitadas: admin puede override (temporal), docente siempre por EstadoHabilitacion
+        $modoEvaluacion = $this->getEvaluationMode($materiaMeta->EstadoHabilitacion ?? null);
         $enabled = $this->parseEnabledEvaluations($materiaMeta->EstadoHabilitacion ?? null, $evalCountMax);
 
         if ($isAdminUser && is_array($validated['enabled_evals'] ?? null) && count($validated['enabled_evals']) === 4) {
@@ -858,7 +870,7 @@ class CalificacionesController extends Controller
         $enabled = array_values(array_filter($enabled, fn ($n) => $n >= 1 && $n <= $evalCountMax));
         sort($enabled);
 
-        if (count($enabled) === 0) {
+        if ($modoEvaluacion === 'NORMAL' && count($enabled) === 0) {
             return response()->json(['message' => 'Edición deshabilitada para esta materia'], 403);
         }
 
@@ -896,36 +908,38 @@ class CalificacionesController extends Controller
                 $row = $allowed->get($rowId);
                 if (!$row) continue;
 
-                // Aplicar solo claves permitidas según evaluaciones habilitadas
-                foreach ([1, 2, 3, 4] as $n) {
-                    if ($n > $evalCountMax) continue;
-                    if (!in_array($n, $enabled, true)) continue;
+                if ($modoEvaluacion === 'NORMAL' || $modoEvaluacion === 'TODAS') {
+                    // Aplicar solo claves permitidas según evaluaciones habilitadas
+                    foreach ([1, 2, 3, 4] as $n) {
+                        if ($n > $evalCountMax) continue;
+                        if (!in_array($n, $enabled, true)) continue;
 
-                    $tk = 'Teorico' . $n;
-                    $pk = 'Practico' . $n;
+                        $tk = 'Teorico' . $n;
+                        $pk = 'Practico' . $n;
 
-                    if (array_key_exists($tk, $payload)) {
-                        $v = $payload[$tk];
-                        if ($v !== null) {
-                            $v = (int) $v;
-                            if ($v < 0) $v = 0;
-                            if ($v > $maxTeo) $v = $maxTeo;
+                        if (array_key_exists($tk, $payload)) {
+                            $v = $payload[$tk];
+                            if ($v !== null) {
+                                $v = (int) $v;
+                                if ($v < 0) $v = 0;
+                                if ($v > $maxTeo) $v = $maxTeo;
+                            }
+                            $row->$tk = $v;
                         }
-                        $row->$tk = $v;
-                    }
 
-                    if (array_key_exists($pk, $payload)) {
-                        $v = $payload[$pk];
-                        if ($v !== null) {
-                            $v = (int) $v;
-                            if ($v < 0) $v = 0;
-                            if ($v > $maxPra) $v = $maxPra;
+                        if (array_key_exists($pk, $payload)) {
+                            $v = $payload[$pk];
+                            if ($v !== null) {
+                                $v = (int) $v;
+                                if ($v < 0) $v = 0;
+                                if ($v > $maxPra) $v = $maxPra;
+                            }
+                            $row->$pk = $v;
                         }
-                        $row->$pk = $v;
                     }
                 }
 
-                if (array_key_exists('PruebaRecuperacion', $payload)) {
+                if (array_key_exists('PruebaRecuperacion', $payload) && ($modoEvaluacion === 'SEGUNDA_INSTANCIA' || $modoEvaluacion === 'EVALUACION_FINAL' || $modoEvaluacion === 'NORMAL' || $modoEvaluacion === 'TODAS')) {
                     $row->PruebaRecuperacion = $payload['PruebaRecuperacion'];
                 }
 
@@ -1894,26 +1908,26 @@ class CalificacionesController extends Controller
     public function reprobadasPorMateria(Request $request, $materiaId)
     {
         $user = $request->user();
+
         if (!$user) {
             abort(404);
         }
 
         $isSuperAdmin = $this->isSuperAdmin($user);
+
         $materiaId = (int) $materiaId;
+
         if ($materiaId <= 0) {
             abort(404);
         }
 
-        // Trae metadata de la materia (anio_id, institución, evalCount, notaAprobacion)
         $materiaMeta = DB::table('materias')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->leftJoin('anios', 'plandeestudios.anio_id', '=', 'anios.id')
             ->where('materias.id', $materiaId)
             ->select([
                 'plandeestudios.anio_id',
                 'carreras.instituciones_id',
-                'carreras.CantidadEvaluaciones',
                 'carreras.NotaAprobacion',
             ])
             ->first();
@@ -1922,19 +1936,21 @@ class CalificacionesController extends Controller
             abort(404);
         }
 
-        $institucionId = (int) ($materiaMeta->instituciones_id ?? 0);
-        if ($institucionId <= 0) {
-            abort(404);
-        }
-        if (!$isSuperAdmin && (int) $user->instituciones_id !== $institucionId) {
+        $institucionId = (int) $materiaMeta->instituciones_id;
+
+        if (
+            !$isSuperAdmin &&
+            (int) $user->instituciones_id !== $institucionId
+        ) {
             abort(404);
         }
 
-        $anioId = $materiaMeta->anio_id;
-        $evalCountMax = $this->parseEvalCount($materiaMeta->CantidadEvaluaciones ?? 4);
+        $anioId = (int) $materiaMeta->anio_id;
         $notaAprobacion = (int) ($materiaMeta->NotaAprobacion ?? 61);
 
-        // Obtener los infoestudiantesifas_id que están en esta materia
+        /*
+        * Estudiantes inscritos en la materia seleccionada
+        */
         $infoIds = Calificaciones::query()
             ->where('materias_id', $materiaId)
             ->pluck('infoestudiantesifas_id')
@@ -1942,75 +1958,75 @@ class CalificacionesController extends Controller
             ->values();
 
         if ($infoIds->isEmpty()) {
-            return response()->json(['data' => []]);
+            return response()->json([
+                'data' => []
+            ]);
         }
 
-        // Traer TODAS las calificaciones de estos estudiantes en una gestión (mismo anio_id)
-        $query = Calificaciones::query()
+        /*
+        * Todas las materias de esos estudiantes
+        * dentro de la misma gestión académica
+        */
+        $allCalifs = Calificaciones::query()
             ->join('materias', 'calificaciones.materias_id', '=', 'materias.id')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
             ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
             ->where('carreras.instituciones_id', $institucionId)
+            ->where('plandeestudios.anio_id', $anioId)
             ->whereIn('calificaciones.infoestudiantesifas_id', $infoIds)
             ->select([
                 'calificaciones.infoestudiantesifas_id',
                 'calificaciones.materias_id',
                 'calificaciones.Promedio',
-                'calificaciones.Teorico1',
-                'calificaciones.Practico1',
-                'calificaciones.Teorico2',
-                'calificaciones.Practico2',
-                'calificaciones.Teorico3',
-                'calificaciones.Practico3',
-                'calificaciones.Teorico4',
-                'calificaciones.Practico4',
-            ]);
+                'calificaciones.PruebaRecuperacion',
+                'calificaciones.EstadoRegistroMateria',
+            ])
+            ->get();
 
-        if ($anioId) {
-            $query->where('plandeestudios.anio_id', $anioId);
-        }
-
-        $allCalifs = $query->get();
-
-        // Agrupar por infoestudiantesifas_id
         $result = [];
+
         $grouped = $allCalifs->groupBy('infoestudiantesifas_id');
 
         foreach ($grouped as $infoId => $califs) {
+
             $reprobadas = 0;
             $pendientes = 0;
+            $totalMaterias = $califs->count();
 
             foreach ($califs as $cal) {
-                // Verificar si tiene todas las evaluaciones completas
-                $completa = true;
-                for ($n = 1; $n <= $evalCountMax; $n++) {
-                    $t = $cal->{'Teorico' . $n};
-                    $p = $cal->{'Practico' . $n};
-                    if ($t === null || $p === null) {
-                        $completa = false;
-                        break;
-                    }
-                }
 
-                if (!$completa) {
+                /*
+                * Si no tiene promedio aún
+                * entonces está pendiente.
+                */
+                if ($cal->Promedio === null) {
                     $pendientes++;
                     continue;
                 }
 
-                $promedio = (int) ($cal->Promedio ?? 0);
-                if ($promedio < $notaAprobacion) {
+                /*
+                * Si rindió recuperación,
+                * esa es la nota final.
+                */
+                $notaFinal = $cal->PruebaRecuperacion !== null
+                    ? (int) $cal->PruebaRecuperacion
+                    : (int) $cal->Promedio;
+
+                if ($notaFinal < $notaAprobacion) {
                     $reprobadas++;
                 }
             }
 
             $result[$infoId] = [
-                'reprobadas' => $reprobadas,
-                'pendientes' => $pendientes,
-                'total_materias' => $califs->count(),
+                'reprobadas'    => $reprobadas,
+                'pendientes'    => $pendientes,
+                'total_materias'=> $totalMaterias,
             ];
         }
 
-        return response()->json(['data' => $result]);
+        return response()->json([
+            'data' => $result
+        ]);
     }
     //#endregion Fin Controller de Crud PHP de calificaciones
 }
