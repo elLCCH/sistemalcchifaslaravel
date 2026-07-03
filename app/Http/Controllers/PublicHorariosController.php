@@ -44,6 +44,7 @@ class PublicHorariosController extends Controller
                 'instituciones.id as instituciones_id',
                 'instituciones.Nombre as institucion_nombre',
                 'instituciones.Logo as institucion_logo',
+                'carreras.Nivel as NivelCarrera',
             ])
             ->orderBy('plandeestudios.RangoLvlCurso')
             ->orderBy('plandeestudios.Rango')
@@ -71,6 +72,7 @@ class PublicHorariosController extends Controller
                     'instituciones_id' => (int) $row->instituciones_id,
                     'institucion_nombre' => $row->institucion_nombre,
                     'institucion_logo' => $row->institucion_logo,
+                    'NivelCarrera' => $row->NivelCarrera,
                     // Compatibilidad con UI legacy
                     'NivelCurso' => $nivelCurso,
                     'materias' => [],
