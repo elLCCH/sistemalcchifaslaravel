@@ -75,6 +75,102 @@ class PlandeestudiosController extends Controller
         Plandeestudios::insert($plandeestudios);
         return response()->json(['data' => $plandeestudios]);
     }
+
+    public function cloneGestion(Request $request)
+    {
+        $user = $request->user();
+        $isSuperAdmin = empty($user?->instituciones_id);
+
+        $rules = [
+            'anio_origen_id' => ['required', 'integer', 'exists:anios,id', 'different:anio_destino_id'],
+            'anio_destino_id' => ['required', 'integer', 'exists:anios,id'],
+        ];
+
+        if ($isSuperAdmin) {
+            $rules['instituciones_id'] = ['required', 'integer', 'exists:instituciones,id'];
+        } else {
+            $rules['instituciones_id'] = ['nullable', 'integer'];
+        }
+
+        $validated = $request->validate($rules);
+
+        $institucionId = $isSuperAdmin
+            ? (int) $validated['instituciones_id']
+            : (int) $user->instituciones_id;
+        $anioOrigenId = (int) $validated['anio_origen_id'];
+        $anioDestinoId = (int) $validated['anio_destino_id'];
+
+        $sourcePlans = $this->baseInstitucionAnioQuery($institucionId, $anioOrigenId)
+            ->select(
+                'pe.carreras_id',
+                'pe.Rango',
+                'pe.RangoLvlCurso',
+                'pe.LvlCurso',
+                'pe.Horas',
+                'pe.ModoMateria',
+                'pe.NombreMateria',
+                'pe.SiglaMateria',
+                'pe.Prerrequisitos',
+                'pe.SiglasPrerrequisitos',
+                'pe.TipoMateria',
+                'pe.Periodo',
+                'pe.RelacionDocenteCursoAEstudiante'
+            )
+            ->orderBy('pe.carreras_id')
+            ->orderBy('pe.RangoLvlCurso')
+            ->orderBy('pe.Rango')
+            ->get();
+
+        if ($sourcePlans->isEmpty()) {
+            return response()->json([
+                'message' => 'La gestión origen no tiene plan de estudios registrado para la institución seleccionada.'
+            ], 422);
+        }
+
+        $destinationHasPlans = $this->baseInstitucionAnioQuery($institucionId, $anioDestinoId)->exists();
+
+        if ($destinationHasPlans) {
+            return response()->json([
+                'message' => 'La gestión destino ya tiene plan de estudios registrado para esa institución.'
+            ], 422);
+        }
+
+        $timestamp = now();
+        $insertData = $sourcePlans->map(function ($plan) use ($anioDestinoId, $timestamp) {
+            return [
+                'carreras_id' => $plan->carreras_id,
+                'Rango' => $plan->Rango,
+                'RangoLvlCurso' => $plan->RangoLvlCurso,
+                'LvlCurso' => $plan->LvlCurso,
+                'Horas' => $plan->Horas,
+                'anio_id' => $anioDestinoId,
+                'ModoMateria' => $plan->ModoMateria,
+                'NombreMateria' => $plan->NombreMateria,
+                'SiglaMateria' => $plan->SiglaMateria,
+                'Prerrequisitos' => $plan->Prerrequisitos,
+                'SiglasPrerrequisitos' => $plan->SiglasPrerrequisitos,
+                'TipoMateria' => $plan->TipoMateria,
+                'Periodo' => $plan->Periodo,
+                'RelacionDocenteCursoAEstudiante' => $plan->RelacionDocenteCursoAEstudiante,
+                'created_at' => $timestamp,
+                'updated_at' => $timestamp,
+            ];
+        })->all();
+
+        DB::transaction(function () use ($insertData) {
+            Plandeestudios::insert($insertData);
+        });
+
+        return response()->json([
+            'data' => [
+                'instituciones_id' => $institucionId,
+                'anio_origen_id' => $anioOrigenId,
+                'anio_destino_id' => $anioDestinoId,
+                'cantidad_clonada' => count($insertData),
+            ],
+            'message' => 'Plan de estudios clonado correctamente.'
+        ]);
+    }
     
     public function show($id)
     {
@@ -139,6 +235,14 @@ class PlandeestudiosController extends Controller
 
         Plandeestudios::destroy($id);
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
+    }
+
+    private function baseInstitucionAnioQuery(int $institucionId, int $anioId)
+    {
+        return DB::table('plandeestudios as pe')
+            ->join('carreras as c', 'c.id', '=', 'pe.carreras_id')
+            ->where('c.instituciones_id', '=', $institucionId)
+            ->where('pe.anio_id', '=', $anioId);
     }
     //#endregion Fin Controller de Crud PHP de plandeestudios
 }

@@ -416,6 +416,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration
     Route::get('/plandeestudios', [PlandeestudiosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::get('/plandeestudios/{id}', [PlandeestudiosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::post('/plandeestudios', [PlandeestudiosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    Route::post('/plandeestudios/clonar-gestion', [PlandeestudiosController::class, 'cloneGestion'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
     Route::put('/plandeestudios/{id}', [PlandeestudiosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::delete('/plandeestudios/{id}', [PlandeestudiosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
 
