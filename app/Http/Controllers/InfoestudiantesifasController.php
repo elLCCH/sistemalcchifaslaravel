@@ -273,23 +273,30 @@ class InfoestudiantesifasController extends Controller
         return (int) $request->input('instituciones_id', 0);
     }
 
-    private function getAnioFromFecha(?string $fecha): int
+    private function getPeriodoInscripcionFromFecha(?string $fecha): array
     {
         try {
-            return Carbon::parse($fecha ?: Carbon::now()->toDateString())->year;
+            $dt = Carbon::parse($fecha ?: Carbon::now()->toDateString());
         } catch (\Throwable $e) {
-            return Carbon::now()->year;
+            $dt = Carbon::now();
         }
+
+        return [
+            'anio' => (int) $dt->year,
+            'mes' => (int) $dt->month,
+            'periodo' => $dt->format('Y-m'),
+        ];
     }
 
-    private function existeInscripcionMismaInstMismoAnio(int $estudianteId, int $institucionId, int $anio, ?int $ignoreId = null): ?array
+    private function existeInscripcionMismaInstMismoMes(int $estudianteId, int $institucionId, int $anio, int $mes, ?int $ignoreId = null): ?array
     {
-        if ($estudianteId <= 0 || $institucionId <= 0 || $anio <= 0) return null;
+        if ($estudianteId <= 0 || $institucionId <= 0 || $anio <= 0 || $mes <= 0 || $mes > 12) return null;
 
         $q = Infoestudiantesifas::query()
             ->where('estudiantesifas_id', $estudianteId)
             ->where('instituciones_id', $institucionId)
-            ->whereRaw('YEAR(COALESCE(FechInsc, created_at)) = ?', [$anio]);
+            ->whereRaw('YEAR(COALESCE(FechInsc, created_at)) = ?', [$anio])
+            ->whereRaw('MONTH(COALESCE(FechInsc, created_at)) = ?', [$mes]);
 
         if ($ignoreId) {
             $q->where('id', '<>', $ignoreId);
@@ -301,6 +308,8 @@ class InfoestudiantesifasController extends Controller
         return [
             'id' => (int) $row->id,
             'FechInsc' => $row->FechInsc,
+            'anio' => (int) Carbon::parse($row->FechInsc ?: $row->created_at)->year,
+            'mes' => (int) Carbon::parse($row->FechInsc ?: $row->created_at)->month,
             'instituciones_id' => (int) $row->instituciones_id,
             'estudiantesifas_id' => (int) $row->estudiantesifas_id,
         ];
@@ -1827,16 +1836,25 @@ class InfoestudiantesifasController extends Controller
             return $resp;
         }
 
-        $anio = Carbon::now()->year;
+        $periodoInscripcion = $this->getPeriodoInscripcionFromFecha($data['FechInsc'] ?? null);
         $force = filter_var($request->query('force', $request->input('force', '0')), FILTER_VALIDATE_BOOLEAN);
 
-        $dup = $this->existeInscripcionMismaInstMismoAnio((int) $data['estudiantesifas_id'], $institucionId, $anio, null);
+        $dup = $this->existeInscripcionMismaInstMismoMes(
+            (int) $data['estudiantesifas_id'],
+            $institucionId,
+            (int) $periodoInscripcion['anio'],
+            (int) $periodoInscripcion['mes'],
+            null
+        );
         if ($dup && !$force) {
             return response()->json([
-                'message' => 'Ya existe una inscripción de este estudiante en esta institución en la gestión actual.',
+                'message' => 'Ya existe una inscripción de este estudiante en esta institución para el mismo mes.',
                 'requires_confirmation' => true,
                 'duplicate' => $dup,
-                'anio' => $anio,
+                'anio' => (int) $periodoInscripcion['anio'],
+                'mes' => (int) $periodoInscripcion['mes'],
+                'periodo' => (string) $periodoInscripcion['periodo'],
+                'requested_data' => $request->all(),
             ], 409);
         }
 
@@ -1897,20 +1915,30 @@ class InfoestudiantesifasController extends Controller
 
         $estudianteId = (int) ($payload['estudiantesifas_id'] ?? $row->estudiantesifas_id);
         $instId = (int) ($payload['instituciones_id'] ?? $row->instituciones_id);
-        $anio = Carbon::now()->year;
+        $fechaInscripcion = $payload['FechInsc'] ?? $row->FechInsc ?? ($row->created_at ? (string) $row->created_at : null);
+        $periodoInscripcion = $this->getPeriodoInscripcionFromFecha($fechaInscripcion);
 
         if ($resp = $this->validarDocentesMismaInstitucion($payload, $instId)) {
             return $resp;
         }
 
         $force = filter_var($request->query('force', $request->input('force', '0')), FILTER_VALIDATE_BOOLEAN);
-        $dup = $this->existeInscripcionMismaInstMismoAnio($estudianteId, $instId, $anio, (int) $row->id);
+        $dup = $this->existeInscripcionMismaInstMismoMes(
+            $estudianteId,
+            $instId,
+            (int) $periodoInscripcion['anio'],
+            (int) $periodoInscripcion['mes'],
+            (int) $row->id
+        );
         if ($dup && !$force) {
             return response()->json([
-                'message' => 'Ya existe una inscripción de este estudiante en esta institución en la gestión actual.',
+                'message' => 'Ya existe una inscripción de este estudiante en esta institución para el mismo mes.',
                 'requires_confirmation' => true,
                 'duplicate' => $dup,
-                'anio' => $anio,
+                'anio' => (int) $periodoInscripcion['anio'],
+                'mes' => (int) $periodoInscripcion['mes'],
+                'periodo' => (string) $periodoInscripcion['periodo'],
+                'requested_data' => $request->all(),
             ], 409);
         }
 
