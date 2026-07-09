@@ -179,7 +179,7 @@ class PublicHorariosController extends Controller
                 'ie.id as infoestudiante_id',
                 'e.id as estudiante_id',
                 DB::raw("CONCAT(COALESCE(e.Ap_Paterno, ''), ' ', COALESCE(e.Ap_Materno, ''), ' ', COALESCE(e.Nombre, '')) as Estudiante"),
-                'e.CI',
+                'e.CI','e.Sexo',
                 'pe.LvlCurso',
                 'm.Paralelo',
                 'm.Turno',
