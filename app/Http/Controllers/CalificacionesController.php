@@ -38,6 +38,59 @@ class CalificacionesController extends Controller
         return !empty($user) && ($user instanceof Planteldocentes);
     }
 
+    private function normalizeBulkString($value): string
+    {
+        return trim((string) ($value ?? ''));
+    }
+
+    private function normalizeBulkMateriaIds($raw): array
+    {
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $ids = array_map(fn ($id) => (int) $id, $raw);
+        $ids = array_values(array_unique(array_filter($ids, fn ($id) => $id > 0)));
+        sort($ids);
+
+        return $ids;
+    }
+
+    private function baseMateriasBulkQuery(int $institucionId, array $filters = [])
+    {
+        $query = Materias::query()
+            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
+            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
+            ->where('carreras.instituciones_id', $institucionId);
+
+        $anioId = (int) ($filters['anio_id'] ?? 0);
+        if ($anioId > 0) {
+            $query->where('plandeestudios.anio_id', $anioId);
+        }
+
+        $resolucion = $this->normalizeBulkString($filters['resolucion'] ?? null);
+        if ($resolucion !== '') {
+            $query->whereRaw("TRIM(COALESCE(carreras.Resolucion, '')) = ?", [$resolucion]);
+        }
+
+        $nivel = $this->normalizeBulkString($filters['nivel'] ?? null);
+        if ($nivel !== '') {
+            $query->whereRaw("TRIM(COALESCE(carreras.Nivel, '')) = ?", [$nivel]);
+        }
+
+        $curso = $this->normalizeBulkString($filters['curso'] ?? null);
+        if ($curso !== '') {
+            $query->whereRaw("TRIM(COALESCE(plandeestudios.LvlCurso, '')) = ?", [$curso]);
+        }
+
+        $materiasIds = $this->normalizeBulkMateriaIds($filters['materias_ids'] ?? []);
+        if (count($materiasIds) > 0) {
+            $query->whereIn('materias.id', $materiasIds);
+        }
+
+        return $query;
+    }
+
     private function ensureDocenteAsignado($user, int $materiaId): void
     {
         if (!$this->isDocenteUser($user)) return;
@@ -1448,6 +1501,11 @@ class CalificacionesController extends Controller
             'infoestudiantesifas_id' => ['required', 'integer'],
             'curso' => ['required', 'string', 'max:60'],
             'paralelo' => ['nullable', 'string', 'max:20'],
+            'anio_id' => ['nullable', 'integer'],
+            'resolucion' => ['nullable', 'string', 'max:50'],
+            'nivel' => ['nullable', 'string', 'max:50'],
+            'materias_ids' => ['nullable', 'array', 'max:1000'],
+            'materias_ids.*' => ['integer'],
             'forzar' => ['sometimes', 'boolean'],
             'EstadoRegistroMateria' => ['nullable', 'string', 'max:50'],
         ]);
@@ -1477,11 +1535,13 @@ class CalificacionesController extends Controller
 
         $paralelo = trim((string) ($validated['paralelo'] ?? ''));
 
-        $materiasQuery = Materias::query()
-            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
-            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('carreras.instituciones_id', $infoInstitucionId)
-            ->where('plandeestudios.LvlCurso', $curso)
+        $materiasQuery = $this->baseMateriasBulkQuery($infoInstitucionId, [
+            'anio_id' => $validated['anio_id'] ?? null,
+            'resolucion' => $validated['resolucion'] ?? null,
+            'nivel' => $validated['nivel'] ?? null,
+            'curso' => $curso,
+            'materias_ids' => $validated['materias_ids'] ?? [],
+        ])
             ->select(['materias.id', 'materias.Paralelo']);
 
         if ($paralelo !== '') {
@@ -1560,6 +1620,11 @@ class CalificacionesController extends Controller
             'infoestudiantesifas_id' => ['required', 'integer'],
             'curso' => ['required', 'string', 'max:60'],
             'paralelo' => ['nullable', 'string', 'max:20'],
+            'anio_id' => ['nullable', 'integer'],
+            'resolucion' => ['nullable', 'string', 'max:50'],
+            'nivel' => ['nullable', 'string', 'max:50'],
+            'materias_ids' => ['nullable', 'array', 'max:1000'],
+            'materias_ids.*' => ['integer'],
             'forzar' => ['sometimes', 'boolean'],
         ]);
 
@@ -1588,11 +1653,13 @@ class CalificacionesController extends Controller
 
         $paralelo = trim((string) ($validated['paralelo'] ?? ''));
 
-        $materiasQuery = Materias::query()
-            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
-            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('carreras.instituciones_id', $infoInstitucionId)
-            ->where('plandeestudios.LvlCurso', $curso)
+        $materiasQuery = $this->baseMateriasBulkQuery($infoInstitucionId, [
+            'anio_id' => $validated['anio_id'] ?? null,
+            'resolucion' => $validated['resolucion'] ?? null,
+            'nivel' => $validated['nivel'] ?? null,
+            'curso' => $curso,
+            'materias_ids' => $validated['materias_ids'] ?? [],
+        ])
             ->select(['materias.id', 'materias.Paralelo']);
 
         if ($paralelo !== '') {
@@ -1648,6 +1715,9 @@ class CalificacionesController extends Controller
             'infoestudiantesifas_id' => ['required', 'integer'],
             'anio_id' => ['required', 'integer'],
             'resolucion' => ['required', 'string', 'max:50'],
+            'nivel' => ['nullable', 'string', 'max:50'],
+            'materias_ids' => ['nullable', 'array', 'max:1000'],
+            'materias_ids.*' => ['integer'],
             'EstadoRegistroMateria' => ['nullable', 'string', 'max:50'],
         ]);
 
@@ -1673,12 +1743,12 @@ class CalificacionesController extends Controller
             return response()->json(['message' => 'Año o Resolución no definidos para asignación masiva'], 422);
         }
 
-        $materiasIds = Materias::query()
-            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
-            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('carreras.instituciones_id', $infoInstitucionId)
-            ->where('plandeestudios.anio_id', $anioId)
-            ->where('carreras.Resolucion', $resolucion)
+        $materiasIds = $this->baseMateriasBulkQuery($infoInstitucionId, [
+            'anio_id' => $anioId,
+            'resolucion' => $resolucion,
+            'nivel' => $validated['nivel'] ?? null,
+            'materias_ids' => $validated['materias_ids'] ?? [],
+        ])
             ->pluck('materias.id')
             ->values();
 
@@ -1749,6 +1819,9 @@ class CalificacionesController extends Controller
             'infoestudiantesifas_id' => ['required', 'integer'],
             'anio_id' => ['required', 'integer'],
             'resolucion' => ['required', 'string', 'max:50'],
+            'nivel' => ['nullable', 'string', 'max:50'],
+            'materias_ids' => ['nullable', 'array', 'max:1000'],
+            'materias_ids.*' => ['integer'],
         ]);
 
         $info = Infoestudiantesifas::query()
@@ -1773,12 +1846,12 @@ class CalificacionesController extends Controller
             return response()->json(['message' => 'Año o Resolución no definidos para desasignación masiva'], 422);
         }
 
-        $materiasIds = Materias::query()
-            ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
-            ->join('carreras', 'plandeestudios.carreras_id', '=', 'carreras.id')
-            ->where('carreras.instituciones_id', $infoInstitucionId)
-            ->where('plandeestudios.anio_id', $anioId)
-            ->where('carreras.Resolucion', $resolucion)
+        $materiasIds = $this->baseMateriasBulkQuery($infoInstitucionId, [
+            'anio_id' => $anioId,
+            'resolucion' => $resolucion,
+            'nivel' => $validated['nivel'] ?? null,
+            'materias_ids' => $validated['materias_ids'] ?? [],
+        ])
             ->pluck('materias.id')
             ->values();
 

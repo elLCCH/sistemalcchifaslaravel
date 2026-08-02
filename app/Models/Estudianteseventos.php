@@ -26,8 +26,19 @@ class Estudianteseventos extends Model
         'ComprobantePago',
         'EstadoPago',
         'EstadoInscripcion',
+        'Especialidad',
+        'Categoria',
         'CertificadoPdf',
         'CertificadoGeneradoAt',
         'Observacion',
+        'Foto',
+        'FechaNac',
+        'Edad',
+        'Tutor',
+        'CelularTutor',
+        'Departamento',
+        'NombreInstitucion',
+        'CertificadoNacimiento',
+
     ];
 }

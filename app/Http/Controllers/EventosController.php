@@ -82,6 +82,12 @@ class EventosController extends BaseController
         if (array_key_exists('diseniocertificadopdfs_id', $data) && ($data['diseniocertificadopdfs_id'] === '' || $data['diseniocertificadopdfs_id'] === 0 || $data['diseniocertificadopdfs_id'] === '0')) {
             $data['diseniocertificadopdfs_id'] = null;
         }
+        if (!isset($data['Especialidades']) || $data['Especialidades'] === null) {
+            $data['Especialidades'] = '';
+        }
+        if (!isset($data['Columnas']) || $data['Columnas'] === null) {
+            $data['Columnas'] = '';
+        }
         if (!isset($data['CertificadoConfig']) || $data['CertificadoConfig'] === null) {
             $data['CertificadoConfig'] = '';
         }
@@ -136,6 +142,12 @@ class EventosController extends BaseController
 
         if (array_key_exists('diseniocertificadopdfs_id', $data) && ($data['diseniocertificadopdfs_id'] === '' || $data['diseniocertificadopdfs_id'] === 0 || $data['diseniocertificadopdfs_id'] === '0')) {
             $data['diseniocertificadopdfs_id'] = null;
+        }
+        if (array_key_exists('Especialidades', $data) && $data['Especialidades'] === null) {
+            $data['Especialidades'] = '';
+        }
+        if (array_key_exists('Columnas', $data) && $data['Columnas'] === null) {
+            $data['Columnas'] = '';
         }
         if (array_key_exists('CertificadoConfig', $data) && $data['CertificadoConfig'] === null) {
             $data['CertificadoConfig'] = '';

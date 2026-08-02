@@ -21,6 +21,8 @@ class Eventos extends Model
         'Activo',
         'Requisitos',
         'Parametros',
+        'Especialidades',
+        'Columnas',
         'InputsEspecial',
         'TienePago',
         'Monto',

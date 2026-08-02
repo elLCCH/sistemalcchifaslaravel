@@ -19,6 +19,312 @@ class EstudianteseventosController extends BaseController
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
 
+    private function parseParametros($raw): ?array
+    {
+        if ($raw === null) return null;
+        $txt = trim((string) $raw);
+        if ($txt === '') return null;
+
+        try {
+            $decoded = json_decode($txt, true, 512, JSON_THROW_ON_ERROR);
+            return is_array($decoded) ? $decoded : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function parseSchema($raw): ?array
+    {
+        if ($raw === null) return null;
+        $txt = trim((string) $raw);
+        if ($txt === '') return null;
+
+        try {
+            $decoded = json_decode($txt, true, 512, JSON_THROW_ON_ERROR);
+            return is_array($decoded) ? $decoded : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function eventoCategorias(?Eventos $evento): array
+    {
+        $parametros = $this->parseParametros($evento?->Parametros ?? null);
+        if (!$parametros) return [];
+
+        $rawCategorias = $parametros['categorias'] ?? $parametros['Categorias'] ?? [];
+        if (!is_array($rawCategorias)) return [];
+
+        $items = [];
+        $seen = [];
+        foreach ($rawCategorias as $row) {
+            if (!is_array($row)) continue;
+
+            $categoria = trim((string) ($row['Categoria'] ?? $row['categoria'] ?? ''));
+            if ($categoria === '') continue;
+
+            $key = mb_strtoupper($categoria, 'UTF-8');
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+
+            $items[] = [
+                'Categoria' => $categoria,
+                'Edades' => trim((string) ($row['Edades'] ?? $row['edades'] ?? '')),
+                'Descripcion' => trim((string) ($row['Descripcion'] ?? $row['descripcion'] ?? '')),
+            ];
+        }
+
+        return $items;
+    }
+
+    private function eventoEspecialidades(?Eventos $evento): array
+    {
+        $especialidades = $this->parseParametros($evento?->Especialidades ?? null);
+        if (!$especialidades) return [];
+
+        $rawEspecialidades = $especialidades['especialidades'] ?? $especialidades['Especialidades'] ?? [];
+        if (!is_array($rawEspecialidades)) return [];
+
+        $items = [];
+        $seen = [];
+        foreach ($rawEspecialidades as $row) {
+            if (!is_array($row)) continue;
+
+            $especialidad = trim((string) ($row['Especialidad'] ?? $row['especialidad'] ?? ''));
+            if ($especialidad === '') continue;
+
+            $key = mb_strtoupper($especialidad, 'UTF-8');
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+
+            $items[] = [
+                'Especialidad' => $especialidad,
+                'Detalle' => trim((string) ($row['Detalle'] ?? $row['detalle'] ?? '')),
+                'Dependencia' => trim((string) ($row['Dependencia'] ?? $row['dependencia'] ?? 'DEPENDIENTE')),
+            ];
+        }
+
+        return $items;
+    }
+
+    private function schemaSlug($value): string
+    {
+        $value = trim((string) $value);
+        if ($value === '') return '';
+
+        if (class_exists('\Normalizer')) {
+            $normalized = \Normalizer::normalize($value, \Normalizer::FORM_D);
+            if (is_string($normalized)) {
+                $value = preg_replace('/\pM/u', '', $normalized) ?? $value;
+            }
+        }
+
+        $value = mb_strtolower($value, 'UTF-8');
+        $value = preg_replace('/[^a-z0-9]+/u', '_', $value) ?? $value;
+
+        return trim($value, '_');
+    }
+
+    private function eventoColumnas(?Eventos $evento): array
+    {
+        $columnas = $this->parseParametros($evento?->Columnas ?? null);
+        if (!$columnas) return [];
+
+        $rawColumnas = $columnas['columnas'] ?? $columnas['Columnas'] ?? [];
+        if (!is_array($rawColumnas)) return [];
+
+        $items = [];
+        $seen = [];
+        foreach ($rawColumnas as $index => $row) {
+            if (!is_array($row)) continue;
+
+            $title = trim((string) ($row['Titulo'] ?? $row['titulo'] ?? ''));
+            if ($title === '') continue;
+
+            $key = $this->schemaSlug($title);
+            if ($key === '') $key = 'col_' . ($index + 1);
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+
+            $type = trim((string) ($row['Tipo'] ?? $row['tipo'] ?? 'text'));
+            if ($type !== 'number' && $type !== 'date') $type = 'text';
+
+            $items[] = [
+                'Titulo' => $title,
+                'Tipo' => $type,
+                'key' => $key,
+            ];
+        }
+
+        return $items;
+    }
+
+    private function requiredKeysForField(array $field, array $columnas): array
+    {
+        $key = trim((string) ($field['key'] ?? ''));
+        if ($key === '' || empty($field['required'])) return [];
+        if (count($columnas) === 0) return [$key];
+
+        $required = [$key];
+        foreach ($columnas as $index => $columna) {
+            if ($index === 0) continue;
+            $columnKey = trim((string) ($columna['key'] ?? ''));
+            if ($columnKey === '') continue;
+            $required[] = $key . '__' . $columnKey;
+        }
+
+        return $required;
+    }
+
+    private function validarCategoriaParaEvento(?Eventos $evento, $categoriaSeleccionada): array
+    {
+        $categoriaSeleccionada = trim((string) ($categoriaSeleccionada ?? ''));
+        $categorias = $this->eventoCategorias($evento);
+
+        if (count($categorias) === 0) {
+            return ['ok' => true, 'value' => $categoriaSeleccionada];
+        }
+
+        if ($categoriaSeleccionada === '') {
+            return ['ok' => false, 'error' => 'Seleccione una categoría válida para el evento'];
+        }
+
+        foreach ($categorias as $item) {
+            if (mb_strtoupper((string) $item['Categoria'], 'UTF-8') === mb_strtoupper($categoriaSeleccionada, 'UTF-8')) {
+                return ['ok' => true, 'value' => $item['Categoria']];
+            }
+        }
+
+        return ['ok' => false, 'error' => 'La categoría seleccionada no pertenece al evento'];
+    }
+
+    private function validarEspecialidadParaEvento(?Eventos $evento, $especialidadSeleccionada): array
+    {
+        $especialidadSeleccionada = trim((string) ($especialidadSeleccionada ?? ''));
+        $especialidades = $this->eventoEspecialidades($evento);
+
+        if (count($especialidades) === 0) {
+            return ['ok' => true, 'value' => $especialidadSeleccionada];
+        }
+
+        if ($especialidadSeleccionada === '') {
+            return ['ok' => false, 'error' => 'Seleccione una especialidad válida para el evento'];
+        }
+
+        foreach ($especialidades as $item) {
+            if (mb_strtoupper((string) $item['Especialidad'], 'UTF-8') === mb_strtoupper($especialidadSeleccionada, 'UTF-8')) {
+                return ['ok' => true, 'value' => $item['Especialidad']];
+            }
+        }
+
+        return ['ok' => false, 'error' => 'La especialidad seleccionada no pertenece al evento'];
+    }
+
+    private function normalizeSchemaContext($raw): ?array
+    {
+        if (!is_array($raw)) return null;
+
+        $phases = $raw['phases'] ?? [];
+        if (is_array($phases) && count($phases) > 0) {
+            return ['mode' => 'phases', 'phases' => $phases];
+        }
+
+        $fields = $raw['fields'] ?? [];
+        if (is_array($fields) && count($fields) > 0) {
+            return ['mode' => 'simple', 'fields' => $fields];
+        }
+
+        return null;
+    }
+
+    private function schemaContextsForSelection(?array $schema, string $categoria, string $especialidad): array
+    {
+        if (!$schema) return [];
+
+        $isV2 = isset($schema['general']) || isset($schema['categorias']) || isset($schema['especialidades']) || ((int) ($schema['version'] ?? 0) >= 2);
+        if (!$isV2) {
+            $legacy = $this->normalizeSchemaContext($schema);
+            return $legacy ? [$legacy] : [];
+        }
+
+        $contexts = [];
+        $general = $this->normalizeSchemaContext($schema['general'] ?? null);
+        if ($general) $contexts[] = $general;
+
+        if (!empty($schema['byCategorias']) && $categoria !== '') {
+            foreach (($schema['categorias'] ?? []) as $item) {
+                $name = trim((string) ($item['categoria'] ?? ''));
+                if ($name === '' || mb_strtoupper($name, 'UTF-8') !== mb_strtoupper($categoria, 'UTF-8')) continue;
+
+                $ctx = $this->normalizeSchemaContext($item['config'] ?? null);
+                if ($ctx) $contexts[] = $ctx;
+                break;
+            }
+        }
+
+        if (!empty($schema['byEspecialidades']) && $especialidad !== '') {
+            foreach (($schema['especialidades'] ?? []) as $item) {
+                $name = trim((string) ($item['especialidad'] ?? ''));
+                if ($name === '' || mb_strtoupper($name, 'UTF-8') !== mb_strtoupper($especialidad, 'UTF-8')) continue;
+
+                $ctx = $this->normalizeSchemaContext($item['config'] ?? null);
+                if ($ctx) $contexts[] = $ctx;
+                break;
+            }
+        }
+
+        return $contexts;
+    }
+
+    private function schemaRequiredKeysForSelection(?array $schema, string $categoria, string $especialidad, array $columnas = []): array
+    {
+        $required = [];
+        foreach ($this->schemaContextsForSelection($schema, $categoria, $especialidad) as $ctx) {
+            $phases = $ctx['phases'] ?? null;
+            if (is_array($phases) && count($phases) > 0) {
+                foreach ($phases as $phase) {
+                    $fields = $phase['fields'] ?? [];
+                    if (!is_array($fields)) continue;
+                    foreach ($fields as $field) {
+                        if (!is_array($field)) continue;
+                        foreach ($this->requiredKeysForField($field, $columnas) as $key) {
+                            $required[] = $key;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            $fields = $ctx['fields'] ?? [];
+            if (!is_array($fields)) continue;
+            foreach ($fields as $field) {
+                if (!is_array($field)) continue;
+                foreach ($this->requiredKeysForField($field, $columnas) as $key) {
+                    $required[] = $key;
+                }
+            }
+        }
+
+        return array_values(array_unique($required));
+    }
+
+    private function parseDatosEspeciales($raw, ?bool &$invalid = false): array
+    {
+        $invalid = false;
+        if (is_array($raw)) return $raw;
+
+        $txt = trim((string) ($raw ?? ''));
+        if ($txt === '') return [];
+
+        try {
+            $decoded = json_decode($txt, true, 512, JSON_THROW_ON_ERROR);
+            return is_array($decoded) ? $decoded : [];
+        } catch (\Throwable $e) {
+            $invalid = true;
+            return [];
+        }
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -78,17 +384,63 @@ class EstudianteseventosController extends BaseController
         if (($data['TienePago'] ?? 0) == 0) {
             $data['Monto'] = null;
             $data['MetodoPago'] = '';
-            $data['FechaPago'] = '';
+            $data['FechaPago'] = null;
             $data['ComprobantePago'] = '';
             $data['EstadoPago'] = 'NO_APLICA';
         } else {
             if (!isset($data['EstadoPago']) || $data['EstadoPago'] === '') $data['EstadoPago'] = 'PENDIENTE';
             if (array_key_exists('Monto', $data) && $data['Monto'] === '') $data['Monto'] = null;
+            if (array_key_exists('FechaPago', $data) && $data['FechaPago'] === '') $data['FechaPago'] = null;
         }
 
         // Evitar duplicados simples por evento + carnet (si viene)
         $carnet = trim((string) ($data['Carnet'] ?? ''));
         $eventoId = (int) ($data['eventos_id'] ?? 0);
+
+        $evento = Eventos::query()
+            ->where('id', '=', $eventoId)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', (int) $user->instituciones_id);
+            })
+            ->first();
+
+        if (!$evento) {
+            return response()->json(['error' => 'Evento no válido'], 422);
+        }
+
+        $categoriaValidada = $this->validarCategoriaParaEvento($evento, $data['Categoria'] ?? '');
+        if (!($categoriaValidada['ok'] ?? false)) {
+            return response()->json(['error' => $categoriaValidada['error'] ?? 'Categoría inválida'], 422);
+        }
+        $data['Categoria'] = $categoriaValidada['value'] ?? '';
+
+        $especialidadValidada = $this->validarEspecialidadParaEvento($evento, $data['Especialidad'] ?? '');
+        if (!($especialidadValidada['ok'] ?? false)) {
+            return response()->json(['error' => $especialidadValidada['error'] ?? 'Especialidad inválida'], 422);
+        }
+        $data['Especialidad'] = $especialidadValidada['value'] ?? '';
+
+        $datosInvalidos = false;
+        $datosEspeciales = $this->parseDatosEspeciales($data['DatosEspeciales'] ?? null, $datosInvalidos);
+        if ($datosInvalidos) {
+            return response()->json(['error' => 'DatosEspeciales JSON inválido'], 422);
+        }
+
+        $requiredKeys = $this->schemaRequiredKeysForSelection(
+            $this->parseSchema($evento->InputsEspecial ?? null),
+            (string) $data['Categoria'],
+            (string) $data['Especialidad'],
+            $this->eventoColumnas($evento)
+        );
+        foreach ($requiredKeys as $key) {
+            $value = trim((string) ($datosEspeciales[$key] ?? ''));
+            if ($value === '') {
+                return response()->json(['error' => 'Falta completar: ' . $key], 422);
+            }
+        }
+
+        $data['DatosEspeciales'] = json_encode($datosEspeciales, JSON_UNESCAPED_UNICODE);
+
         if ($eventoId > 0 && $carnet !== '') {
             $exists = Estudianteseventos::query()
                 ->where('eventos_id', $eventoId)
@@ -142,14 +494,59 @@ class EstudianteseventosController extends BaseController
             $data['instituciones_id'] = (int) $user->instituciones_id;
         }
 
+        $eventoId = (int) ($data['eventos_id'] ?? $row->eventos_id ?? 0);
+        $evento = Eventos::query()
+            ->where('id', '=', $eventoId)
+            ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
+                $q->where('instituciones_id', (int) $user->instituciones_id);
+            })
+            ->first();
+
+        if (!$evento) {
+            return response()->json(['error' => 'Evento no válido'], 422);
+        }
+
+        $categoriaValidada = $this->validarCategoriaParaEvento($evento, $data['Categoria'] ?? $row->Categoria ?? '');
+        if (!($categoriaValidada['ok'] ?? false)) {
+            return response()->json(['error' => $categoriaValidada['error'] ?? 'Categoría inválida'], 422);
+        }
+        $data['Categoria'] = $categoriaValidada['value'] ?? '';
+
+        $especialidadValidada = $this->validarEspecialidadParaEvento($evento, $data['Especialidad'] ?? $row->Especialidad ?? '');
+        if (!($especialidadValidada['ok'] ?? false)) {
+            return response()->json(['error' => $especialidadValidada['error'] ?? 'Especialidad inválida'], 422);
+        }
+        $data['Especialidad'] = $especialidadValidada['value'] ?? '';
+
+        $datosInvalidos = false;
+        $datosEspeciales = $this->parseDatosEspeciales($data['DatosEspeciales'] ?? $row->DatosEspeciales ?? null, $datosInvalidos);
+        if ($datosInvalidos) {
+            return response()->json(['error' => 'DatosEspeciales JSON inválido'], 422);
+        }
+
+        $requiredKeys = $this->schemaRequiredKeysForSelection(
+            $this->parseSchema($evento->InputsEspecial ?? null),
+            (string) $data['Categoria'],
+            (string) $data['Especialidad'],
+            $this->eventoColumnas($evento)
+        );
+        foreach ($requiredKeys as $key) {
+            $value = trim((string) ($datosEspeciales[$key] ?? ''));
+            if ($value === '') {
+                return response()->json(['error' => 'Falta completar: ' . $key], 422);
+            }
+        }
+        $data['DatosEspeciales'] = json_encode($datosEspeciales, JSON_UNESCAPED_UNICODE);
+
         if (array_key_exists('TienePago', $data) && ($data['TienePago'] == 0 || $data['TienePago'] === '0' || $data['TienePago'] === false)) {
             $data['Monto'] = null;
             $data['MetodoPago'] = '';
-            $data['FechaPago'] = '';
+            $data['FechaPago'] = null;
             $data['ComprobantePago'] = '';
             $data['EstadoPago'] = 'NO_APLICA';
         } else {
             if (array_key_exists('Monto', $data) && $data['Monto'] === '') $data['Monto'] = null;
+            if (array_key_exists('FechaPago', $data) && $data['FechaPago'] === '') $data['FechaPago'] = null;
             if (array_key_exists('EstadoPago', $data) && ($data['EstadoPago'] === '' || $data['EstadoPago'] === null)) {
                 $data['EstadoPago'] = 'PENDIENTE';
             }

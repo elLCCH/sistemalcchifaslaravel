@@ -58,7 +58,12 @@ class FileUploadController extends Controller
             case 'iniciospublicaciones':
                 $path = 'archivos/compartidosifas/inicios/publicaciones';
                 break;
-
+            case 'FotoParticipantes':
+                $path = 'lafotogracioneventos/fotosparticipantes';
+                break;
+            case 'ComprobantePago':
+                $path = 'archivos/compartidosifas/comprobantespago';
+                break;
             case 'inicioshorarios':
                 // Horarios públicos por institución (PDF o imagen)
                 $ext = strtolower((string) $file->getClientOriginalExtension());

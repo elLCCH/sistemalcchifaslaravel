@@ -28,9 +28,10 @@ CREATE TABLE `eventos` (
   `instituciones_id` INT UNSIGNED NULL,
 
   `Anio` INT NULL,
-  `NombreEvento` VARCHAR(255) NOT NULL,
+  `NombreEvento` VARCHAR(150) NOT NULL,
   `Descripcion` TEXT NULL,
   `Lugar` VARCHAR(255) NULL,
+  `Banner` VARCHAR(150) NULL,
   `FechaInicio` DATE NULL,
   `FechaFin` DATE NULL,
 
@@ -40,6 +41,9 @@ CREATE TABLE `eventos` (
 
   `Requisitos` TEXT NULL,
   `Parametros` LONGTEXT NULL,              -- JSON opcional
+  
+  `Especialidades` LONGTEXT NULL,              -- JSON opcional
+  `Columnas` LONGTEXT NULL,              -- JSON opcional
   `InputsEspecial` LONGTEXT NULL,          -- JSON schema dinámico
 
   `TienePago` TINYINT(1) NOT NULL DEFAULT 0,
@@ -50,6 +54,7 @@ CREATE TABLE `eventos` (
   `CertificadoConfig` LONGTEXT NULL,       -- JSON (posiciones/override por evento)
 
   `Observacion` TEXT NULL,
+
 
   `created_at` DATETIME NULL,
   `updated_at` DATETIME NULL,
@@ -85,18 +90,31 @@ CREATE TABLE `estudianteseventos` (
   `Carnet` VARCHAR(40) NOT NULL,
   `Celular` VARCHAR(30) NULL,
   `Correo` VARCHAR(120) NULL,
+  `CertificadoNacimiento` VARCHAR(255) NULL, 
 
   `DatosEspeciales` LONGTEXT NULL,         -- JSON (respuestas a InputsEspecial)
 
   `TienePago` TINYINT(1) NOT NULL DEFAULT 0,
-  `Monto` DECIMAL(12,2) NULL,
+  `Monto` INT NULL,
   `MetodoPago` VARCHAR(100) NULL,
-  `FechaPago` DATE NULL,
+  `FechaPago` DATETIME NULL,
   `ComprobantePago` VARCHAR(255) NULL,     -- ruta/URL
   `EstadoPago` VARCHAR(20) NOT NULL DEFAULT 'NO_APLICA',
 
   `EstadoInscripcion` VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
   `Observacion` TEXT NULL,
+  `Especialidad` VARCHAR(150) NULL,
+  `Categoria` VARCHAR(150) NULL,
+  `FechaNac` DATE NULL,
+  `Edad` INT NULL,
+  `Foto` VARCHAR(400) NULL,
+  `Tutor` VARCHAR(150) NULL,
+  `CelularTutor` VARCHAR(30) NULL,
+  `Departamento` VARCHAR(18) NULL, 
+  `NombreInstitución` VARCHAR(150) NULL,
+  
+
+
 
   `CertificadoPdf` VARCHAR(255) NULL,      -- ruta relativa en /public del certificado generado
   `CertificadoGeneradoAt` DATETIME NULL,
@@ -114,10 +132,11 @@ CREATE TABLE `estudianteseventos` (
 
   UNIQUE KEY `uk_est_ev_evento_carnet_inst` (`eventos_id`, `Carnet`, `instituciones_id`),
 
-  CONSTRAINT `fk_est_ev_evento` FOREIGN KEY (`eventos_id`)
-    REFERENCES `eventos` (`id`)
-    ON UPDATE CASCADE
-    ON DELETE CASCADE
+  CONSTRAINT `fk_est_ev_evento`
+  FOREIGN KEY (`eventos_id`)
+  REFERENCES `eventos` (`id`)
+  ON UPDATE CASCADE
+  ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 

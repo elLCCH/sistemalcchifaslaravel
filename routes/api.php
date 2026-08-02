@@ -35,6 +35,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TokenController;
 use App\Http\Controllers\RegistroCalificacionesController;
 use App\Http\Controllers\FileUploadController;
+use App\Http\Controllers\FileUploadPublicoController;
 use App\Http\Controllers\CaptureSessionController;
 use App\Http\Controllers\CapturePairingController;
 use App\Http\Controllers\InfoauditoriaController;
@@ -576,7 +577,10 @@ Route::prefix('public')->group(function () {
     Route::get('/eventos', [PublicEventosController::class, 'index']);
     Route::get('/eventos/{id}', [PublicEventosController::class, 'show']);
     Route::post('/eventos/{eventoId}/inscripcion', [PublicEventosController::class, 'inscribir']);
-
+    Route::post('/subicionpublico', [FileUploadPublicoController::class, 'subicionpublico'])
+        ->withoutMiddleware(['auth:sanctum']);
+    Route::post('/eliminacionpublico', [FileUploadPublicoController::class, 'eliminacionpublico'])
+        ->withoutMiddleware(['auth:sanctum']);
     // Horarios (tabla inicios, categoria=HORARIO)
     Route::get('/horarios', [IniciosController::class, 'horariosPublicos']);
 });
