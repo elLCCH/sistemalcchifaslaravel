@@ -111,7 +111,7 @@ CREATE TABLE `estudianteseventos` (
   `Tutor` VARCHAR(150) NULL,
   `CelularTutor` VARCHAR(30) NULL,
   `Departamento` VARCHAR(18) NULL, 
-  `NombreInstitución` VARCHAR(150) NULL,
+  `NombreInstitucion` VARCHAR(150) NULL,
   
 
 
