@@ -6,6 +6,7 @@ use App\Models\Eventos;
 use App\Models\Estudianteseventos;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
+use Illuminate\Support\Facades\Http;
 
 class PublicEventosController extends BaseController
 {
@@ -351,6 +352,16 @@ class PublicEventosController extends BaseController
 
         $data = $request->all();
 
+        $recaptchaToken = trim((string) ($data['RecaptchaToken'] ?? ''));
+        if ($recaptchaToken === '') {
+            return response()->json(['error' => 'reCAPTCHA no válido'], 422);
+        }
+
+        $recaptchaResult = $this->verifyRecaptcha($recaptchaToken);
+        if (!$recaptchaResult['success']) {
+            return response()->json(['error' => $recaptchaResult['message'] ?? 'Error validando reCAPTCHA'], 422);
+        }
+
         $apP = trim((string) ($data['Ap_Paterno'] ?? ''));
         $apM = trim((string) ($data['Ap_Materno'] ?? ''));
         $nom = trim((string) ($data['Nombres'] ?? ''));
@@ -442,7 +453,7 @@ class PublicEventosController extends BaseController
             'Edad' => $edad > 0 ? $edad : null,
             'CelularTutor' => $celularTutor,
             'Departamento' => $departamento,
-            'NombreInstitución' => $nombreInstitucion,
+            'nombreInstitucion' => $nombreInstitucion,
             'CertificadoNacimiento' => $certificadoNacimiento,
         ];
 
@@ -463,5 +474,42 @@ class PublicEventosController extends BaseController
 
         $row = Estudianteseventos::create($insert);
         return response()->json(['data' => $row]);
+    }
+
+    private function verifyRecaptcha(string $token): array
+    {
+        $secret = env('RECAPTCHA_SECRET', '');
+        if ($secret === '') {
+            return ['success' => false, 'message' => 'No se configuró la clave reCAPTCHA en el servidor.'];
+        }
+
+        try {
+            $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+                'secret' => $secret,
+                'response' => $token,
+            ]);
+
+            if (!$response->successful()) {
+                return ['success' => false, 'message' => 'No se pudo conectar con el servicio reCAPTCHA.'];
+            }
+
+            $body = $response->json();
+            if (!is_array($body)) {
+                return ['success' => false, 'message' => 'Respuesta reCAPTCHA inválida.'];
+            }
+
+            if (!empty($body['success']) && $body['success'] == true) {
+                return ['success' => true];
+            }
+
+            $message = 'reCAPTCHA inválido.';
+            if (!empty($body['error-codes']) && is_array($body['error-codes'])) {
+                $message .= ' ' . implode(', ', $body['error-codes']);
+            }
+
+            return ['success' => false, 'message' => $message];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Error verificando reCAPTCHA: ' . $e->getMessage()];
+        }
     }
 }
