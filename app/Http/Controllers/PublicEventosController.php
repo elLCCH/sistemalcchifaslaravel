@@ -342,6 +342,7 @@ class PublicEventosController extends BaseController
         return array_values(array_unique($required));
     }
 
+    
     public function inscribir(int $eventoId, Request $request)
     {
         $evento = Eventos::query()
@@ -478,38 +479,50 @@ class PublicEventosController extends BaseController
 
     private function verifyRecaptcha(string $token): array
     {
-        $secret = env('RECAPTCHA_SECRET', '');
-        if ($secret === '') {
-            return ['success' => false, 'message' => 'No se configuró la clave reCAPTCHA en el servidor.'];
+        // Obtener la clave secreta desde el archivo .env
+        $secretKey = env('RECAPTCHA_SECRET_KEY');
+
+        if (!$secretKey) {
+            // Log de error interno para el administrador
+            // \Log::error('Falta configurar RECAPTCHA_SECRET_KEY en el archivo .env');
+            return [
+                'success' => false, 
+                'message' => 'Error de configuración del servidor. Contacte al administrador.'
+            ];
         }
 
         try {
+            // Hacemos la petición POST a Google
             $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-                'secret' => $secret,
+                'secret'   => $secretKey,
                 'response' => $token,
+                // Opcional: Puedes enviar la IP del usuario para mayor seguridad
+                // 'remoteip' => request()->ip() 
             ]);
 
-            if (!$response->successful()) {
-                return ['success' => false, 'message' => 'No se pudo conectar con el servicio reCAPTCHA.'];
-            }
+            $result = $response->json();
 
-            $body = $response->json();
-            if (!is_array($body)) {
-                return ['success' => false, 'message' => 'Respuesta reCAPTCHA inválida.'];
-            }
-
-            if (!empty($body['success']) && $body['success'] == true) {
+            // Verificamos si Google aprueba el token
+            if (isset($result['success']) && $result['success'] === true) {
                 return ['success' => true];
             }
 
-            $message = 'reCAPTCHA inválido.';
-            if (!empty($body['error-codes']) && is_array($body['error-codes'])) {
-                $message .= ' ' . implode(', ', $body['error-codes']);
-            }
+            // Si falla, podemos capturar los códigos de error que envía Google
+            $errorCodes = isset($result['error-codes']) ? implode(', ', $result['error-codes']) : 'Token inválido o expirado.';
+            // \Log::warning('Fallo verificación reCAPTCHA: ' . $errorCodes);
 
-            return ['success' => false, 'message' => $message];
+            return [
+                'success' => false,
+                'message' => 'Validación de seguridad fallida. Por favor, recargue la página e intente de nuevo.'
+            ];
+
         } catch (\Throwable $e) {
-            return ['success' => false, 'message' => 'Error verificando reCAPTCHA: ' . $e->getMessage()];
+            // Si hay un problema de red al contactar con Google
+            // \Log::error('Error de red al verificar reCAPTCHA: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'No se pudo contactar al servicio de verificación. Intente de nuevo más tarde.'
+            ];
         }
     }
 }
