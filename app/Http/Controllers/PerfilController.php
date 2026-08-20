@@ -18,6 +18,442 @@ class PerfilController extends Controller
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
 
+    // public function materias(Request $request)
+    // {
+    //     $user = $request->user();
+    //     if (!$user) {
+    //         return response()->json(['message' => 'No autenticado'], 401);
+    //     }
+
+    //     // Resolver año: parámetro explícito o predeterminado
+    //     $anioId = $request->query('anios_id');
+    //     if ($anioId !== null && $anioId !== '') {
+    //         $anioId = (int) $anioId;
+    //     } else {
+    //         $anioId = DB::table('anios')
+    //             ->where('Predeterminado', 'PREDETERMINADO')
+    //             ->orderByDesc('id')
+    //             ->value('id');
+    //     }
+
+    //     $modoInstrumentosEspecialidad = 'MODO INSTRUMENTOS DE ESPECIALIDAD';
+    //     $modoPracticaConjuntos = 'MODO PRÁCTICA DE CONJUNTOS';
+    //     $modoInstrumentoComplementario = 'MODO INSTRUMENTO COMPLEMENTARIO';
+
+    //     // 1 docente (si existe) por materia, para evitar duplicados en listados.
+    //     $docentePorMateria = DB::table('planteldocentesmaterias as pdm')
+    //         ->select([
+    //             'pdm.materias_id',
+    //             DB::raw('MIN(pdm.planteldocentes_id) as docente_id'),
+    //         ])
+    //         ->groupBy('pdm.materias_id');
+
+    //     // Resúmenes de docente(s) por materia, según inscripción, para los 3 modos especiales.
+    //     // Admin/Super: si hay 1 docente -> mostrarlo, si hay varios -> "VARIOS DOCENTES".
+    //     $resumenEspecialidad = DB::table('calificaciones as cal')
+    //         ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+    //         ->join('materias as m2', 'cal.materias_id', '=', 'm2.id')
+    //         ->join('plandeestudios as p2', 'm2.plandeestudios_id', '=', 'p2.id')
+    //         ->where('p2.ModoMateria', $modoInstrumentosEspecialidad)
+    //         ->whereNotNull('info.planteldocadmins_id')
+    //         ->select([
+    //             'cal.materias_id as materias_id',
+    //             DB::raw('COUNT(DISTINCT info.planteldocadmins_id) as docentes_distintos'),
+    //             DB::raw('MIN(info.planteldocadmins_id) as docente_id'),
+    //         ])
+    //         ->groupBy('cal.materias_id');
+
+    //     $resumenPracticaConjuntos = DB::table('calificaciones as cal')
+    //         ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+    //         ->join('materias as m2', 'cal.materias_id', '=', 'm2.id')
+    //         ->join('plandeestudios as p2', 'm2.plandeestudios_id', '=', 'p2.id')
+    //         ->where('p2.ModoMateria', $modoPracticaConjuntos)
+    //         ->whereNotNull('info.planteldocadmins_idPC')
+    //         ->select([
+    //             'cal.materias_id as materias_id',
+    //             DB::raw('COUNT(DISTINCT info.planteldocadmins_idPC) as docentes_distintos'),
+    //             DB::raw('MIN(info.planteldocadmins_idPC) as docente_id'),
+    //         ])
+    //         ->groupBy('cal.materias_id');
+
+    //     $resumenComplementario = DB::table('calificaciones as cal')
+    //         ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+    //         ->join('materias as m2', 'cal.materias_id', '=', 'm2.id')
+    //         ->join('plandeestudios as p2', 'm2.plandeestudios_id', '=', 'p2.id')
+    //         ->where('p2.ModoMateria', $modoInstrumentoComplementario)
+    //         ->whereNotNull('info.planteldocadmins_idOtros')
+    //         ->select([
+    //             'cal.materias_id as materias_id',
+    //             DB::raw('COUNT(DISTINCT info.planteldocadmins_idOtros) as docentes_distintos'),
+    //             DB::raw('MIN(info.planteldocadmins_idOtros) as docente_id'),
+    //         ])
+    //         ->groupBy('cal.materias_id');
+
+    //     if ($user instanceof Planteldocentes) {
+    //         // 1) Materias asignadas explícitamente al docente
+    //         $asignadas = DB::table('planteldocentesmaterias as pdm')
+    //             ->join('planteldocentes as d', 'pdm.planteldocentes_id', '=', 'd.id')
+    //             ->join('materias as m', 'pdm.materias_id', '=', 'm.id')
+    //             ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+    //             ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+    //             ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+    //             ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
+    //             ->where('pdm.planteldocentes_id', (int) $user->id)
+    //             ->where('c.instituciones_id', (int) $user->instituciones_id)
+    //             ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
+    //             ->select([
+    //                 'm.id as materia_id',
+    //                 'm.Paralelo as materia_paralelo',
+    //                 'm.Turno as materia_turno',
+    //                 'm.ModoAsistencia as materia_modo_asistencia',
+    //                 'm.EstadoHabilitacion as materia_estado_habilitacion',
+    //                 'm.EstadoEnvio as materia_estado_envio',
+    //                 'p.LvlCurso as lvl_curso',
+    //                 'p.NombreMateria as nombre_materia',
+    //                 'p.SiglaMateria as sigla_materia',
+    //                 'a.Anio as gestion',
+    //                 'c.NombreCarrera as carrera',
+    //                 'c.Resolucion as resolucion',
+    //                 DB::raw("TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) as docente_nombre"),
+    //                 'd.Foto as docente_foto',
+    //                 'd.id as docente_id',
+    //                 'i.id as instituciones_id',
+    //                 'i.Nombre as institucion_nombre',
+    //                 'i.Logo as institucion_logo',
+    //             ])
+    //             ->orderBy('a.Anio')
+    //             ->orderBy('p.RangoLvlCurso')
+    //             ->orderBy('p.Rango')
+    //             ->orderBy('p.NombreMateria')
+    //             ->get();
+
+    //         // 2) Materias especiales (no asignadas) donde tiene estudiantes por inscripción
+    //         $especialidad = DB::table('calificaciones as cal')
+    //             ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+    //             ->join('planteldocentes as d', 'info.planteldocadmins_id', '=', 'd.id')
+    //             ->join('materias as m', 'cal.materias_id', '=', 'm.id')
+    //             ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+    //             ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+    //             ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+    //             ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
+    //             ->where('info.planteldocadmins_id', (int) $user->id)
+    //             ->where('info.instituciones_id', (int) $user->instituciones_id)
+    //             ->where('c.instituciones_id', (int) $user->instituciones_id)
+    //             ->where('p.ModoMateria', $modoInstrumentosEspecialidad)
+    //             ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
+    //             ->distinct()
+    //             ->select([
+    //                 'm.id as materia_id',
+    //                 'm.Paralelo as materia_paralelo',
+    //                 'm.Turno as materia_turno',
+    //                 'm.ModoAsistencia as materia_modo_asistencia',
+    //                 'm.EstadoHabilitacion as materia_estado_habilitacion',
+    //                 'm.EstadoEnvio as materia_estado_envio',
+    //                 'p.LvlCurso as lvl_curso',
+    //                 'p.NombreMateria as nombre_materia',
+    //                 'p.SiglaMateria as sigla_materia',
+    //                 'a.Anio as gestion',
+    //                 'c.NombreCarrera as carrera',
+    //                 'c.Resolucion as resolucion',
+    //                 DB::raw("TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) as docente_nombre"),
+    //                 'd.Foto as docente_foto',
+    //                 'd.id as docente_id',
+    //                 'i.id as instituciones_id',
+    //                 'i.Nombre as institucion_nombre',
+    //                 'i.Logo as institucion_logo',
+    //             ])
+    //             ->orderBy('a.Anio')
+    //             ->orderBy('p.RangoLvlCurso')
+    //             ->orderBy('p.Rango')
+    //             ->orderBy('p.NombreMateria')
+    //             ->get();
+
+    //         $practica = DB::table('calificaciones as cal')
+    //             ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+    //             ->join('planteldocentes as d', 'info.planteldocadmins_idPC', '=', 'd.id')
+    //             ->join('materias as m', 'cal.materias_id', '=', 'm.id')
+    //             ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+    //             ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+    //             ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+    //             ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
+    //             ->where('info.planteldocadmins_idPC', (int) $user->id)
+    //             ->where('info.instituciones_id', (int) $user->instituciones_id)
+    //             ->where('c.instituciones_id', (int) $user->instituciones_id)
+    //             ->where('p.ModoMateria', $modoPracticaConjuntos)
+    //             ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
+    //             ->distinct()
+    //             ->select([
+    //                 'm.id as materia_id',
+    //                 'm.Paralelo as materia_paralelo',
+    //                 'm.Turno as materia_turno',
+    //                 'm.ModoAsistencia as materia_modo_asistencia',
+    //                 'm.EstadoHabilitacion as materia_estado_habilitacion',
+    //                 'm.EstadoEnvio as materia_estado_envio',
+    //                 'p.LvlCurso as lvl_curso',
+    //                 'p.NombreMateria as nombre_materia',
+    //                 'p.SiglaMateria as sigla_materia',
+    //                 'a.Anio as gestion',
+    //                 'c.NombreCarrera as carrera',
+    //                 'c.Resolucion as resolucion',
+    //                 DB::raw("TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) as docente_nombre"),
+    //                 'd.Foto as docente_foto',
+    //                 'd.id as docente_id',
+    //                 'i.id as instituciones_id',
+    //                 'i.Nombre as institucion_nombre',
+    //                 'i.Logo as institucion_logo',
+    //             ])
+    //             ->orderBy('a.Anio')
+    //             ->orderBy('p.RangoLvlCurso')
+    //             ->orderBy('p.Rango')
+    //             ->orderBy('p.NombreMateria')
+    //             ->get();
+
+    //         $complementario = DB::table('calificaciones as cal')
+    //             ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+    //             ->join('planteldocentes as d', 'info.planteldocadmins_idOtros', '=', 'd.id')
+    //             ->join('materias as m', 'cal.materias_id', '=', 'm.id')
+    //             ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+    //             ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+    //             ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+    //             ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
+    //             ->where('info.planteldocadmins_idOtros', (int) $user->id)
+    //             ->where('info.instituciones_id', (int) $user->instituciones_id)
+    //             ->where('c.instituciones_id', (int) $user->instituciones_id)
+    //             ->where('p.ModoMateria', $modoInstrumentoComplementario)
+    //             ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
+    //             ->distinct()
+    //             ->select([
+    //                 'm.id as materia_id',
+    //                 'm.Paralelo as materia_paralelo',
+    //                 'm.Turno as materia_turno',
+    //                 'm.ModoAsistencia as materia_modo_asistencia',
+    //                 'm.EstadoHabilitacion as materia_estado_habilitacion',
+    //                 'm.EstadoEnvio as materia_estado_envio',
+    //                 'p.LvlCurso as lvl_curso',
+    //                 'p.NombreMateria as nombre_materia',
+    //                 'p.SiglaMateria as sigla_materia',
+    //                 'a.Anio as gestion',
+    //                 'c.NombreCarrera as carrera',
+    //                 'c.Resolucion as resolucion',
+    //                 DB::raw("TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) as docente_nombre"),
+    //                 'd.Foto as docente_foto',
+    //                 'd.id as docente_id',
+    //                 'i.id as instituciones_id',
+    //                 'i.Nombre as institucion_nombre',
+    //                 'i.Logo as institucion_logo',
+    //             ])
+    //             ->orderBy('a.Anio')
+    //             ->orderBy('p.RangoLvlCurso')
+    //             ->orderBy('p.Rango')
+    //             ->orderBy('p.NombreMateria')
+    //             ->get();
+
+    //         $merged = collect($asignadas)->map(fn ($r) => (array) $r + ['modo_docente' => 'asignada'])
+    //             ->concat(collect($especialidad)->map(fn ($r) => (array) $r + ['modo_docente' => 'especialidad']))
+    //             ->concat(collect($practica)->map(fn ($r) => (array) $r + ['modo_docente' => 'practica']))
+    //             ->concat(collect($complementario)->map(fn ($r) => (array) $r + ['modo_docente' => 'complementario']))
+    //             ->unique('materia_id')
+    //             ->values();
+
+    //         return response()->json([
+    //             'tipo' => 'planteldocentes',
+    //             'data' => $this->groupByInstitucion($merged),
+    //             'anio_id' => $anioId,
+    //             'anio_nombre' => $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null,
+    //         ]);
+    //     }
+
+    //     if ($user instanceof Planteladministrativos) {
+    //         $rows = DB::table('materias as m')
+    //             ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+    //             ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+    //             ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+    //             ->leftJoinSub($docentePorMateria, 'pdm1', function ($join) {
+    //                 $join->on('pdm1.materias_id', '=', 'm.id');
+    //             })
+    //             ->leftJoin('planteldocentes as d_asig', 'pdm1.docente_id', '=', 'd_asig.id')
+    //             ->leftJoinSub($resumenEspecialidad, 'esp', function ($join) {
+    //                 $join->on('esp.materias_id', '=', 'm.id');
+    //             })
+    //             ->leftJoin('planteldocentes as d_esp', 'esp.docente_id', '=', 'd_esp.id')
+    //             ->leftJoinSub($resumenPracticaConjuntos, 'pc', function ($join) {
+    //                 $join->on('pc.materias_id', '=', 'm.id');
+    //             })
+    //             ->leftJoin('planteldocentes as d_pc', 'pc.docente_id', '=', 'd_pc.id')
+    //             ->leftJoinSub($resumenComplementario, 'ot', function ($join) {
+    //                 $join->on('ot.materias_id', '=', 'm.id');
+    //             })
+    //             ->leftJoin('planteldocentes as d_ot', 'ot.docente_id', '=', 'd_ot.id')
+    //             ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
+    //             ->where('c.instituciones_id', (int) $user->instituciones_id)
+    //             ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
+    //             ->select([
+    //                 'm.id as materia_id',
+    //                 'm.Paralelo as materia_paralelo',
+    //                 'm.Turno as materia_turno',
+    //                 'm.ModoAsistencia as materia_modo_asistencia',
+    //                 'm.EstadoHabilitacion as materia_estado_habilitacion',
+    //                 'm.EstadoEnvio as materia_estado_envio',
+    //                 'p.LvlCurso as lvl_curso',
+    //                 'p.NombreMateria as nombre_materia',
+    //                 'p.SiglaMateria as sigla_materia',
+    //                 'a.Anio as gestion',
+    //                 'c.NombreCarrera as carrera',
+    //                 'c.Resolucion as resolucion',
+    //                 DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN TRIM(CONCAT(COALESCE(d_esp.Nombres,''), ' ', COALESCE(d_esp.Apellidos,''))) WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN TRIM(CONCAT(COALESCE(d_pc.Nombres,''), ' ', COALESCE(d_pc.Apellidos,''))) WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN TRIM(CONCAT(COALESCE(d_ot.Nombres,''), ' ', COALESCE(d_ot.Apellidos,''))) ELSE TRIM(CONCAT(COALESCE(d_asig.Nombres,''), ' ', COALESCE(d_asig.Apellidos,''))) END as docente_nombre"),
+    //                 DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) = 1 THEN d_esp.Foto WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN NULL WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) = 1 THEN d_pc.Foto WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN NULL WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) = 1 THEN d_ot.Foto WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN NULL ELSE d_asig.Foto END as docente_foto"),
+    //                 DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) = 1 THEN d_esp.id WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN NULL WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) = 1 THEN d_pc.id WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN NULL WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) = 1 THEN d_ot.id WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN NULL ELSE d_asig.id END as docente_id"),
+    //                 'i.id as instituciones_id',
+    //                 'i.Nombre as institucion_nombre',
+    //                 'i.Logo as institucion_logo',
+    //             ])
+    //             ->orderBy('a.Anio')
+    //             ->orderBy('p.RangoLvlCurso')
+    //             ->orderBy('p.Rango')
+    //             ->orderBy('p.NombreMateria');
+
+    //         return response()->json([
+    //             'tipo' => 'planteladministrativos',
+    //             'data' => $this->groupByInstitucion($rows->get()),
+    //             'anio_id' => $anioId,
+    //             'anio_nombre' => $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null,
+    //         ]);
+    //     }
+
+    //     if ($user instanceof Usuarioslcchs) {
+    //         $rows = DB::table('materias as m')
+    //             ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+    //             ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+    //             ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+    //             ->leftJoinSub($docentePorMateria, 'pdm1', function ($join) {
+    //                 $join->on('pdm1.materias_id', '=', 'm.id');
+    //             })
+    //             ->leftJoin('planteldocentes as d_asig', 'pdm1.docente_id', '=', 'd_asig.id')
+    //             ->leftJoinSub($resumenEspecialidad, 'esp', function ($join) {
+    //                 $join->on('esp.materias_id', '=', 'm.id');
+    //             })
+    //             ->leftJoin('planteldocentes as d_esp', 'esp.docente_id', '=', 'd_esp.id')
+    //             ->leftJoinSub($resumenPracticaConjuntos, 'pc', function ($join) {
+    //                 $join->on('pc.materias_id', '=', 'm.id');
+    //             })
+    //             ->leftJoin('planteldocentes as d_pc', 'pc.docente_id', '=', 'd_pc.id')
+    //             ->leftJoinSub($resumenComplementario, 'ot', function ($join) {
+    //                 $join->on('ot.materias_id', '=', 'm.id');
+    //             })
+    //             ->leftJoin('planteldocentes as d_ot', 'ot.docente_id', '=', 'd_ot.id')
+    //             ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
+    //             ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
+    //             ->select([
+    //                 'm.id as materia_id',
+    //                 'm.Paralelo as materia_paralelo',
+    //                 'm.Turno as materia_turno',
+    //                 'm.ModoAsistencia as materia_modo_asistencia',
+    //                 'm.EstadoHabilitacion as materia_estado_habilitacion',
+    //                 'm.EstadoEnvio as materia_estado_envio',
+    //                 'p.LvlCurso as lvl_curso',
+    //                 'p.NombreMateria as nombre_materia',
+    //                 'p.SiglaMateria as sigla_materia',
+    //                 'a.Anio as gestion',
+    //                 'c.NombreCarrera as carrera',
+    //                 'c.Resolucion as resolucion',
+    //                 DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN TRIM(CONCAT(COALESCE(d_esp.Nombres,''), ' ', COALESCE(d_esp.Apellidos,''))) WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN TRIM(CONCAT(COALESCE(d_pc.Nombres,''), ' ', COALESCE(d_pc.Apellidos,''))) WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN TRIM(CONCAT(COALESCE(d_ot.Nombres,''), ' ', COALESCE(d_ot.Apellidos,''))) ELSE TRIM(CONCAT(COALESCE(d_asig.Nombres,''), ' ', COALESCE(d_asig.Apellidos,''))) END as docente_nombre"),
+    //                 DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) = 1 THEN d_esp.Foto WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN NULL WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) = 1 THEN d_pc.Foto WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN NULL WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) = 1 THEN d_ot.Foto WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN NULL ELSE d_asig.Foto END as docente_foto"),
+    //                 DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) = 1 THEN d_esp.id WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN NULL WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) = 1 THEN d_pc.id WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN NULL WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) = 1 THEN d_ot.id WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN NULL ELSE d_asig.id END as docente_id"),
+    //                 'i.id as instituciones_id',
+    //                 'i.Nombre as institucion_nombre',
+    //                 'i.Logo as institucion_logo',
+    //             ])
+    //             ->orderBy('i.Nombre')
+    //             ->orderBy('a.Anio')
+    //             ->orderBy('p.RangoLvlCurso')
+    //             ->orderBy('p.Rango')
+    //             ->orderBy('p.NombreMateria');
+
+    //         return response()->json([
+    //             'tipo' => 'superlcchs',
+    //             'data' => $this->groupByInstitucion($rows->get()),
+    //             'anio_id' => $anioId,
+    //             'anio_nombre' => $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null,
+    //         ]);
+    //     }
+
+    //     if ($user instanceof Estudiantesifas) {
+    //         $infoIds = DB::table('infoestudiantesifas')
+    //             ->where('estudiantesifas_id', (int) $user->id)
+    //             ->pluck('id')
+    //             ->map(fn ($x) => (int) $x)
+    //             ->values()
+    //             ->all();
+
+    //         if (count($infoIds) === 0) {
+    //             return response()->json([
+    //                 'tipo' => 'estudiantesifas',
+    //                 'data' => [],
+    //             ]);
+    //         }
+
+    //         $rows = DB::table('calificaciones as cal')
+    //             ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+    //             ->join('materias as m', 'cal.materias_id', '=', 'm.id')
+    //             ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+    //             ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+    //             ->join('instituciones as i', 'c.instituciones_id', '=', 'i.id')
+    //             ->leftJoinSub($docentePorMateria, 'pdm1', function ($join) {
+    //                 $join->on('pdm1.materias_id', '=', 'm.id');
+    //             })
+    //             ->leftJoin('planteldocentes as d_asig', 'pdm1.docente_id', '=', 'd_asig.id')
+    //             ->leftJoin('planteldocentes as d_esp', 'info.planteldocadmins_id', '=', 'd_esp.id')
+    //             ->leftJoin('planteldocentes as d_pc', 'info.planteldocadmins_idPC', '=', 'd_pc.id')
+    //             ->leftJoin('planteldocentes as d_ot', 'info.planteldocadmins_idOtros', '=', 'd_ot.id')
+    //             ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
+    //             ->whereIn('cal.infoestudiantesifas_id', $infoIds)
+    //             ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
+    //             ->select([
+    //                 'cal.id as calificacion_id',
+    //                 'cal.infoestudiantesifas_id',
+    //                 'cal.Teorico1', 'cal.Teorico2', 'cal.Teorico3', 'cal.Teorico4',
+    //                 'cal.Practico1', 'cal.Practico2', 'cal.Practico3', 'cal.Practico4',
+    //                 'cal.PromTeorico', 'cal.PromPractico', 'cal.Promedio',
+    //                 'cal.PruebaRecuperacion',
+    //                 'cal.EstadoRegistroMateria',
+    //                 'm.id as materia_id',
+    //                 'm.Paralelo as materia_paralelo',
+    //                 'm.Turno as materia_turno',
+    //                 'm.ModoAsistencia as materia_modo_asistencia',
+    //                 'm.EstadoHabilitacion as materia_estado_habilitacion',
+    //                 'p.LvlCurso as lvl_curso',
+    //                 'p.NombreMateria as nombre_materia',
+    //                 'p.SiglaMateria as sigla_materia',
+    //                 'a.Anio as gestion',
+    //                 'c.NombreCarrera as carrera',
+    //                 'c.Resolucion as resolucion',
+    //                 'c.NotaAprobacion as nota_aprobacion',
+    //                 'c.LimiteMaxTeorico as limite_max_teorico',
+    //                 'c.LimiteMaxPractico as limite_max_practico',
+    //                 DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN TRIM(CONCAT(COALESCE(d_esp.Nombres,''), ' ', COALESCE(d_esp.Apellidos,''))) WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN TRIM(CONCAT(COALESCE(d_pc.Nombres,''), ' ', COALESCE(d_pc.Apellidos,''))) WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN TRIM(CONCAT(COALESCE(d_ot.Nombres,''), ' ', COALESCE(d_ot.Apellidos,''))) ELSE TRIM(CONCAT(COALESCE(d_asig.Nombres,''), ' ', COALESCE(d_asig.Apellidos,''))) END as docente_nombre"),
+    //                 DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN d_esp.Foto WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN d_pc.Foto WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN d_ot.Foto ELSE d_asig.Foto END as docente_foto"),
+    //                 DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN d_esp.id WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN d_pc.id WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN d_ot.id ELSE d_asig.id END as docente_id"),
+    //                 'i.id as instituciones_id',
+    //                 'i.Nombre as institucion_nombre',
+    //                 'i.Logo as institucion_logo',
+    //             ])
+    //             ->orderBy('i.Nombre')
+    //             ->orderBy('a.Anio')
+    //             ->orderBy('p.RangoLvlCurso')
+    //             ->orderBy('p.Rango')
+    //             ->orderBy('p.NombreMateria');
+
+    //         return response()->json([
+    //             'tipo' => 'estudiantesifas',
+    //             'data' => $this->groupByInstitucion($rows->get()),
+    //             'anio_id' => $anioId,
+    //             'anio_nombre' => $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null,
+    //         ]);
+    //     }
+
+    //     return response()->json(['message' => 'Tipo de usuario no soportado'], 403);
+    // }
+
     public function materias(Request $request)
     {
         $user = $request->user();
@@ -40,57 +476,67 @@ class PerfilController extends Controller
         $modoPracticaConjuntos = 'MODO PRÁCTICA DE CONJUNTOS';
         $modoInstrumentoComplementario = 'MODO INSTRUMENTO COMPLEMENTARIO';
 
-        // 1 docente (si existe) por materia, para evitar duplicados en listados.
+        // 1. APLICAMOS EL GROUP_CONCAT A LAS MATERIAS ASIGNADAS REGULARES
         $docentePorMateria = DB::table('planteldocentesmaterias as pdm')
+            ->join('planteldocentes as d', 'pdm.planteldocentes_id', '=', 'd.id')
             ->select([
                 'pdm.materias_id',
                 DB::raw('MIN(pdm.planteldocentes_id) as docente_id'),
+                DB::raw("GROUP_CONCAT(DISTINCT TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) SEPARATOR ', ') as nombres_concatenados")
             ])
             ->groupBy('pdm.materias_id');
 
-        // Resúmenes de docente(s) por materia, según inscripción, para los 3 modos especiales.
-        // Admin/Super: si hay 1 docente -> mostrarlo, si hay varios -> "VARIOS DOCENTES".
+        // 2. APLICAMOS EL JOIN Y GROUP_CONCAT A LAS MATERIAS DE ESPECIALIDAD
         $resumenEspecialidad = DB::table('calificaciones as cal')
             ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
             ->join('materias as m2', 'cal.materias_id', '=', 'm2.id')
             ->join('plandeestudios as p2', 'm2.plandeestudios_id', '=', 'p2.id')
+            ->join('planteldocentes as d', 'info.planteldocadmins_id', '=', 'd.id')
             ->where('p2.ModoMateria', $modoInstrumentosEspecialidad)
             ->whereNotNull('info.planteldocadmins_id')
             ->select([
                 'cal.materias_id as materias_id',
                 DB::raw('COUNT(DISTINCT info.planteldocadmins_id) as docentes_distintos'),
                 DB::raw('MIN(info.planteldocadmins_id) as docente_id'),
+                DB::raw("GROUP_CONCAT(DISTINCT TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) SEPARATOR ', ') as nombres_concatenados")
             ])
             ->groupBy('cal.materias_id');
 
+        // 3. APLICAMOS EL JOIN Y GROUP_CONCAT A PRACTICA DE CONJUNTOS
         $resumenPracticaConjuntos = DB::table('calificaciones as cal')
             ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
             ->join('materias as m2', 'cal.materias_id', '=', 'm2.id')
             ->join('plandeestudios as p2', 'm2.plandeestudios_id', '=', 'p2.id')
+            ->join('planteldocentes as d', 'info.planteldocadmins_idPC', '=', 'd.id')
             ->where('p2.ModoMateria', $modoPracticaConjuntos)
             ->whereNotNull('info.planteldocadmins_idPC')
             ->select([
                 'cal.materias_id as materias_id',
                 DB::raw('COUNT(DISTINCT info.planteldocadmins_idPC) as docentes_distintos'),
                 DB::raw('MIN(info.planteldocadmins_idPC) as docente_id'),
+                DB::raw("GROUP_CONCAT(DISTINCT TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) SEPARATOR ', ') as nombres_concatenados")
             ])
             ->groupBy('cal.materias_id');
 
+        // 4. APLICAMOS EL JOIN Y GROUP_CONCAT A INSTRUMENTO COMPLEMENTARIO
         $resumenComplementario = DB::table('calificaciones as cal')
             ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
             ->join('materias as m2', 'cal.materias_id', '=', 'm2.id')
             ->join('plandeestudios as p2', 'm2.plandeestudios_id', '=', 'p2.id')
+            ->join('planteldocentes as d', 'info.planteldocadmins_idOtros', '=', 'd.id')
             ->where('p2.ModoMateria', $modoInstrumentoComplementario)
             ->whereNotNull('info.planteldocadmins_idOtros')
             ->select([
                 'cal.materias_id as materias_id',
                 DB::raw('COUNT(DISTINCT info.planteldocadmins_idOtros) as docentes_distintos'),
                 DB::raw('MIN(info.planteldocadmins_idOtros) as docente_id'),
+                DB::raw("GROUP_CONCAT(DISTINCT TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) SEPARATOR ', ') as nombres_concatenados")
             ])
             ->groupBy('cal.materias_id');
 
+        // ------------------------------------------------------------------------------------------------------------------------------------------------ //
+        // SECCION DOCENTE: Se mantiene igual porque el docente solo se ve a sí mismo
         if ($user instanceof Planteldocentes) {
-            // 1) Materias asignadas explícitamente al docente
             $asignadas = DB::table('planteldocentesmaterias as pdm')
                 ->join('planteldocentes as d', 'pdm.planteldocentes_id', '=', 'd.id')
                 ->join('materias as m', 'pdm.materias_id', '=', 'm.id')
@@ -102,32 +548,17 @@ class PerfilController extends Controller
                 ->where('c.instituciones_id', (int) $user->instituciones_id)
                 ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->select([
-                    'm.id as materia_id',
-                    'm.Paralelo as materia_paralelo',
-                    'm.Turno as materia_turno',
-                    'm.ModoAsistencia as materia_modo_asistencia',
-                    'm.EstadoHabilitacion as materia_estado_habilitacion',
-                    'm.EstadoEnvio as materia_estado_envio',
-                    'p.LvlCurso as lvl_curso',
-                    'p.NombreMateria as nombre_materia',
-                    'p.SiglaMateria as sigla_materia',
-                    'a.Anio as gestion',
-                    'c.NombreCarrera as carrera',
-                    'c.Resolucion as resolucion',
+                    'm.id as materia_id', 'm.Paralelo as materia_paralelo', 'm.Turno as materia_turno',
+                    'm.ModoAsistencia as materia_modo_asistencia', 'm.EstadoHabilitacion as materia_estado_habilitacion',
+                    'm.EstadoEnvio as materia_estado_envio', 'p.LvlCurso as lvl_curso',
+                    'p.NombreMateria as nombre_materia', 'p.SiglaMateria as sigla_materia',
+                    'a.Anio as gestion', 'c.NombreCarrera as carrera', 'c.Resolucion as resolucion',
                     DB::raw("TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) as docente_nombre"),
-                    'd.Foto as docente_foto',
-                    'd.id as docente_id',
-                    'i.id as instituciones_id',
-                    'i.Nombre as institucion_nombre',
-                    'i.Logo as institucion_logo',
+                    'd.Foto as docente_foto', 'd.id as docente_id', 'i.id as instituciones_id',
+                    'i.Nombre as institucion_nombre', 'i.Logo as institucion_logo',
                 ])
-                ->orderBy('a.Anio')
-                ->orderBy('p.RangoLvlCurso')
-                ->orderBy('p.Rango')
-                ->orderBy('p.NombreMateria')
-                ->get();
+                ->orderBy('a.Anio')->orderBy('p.RangoLvlCurso')->orderBy('p.Rango')->orderBy('p.NombreMateria')->get();
 
-            // 2) Materias especiales (no asignadas) donde tiene estudiantes por inscripción
             $especialidad = DB::table('calificaciones as cal')
                 ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
                 ->join('planteldocentes as d', 'info.planteldocadmins_id', '=', 'd.id')
@@ -143,30 +574,16 @@ class PerfilController extends Controller
                 ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->distinct()
                 ->select([
-                    'm.id as materia_id',
-                    'm.Paralelo as materia_paralelo',
-                    'm.Turno as materia_turno',
-                    'm.ModoAsistencia as materia_modo_asistencia',
-                    'm.EstadoHabilitacion as materia_estado_habilitacion',
-                    'm.EstadoEnvio as materia_estado_envio',
-                    'p.LvlCurso as lvl_curso',
-                    'p.NombreMateria as nombre_materia',
-                    'p.SiglaMateria as sigla_materia',
-                    'a.Anio as gestion',
-                    'c.NombreCarrera as carrera',
-                    'c.Resolucion as resolucion',
+                    'm.id as materia_id', 'm.Paralelo as materia_paralelo', 'm.Turno as materia_turno',
+                    'm.ModoAsistencia as materia_modo_asistencia', 'm.EstadoHabilitacion as materia_estado_habilitacion',
+                    'm.EstadoEnvio as materia_estado_envio', 'p.LvlCurso as lvl_curso',
+                    'p.NombreMateria as nombre_materia', 'p.SiglaMateria as sigla_materia',
+                    'a.Anio as gestion', 'c.NombreCarrera as carrera', 'c.Resolucion as resolucion',
                     DB::raw("TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) as docente_nombre"),
-                    'd.Foto as docente_foto',
-                    'd.id as docente_id',
-                    'i.id as instituciones_id',
-                    'i.Nombre as institucion_nombre',
-                    'i.Logo as institucion_logo',
+                    'd.Foto as docente_foto', 'd.id as docente_id', 'i.id as instituciones_id',
+                    'i.Nombre as institucion_nombre', 'i.Logo as institucion_logo',
                 ])
-                ->orderBy('a.Anio')
-                ->orderBy('p.RangoLvlCurso')
-                ->orderBy('p.Rango')
-                ->orderBy('p.NombreMateria')
-                ->get();
+                ->orderBy('a.Anio')->orderBy('p.RangoLvlCurso')->orderBy('p.Rango')->orderBy('p.NombreMateria')->get();
 
             $practica = DB::table('calificaciones as cal')
                 ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
@@ -183,30 +600,16 @@ class PerfilController extends Controller
                 ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->distinct()
                 ->select([
-                    'm.id as materia_id',
-                    'm.Paralelo as materia_paralelo',
-                    'm.Turno as materia_turno',
-                    'm.ModoAsistencia as materia_modo_asistencia',
-                    'm.EstadoHabilitacion as materia_estado_habilitacion',
-                    'm.EstadoEnvio as materia_estado_envio',
-                    'p.LvlCurso as lvl_curso',
-                    'p.NombreMateria as nombre_materia',
-                    'p.SiglaMateria as sigla_materia',
-                    'a.Anio as gestion',
-                    'c.NombreCarrera as carrera',
-                    'c.Resolucion as resolucion',
+                    'm.id as materia_id', 'm.Paralelo as materia_paralelo', 'm.Turno as materia_turno',
+                    'm.ModoAsistencia as materia_modo_asistencia', 'm.EstadoHabilitacion as materia_estado_habilitacion',
+                    'm.EstadoEnvio as materia_estado_envio', 'p.LvlCurso as lvl_curso',
+                    'p.NombreMateria as nombre_materia', 'p.SiglaMateria as sigla_materia',
+                    'a.Anio as gestion', 'c.NombreCarrera as carrera', 'c.Resolucion as resolucion',
                     DB::raw("TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) as docente_nombre"),
-                    'd.Foto as docente_foto',
-                    'd.id as docente_id',
-                    'i.id as instituciones_id',
-                    'i.Nombre as institucion_nombre',
-                    'i.Logo as institucion_logo',
+                    'd.Foto as docente_foto', 'd.id as docente_id', 'i.id as instituciones_id',
+                    'i.Nombre as institucion_nombre', 'i.Logo as institucion_logo',
                 ])
-                ->orderBy('a.Anio')
-                ->orderBy('p.RangoLvlCurso')
-                ->orderBy('p.Rango')
-                ->orderBy('p.NombreMateria')
-                ->get();
+                ->orderBy('a.Anio')->orderBy('p.RangoLvlCurso')->orderBy('p.Rango')->orderBy('p.NombreMateria')->get();
 
             $complementario = DB::table('calificaciones as cal')
                 ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
@@ -223,30 +626,16 @@ class PerfilController extends Controller
                 ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->distinct()
                 ->select([
-                    'm.id as materia_id',
-                    'm.Paralelo as materia_paralelo',
-                    'm.Turno as materia_turno',
-                    'm.ModoAsistencia as materia_modo_asistencia',
-                    'm.EstadoHabilitacion as materia_estado_habilitacion',
-                    'm.EstadoEnvio as materia_estado_envio',
-                    'p.LvlCurso as lvl_curso',
-                    'p.NombreMateria as nombre_materia',
-                    'p.SiglaMateria as sigla_materia',
-                    'a.Anio as gestion',
-                    'c.NombreCarrera as carrera',
-                    'c.Resolucion as resolucion',
+                    'm.id as materia_id', 'm.Paralelo as materia_paralelo', 'm.Turno as materia_turno',
+                    'm.ModoAsistencia as materia_modo_asistencia', 'm.EstadoHabilitacion as materia_estado_habilitacion',
+                    'm.EstadoEnvio as materia_estado_envio', 'p.LvlCurso as lvl_curso',
+                    'p.NombreMateria as nombre_materia', 'p.SiglaMateria as sigla_materia',
+                    'a.Anio as gestion', 'c.NombreCarrera as carrera', 'c.Resolucion as resolucion',
                     DB::raw("TRIM(CONCAT(COALESCE(d.Nombres,''), ' ', COALESCE(d.Apellidos,''))) as docente_nombre"),
-                    'd.Foto as docente_foto',
-                    'd.id as docente_id',
-                    'i.id as instituciones_id',
-                    'i.Nombre as institucion_nombre',
-                    'i.Logo as institucion_logo',
+                    'd.Foto as docente_foto', 'd.id as docente_id', 'i.id as instituciones_id',
+                    'i.Nombre as institucion_nombre', 'i.Logo as institucion_logo',
                 ])
-                ->orderBy('a.Anio')
-                ->orderBy('p.RangoLvlCurso')
-                ->orderBy('p.Rango')
-                ->orderBy('p.NombreMateria')
-                ->get();
+                ->orderBy('a.Anio')->orderBy('p.RangoLvlCurso')->orderBy('p.Rango')->orderBy('p.NombreMateria')->get();
 
             $merged = collect($asignadas)->map(fn ($r) => (array) $r + ['modo_docente' => 'asignada'])
                 ->concat(collect($especialidad)->map(fn ($r) => (array) $r + ['modo_docente' => 'especialidad']))
@@ -263,6 +652,8 @@ class PerfilController extends Controller
             ]);
         }
 
+        // ------------------------------------------------------------------------------------------------------------------------------------------------ //
+        // SECCION ADMINISTRATIVOS: Aquí reemplazamos el CASE de 'VARIOS DOCENTES'
         if ($user instanceof Planteladministrativos) {
             $rows = DB::table('materias as m')
                 ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
@@ -288,29 +679,25 @@ class PerfilController extends Controller
                 ->where('c.instituciones_id', (int) $user->instituciones_id)
                 ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->select([
-                    'm.id as materia_id',
-                    'm.Paralelo as materia_paralelo',
-                    'm.Turno as materia_turno',
-                    'm.ModoAsistencia as materia_modo_asistencia',
-                    'm.EstadoHabilitacion as materia_estado_habilitacion',
-                    'm.EstadoEnvio as materia_estado_envio',
-                    'p.LvlCurso as lvl_curso',
-                    'p.NombreMateria as nombre_materia',
-                    'p.SiglaMateria as sigla_materia',
-                    'a.Anio as gestion',
-                    'c.NombreCarrera as carrera',
-                    'c.Resolucion as resolucion',
-                    DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN TRIM(CONCAT(COALESCE(d_esp.Nombres,''), ' ', COALESCE(d_esp.Apellidos,''))) WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN TRIM(CONCAT(COALESCE(d_pc.Nombres,''), ' ', COALESCE(d_pc.Apellidos,''))) WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN TRIM(CONCAT(COALESCE(d_ot.Nombres,''), ' ', COALESCE(d_ot.Apellidos,''))) ELSE TRIM(CONCAT(COALESCE(d_asig.Nombres,''), ' ', COALESCE(d_asig.Apellidos,''))) END as docente_nombre"),
+                    'm.id as materia_id', 'm.Paralelo as materia_paralelo', 'm.Turno as materia_turno',
+                    'm.ModoAsistencia as materia_modo_asistencia', 'm.EstadoHabilitacion as materia_estado_habilitacion',
+                    'm.EstadoEnvio as materia_estado_envio', 'p.LvlCurso as lvl_curso',
+                    'p.NombreMateria as nombre_materia', 'p.SiglaMateria as sigla_materia',
+                    'a.Anio as gestion', 'c.NombreCarrera as carrera', 'c.Resolucion as resolucion',
+                    
+                    // REEMPLAZO IMPORTANTE AQUI:
+                    DB::raw("CASE 
+                        WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN esp.nombres_concatenados 
+                        WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN pc.nombres_concatenados 
+                        WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN ot.nombres_concatenados 
+                        ELSE pdm1.nombres_concatenados 
+                    END as docente_nombre"),
+
                     DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) = 1 THEN d_esp.Foto WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN NULL WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) = 1 THEN d_pc.Foto WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN NULL WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) = 1 THEN d_ot.Foto WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN NULL ELSE d_asig.Foto END as docente_foto"),
                     DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) = 1 THEN d_esp.id WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN NULL WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) = 1 THEN d_pc.id WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN NULL WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) = 1 THEN d_ot.id WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN NULL ELSE d_asig.id END as docente_id"),
-                    'i.id as instituciones_id',
-                    'i.Nombre as institucion_nombre',
-                    'i.Logo as institucion_logo',
+                    'i.id as instituciones_id', 'i.Nombre as institucion_nombre', 'i.Logo as institucion_logo',
                 ])
-                ->orderBy('a.Anio')
-                ->orderBy('p.RangoLvlCurso')
-                ->orderBy('p.Rango')
-                ->orderBy('p.NombreMateria');
+                ->orderBy('a.Anio')->orderBy('p.RangoLvlCurso')->orderBy('p.Rango')->orderBy('p.NombreMateria');
 
             return response()->json([
                 'tipo' => 'planteladministrativos',
@@ -320,6 +707,8 @@ class PerfilController extends Controller
             ]);
         }
 
+        // ------------------------------------------------------------------------------------------------------------------------------------------------ //
+        // SECCION SUPER USUARIOS: Aplicamos la misma lógica
         if ($user instanceof Usuarioslcchs) {
             $rows = DB::table('materias as m')
                 ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
@@ -344,30 +733,25 @@ class PerfilController extends Controller
                 ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
                 ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->select([
-                    'm.id as materia_id',
-                    'm.Paralelo as materia_paralelo',
-                    'm.Turno as materia_turno',
-                    'm.ModoAsistencia as materia_modo_asistencia',
-                    'm.EstadoHabilitacion as materia_estado_habilitacion',
-                    'm.EstadoEnvio as materia_estado_envio',
-                    'p.LvlCurso as lvl_curso',
-                    'p.NombreMateria as nombre_materia',
-                    'p.SiglaMateria as sigla_materia',
-                    'a.Anio as gestion',
-                    'c.NombreCarrera as carrera',
-                    'c.Resolucion as resolucion',
-                    DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN TRIM(CONCAT(COALESCE(d_esp.Nombres,''), ' ', COALESCE(d_esp.Apellidos,''))) WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN TRIM(CONCAT(COALESCE(d_pc.Nombres,''), ' ', COALESCE(d_pc.Apellidos,''))) WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) > 1 THEN 'VARIOS DOCENTES' WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN TRIM(CONCAT(COALESCE(d_ot.Nombres,''), ' ', COALESCE(d_ot.Apellidos,''))) ELSE TRIM(CONCAT(COALESCE(d_asig.Nombres,''), ' ', COALESCE(d_asig.Apellidos,''))) END as docente_nombre"),
+                    'm.id as materia_id', 'm.Paralelo as materia_paralelo', 'm.Turno as materia_turno',
+                    'm.ModoAsistencia as materia_modo_asistencia', 'm.EstadoHabilitacion as materia_estado_habilitacion',
+                    'm.EstadoEnvio as materia_estado_envio', 'p.LvlCurso as lvl_curso',
+                    'p.NombreMateria as nombre_materia', 'p.SiglaMateria as sigla_materia',
+                    'a.Anio as gestion', 'c.NombreCarrera as carrera', 'c.Resolucion as resolucion',
+                    
+                    // REEMPLAZO IMPORTANTE AQUI:
+                    DB::raw("CASE 
+                        WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN esp.nombres_concatenados 
+                        WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN pc.nombres_concatenados 
+                        WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN ot.nombres_concatenados 
+                        ELSE pdm1.nombres_concatenados 
+                    END as docente_nombre"),
+
                     DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) = 1 THEN d_esp.Foto WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN NULL WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) = 1 THEN d_pc.Foto WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN NULL WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) = 1 THEN d_ot.Foto WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN NULL ELSE d_asig.Foto END as docente_foto"),
                     DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' AND COALESCE(esp.docentes_distintos,0) = 1 THEN d_esp.id WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN NULL WHEN p.ModoMateria = '{$modoPracticaConjuntos}' AND COALESCE(pc.docentes_distintos,0) = 1 THEN d_pc.id WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN NULL WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' AND COALESCE(ot.docentes_distintos,0) = 1 THEN d_ot.id WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN NULL ELSE d_asig.id END as docente_id"),
-                    'i.id as instituciones_id',
-                    'i.Nombre as institucion_nombre',
-                    'i.Logo as institucion_logo',
+                    'i.id as instituciones_id', 'i.Nombre as institucion_nombre', 'i.Logo as institucion_logo',
                 ])
-                ->orderBy('i.Nombre')
-                ->orderBy('a.Anio')
-                ->orderBy('p.RangoLvlCurso')
-                ->orderBy('p.Rango')
-                ->orderBy('p.NombreMateria');
+                ->orderBy('i.Nombre')->orderBy('a.Anio')->orderBy('p.RangoLvlCurso')->orderBy('p.Rango')->orderBy('p.NombreMateria');
 
             return response()->json([
                 'tipo' => 'superlcchs',
@@ -377,19 +761,15 @@ class PerfilController extends Controller
             ]);
         }
 
+        // ------------------------------------------------------------------------------------------------------------------------------------------------ //
+        // SECCION ESTUDIANTES: Se mantiene sin el GROUP_CONCAT porque el estudiante siempre ve a su propio docente individual.
         if ($user instanceof Estudiantesifas) {
             $infoIds = DB::table('infoestudiantesifas')
                 ->where('estudiantesifas_id', (int) $user->id)
-                ->pluck('id')
-                ->map(fn ($x) => (int) $x)
-                ->values()
-                ->all();
+                ->pluck('id')->map(fn ($x) => (int) $x)->values()->all();
 
             if (count($infoIds) === 0) {
-                return response()->json([
-                    'tipo' => 'estudiantesifas',
-                    'data' => [],
-                ]);
+                return response()->json(['tipo' => 'estudiantesifas', 'data' => []]);
             }
 
             $rows = DB::table('calificaciones as cal')
@@ -409,39 +789,23 @@ class PerfilController extends Controller
                 ->whereIn('cal.infoestudiantesifas_id', $infoIds)
                 ->when($anioId, fn ($qq) => $qq->where('p.anio_id', $anioId))
                 ->select([
-                    'cal.id as calificacion_id',
-                    'cal.infoestudiantesifas_id',
+                    'cal.id as calificacion_id', 'cal.infoestudiantesifas_id',
                     'cal.Teorico1', 'cal.Teorico2', 'cal.Teorico3', 'cal.Teorico4',
                     'cal.Practico1', 'cal.Practico2', 'cal.Practico3', 'cal.Practico4',
-                    'cal.PromTeorico', 'cal.PromPractico', 'cal.Promedio',
-                    'cal.PruebaRecuperacion',
-                    'cal.EstadoRegistroMateria',
-                    'm.id as materia_id',
-                    'm.Paralelo as materia_paralelo',
-                    'm.Turno as materia_turno',
-                    'm.ModoAsistencia as materia_modo_asistencia',
-                    'm.EstadoHabilitacion as materia_estado_habilitacion',
-                    'p.LvlCurso as lvl_curso',
-                    'p.NombreMateria as nombre_materia',
-                    'p.SiglaMateria as sigla_materia',
-                    'a.Anio as gestion',
-                    'c.NombreCarrera as carrera',
-                    'c.Resolucion as resolucion',
-                    'c.NotaAprobacion as nota_aprobacion',
-                    'c.LimiteMaxTeorico as limite_max_teorico',
+                    'cal.PromTeorico', 'cal.PromPractico', 'cal.Promedio', 'cal.PruebaRecuperacion',
+                    'cal.EstadoRegistroMateria', 'm.id as materia_id', 'm.Paralelo as materia_paralelo',
+                    'm.Turno as materia_turno', 'm.ModoAsistencia as materia_modo_asistencia',
+                    'm.EstadoHabilitacion as materia_estado_habilitacion', 'p.LvlCurso as lvl_curso',
+                    'p.NombreMateria as nombre_materia', 'p.SiglaMateria as sigla_materia',
+                    'a.Anio as gestion', 'c.NombreCarrera as carrera', 'c.Resolucion as resolucion',
+                    'c.NotaAprobacion as nota_aprobacion', 'c.LimiteMaxTeorico as limite_max_teorico',
                     'c.LimiteMaxPractico as limite_max_practico',
                     DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN TRIM(CONCAT(COALESCE(d_esp.Nombres,''), ' ', COALESCE(d_esp.Apellidos,''))) WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN TRIM(CONCAT(COALESCE(d_pc.Nombres,''), ' ', COALESCE(d_pc.Apellidos,''))) WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN TRIM(CONCAT(COALESCE(d_ot.Nombres,''), ' ', COALESCE(d_ot.Apellidos,''))) ELSE TRIM(CONCAT(COALESCE(d_asig.Nombres,''), ' ', COALESCE(d_asig.Apellidos,''))) END as docente_nombre"),
                     DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN d_esp.Foto WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN d_pc.Foto WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN d_ot.Foto ELSE d_asig.Foto END as docente_foto"),
                     DB::raw("CASE WHEN p.ModoMateria = '{$modoInstrumentosEspecialidad}' THEN d_esp.id WHEN p.ModoMateria = '{$modoPracticaConjuntos}' THEN d_pc.id WHEN p.ModoMateria = '{$modoInstrumentoComplementario}' THEN d_ot.id ELSE d_asig.id END as docente_id"),
-                    'i.id as instituciones_id',
-                    'i.Nombre as institucion_nombre',
-                    'i.Logo as institucion_logo',
+                    'i.id as instituciones_id', 'i.Nombre as institucion_nombre', 'i.Logo as institucion_logo',
                 ])
-                ->orderBy('i.Nombre')
-                ->orderBy('a.Anio')
-                ->orderBy('p.RangoLvlCurso')
-                ->orderBy('p.Rango')
-                ->orderBy('p.NombreMateria');
+                ->orderBy('i.Nombre')->orderBy('a.Anio')->orderBy('p.RangoLvlCurso')->orderBy('p.Rango')->orderBy('p.NombreMateria');
 
             return response()->json([
                 'tipo' => 'estudiantesifas',
@@ -453,7 +817,6 @@ class PerfilController extends Controller
 
         return response()->json(['message' => 'Tipo de usuario no soportado'], 403);
     }
-
     public function updateMateriaDocente(Request $request, int $materiaId)
     {
         $user = $request->user();
