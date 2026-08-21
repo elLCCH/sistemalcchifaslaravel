@@ -95,7 +95,11 @@ class PeticionesPrivadas extends Controller
                 LEFT JOIN carreras ON carreras.id = plandeestudios.carreras_id
     WHERE calificaciones.materias_id = ?
       AND plandeestudios.anio_id = ?
-      AND carreras.instituciones_id = ?;", [$materiaId, $anioId, $institucionId]);
+      AND carreras.instituciones_id = ?
+      
+            ORDER BY estudiantesifas.Ap_Paterno,
+                    estudiantesifas.Ap_Materno,
+                    estudiantesifas.Nombre;", [$materiaId, $anioId, $institucionId]);
         return response()->json(['data' => $consulta]);
         
     }

@@ -65,7 +65,11 @@ class PeticionesPublicas extends Controller
         LEFT JOIN estudiantesifas ON estudiantesifas.id = infoestudiantesifas.estudiantesifas_id
         LEFT JOIN plandeestudios ON plandeestudios.id = materias.plandeestudios_id
                 LEFT JOIN carreras ON carreras.id = plandeestudios.carreras_id
-        WHERE calificaciones.materias_id = $materiaId AND plandeestudios.anio_id = $anioId;");
+        WHERE calificaciones.materias_id = $materiaId AND plandeestudios.anio_id = $anioId;
+        
+            ORDER BY estudiantesifas.Ap_Paterno,
+                    estudiantesifas.Ap_Materno,
+                    estudiantesifas.Nombre");
         return response()->json(['data' => $consulta]);
         
     }
