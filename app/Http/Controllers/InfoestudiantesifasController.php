@@ -257,6 +257,51 @@ class InfoestudiantesifasController extends Controller
             LIMIT 1
         )";
     }
+    private function buildNombreMateriaSubquery(?string $modoMateria): string
+    {
+        if (empty($modoMateria)) {
+            return "(
+                SELECT pe.NombreMateria
+                FROM calificaciones c
+                INNER JOIN materias m ON m.id = c.materias_id
+                INNER JOIN plandeestudios pe ON pe.id = m.plandeestudios_id
+                INNER JOIN anios a ON a.id = pe.anio_id
+                WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+                ORDER BY a.Anio DESC, pe.id DESC
+                LIMIT 1
+            )";
+        }
+
+        // Condición primaria: filtrar por ModoMateria
+        $modosPermitidos = $this->resolverAliasModoMateria($modoMateria);
+        $quotedModos = array_map(static fn ($modo) => DB::getPdo()->quote($modo), $modosPermitidos);
+        $modoCondition = 'UPPER(TRIM(pe.ModoMateria)) IN (' . implode(', ', $quotedModos) . ')';
+
+        // Condición fallback: filtrar por NombreMateria
+        $keywords = $this->getNombreMateriaKeywordsForMode($modoMateria);
+        $nombreConditions = array_map(
+            fn ($kw) => 'UPPER(pe.NombreMateria) LIKE ' . DB::getPdo()->quote('%' . mb_strtoupper($kw, 'UTF-8') . '%'),
+            $keywords
+        );
+
+        $orCondition = $modoCondition;
+        if (!empty($nombreConditions)) {
+            $orCondition = '(' . $modoCondition . ' OR ' . implode(' OR ', $nombreConditions) . ')';
+        }
+
+        return "(
+            SELECT pe.NombreMateria
+            FROM calificaciones c
+            INNER JOIN materias m ON m.id = c.materias_id
+            INNER JOIN plandeestudios pe ON pe.id = m.plandeestudios_id
+            INNER JOIN anios a ON a.id = pe.anio_id
+            WHERE c.infoestudiantesifas_id = infoestudiantesifas.id
+                AND pe.NombreMateria IS NOT NULL AND TRIM(pe.NombreMateria) <> ''
+                AND " . $orCondition . "
+            ORDER BY a.Anio DESC, pe.id DESC
+            LIMIT 1
+        )";
+    }
 
     private function cursoEsTecnicoSuperior(string $cursoSolicitado): bool
     {
@@ -1225,6 +1270,7 @@ class InfoestudiantesifasController extends Controller
         )";
 
         $siglaMateriaSubquery = $this->buildSiglaMateriaSubquery($modoMateriaFiltro);
+        $nombreMateriaSubquery = $this->buildNombreMateriaSubquery($modoMateriaFiltro);
 
         $query = Infoestudiantesifas::query()
             ->leftJoin('instituciones', 'infoestudiantesifas.instituciones_id', '=', 'instituciones.id')
@@ -1247,6 +1293,7 @@ class InfoestudiantesifasController extends Controller
                 DB::raw($cursoAsignadoSubquery . " as CursoAsignado"),
                 DB::raw($paraleloAsignadoSubquery . " as ParaleloAsignado"),
                 DB::raw($siglaMateriaSubquery . " as SiglaMateria"),
+                DB::raw($nombreMateriaSubquery . " as NombreMateria"),
             ])
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('infoestudiantesifas.instituciones_id', $user->instituciones_id);
