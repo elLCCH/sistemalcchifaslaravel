@@ -282,7 +282,7 @@ CREATE TABLE `materias` (
     Paralelo VARCHAR(20) NULL,
     Turno VARCHAR(20) NULL,
     ModoAsistencia VARCHAR(50) NULL,
-    EstadoHabilitacion VARCHAR(50) NULL,
+    EstadoHabilitacion VARCHAR(255) NULL,
     EstadoEnvio VARCHAR(250) NULL,
     created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

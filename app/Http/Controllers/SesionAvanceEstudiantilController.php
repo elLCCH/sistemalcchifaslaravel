@@ -438,6 +438,44 @@ class SesionAvanceEstudiantilController extends Controller
         if (!empty($turnos)) $q->whereIn('info.Turno', $turnos);
         if (!empty($instrumentos)) $q->whereIn('info.InstrumentoMusical', $instrumentos);
 
+        // 1. APLICAR EL FILTRO POR DÍA (si se envía desde Angular)
+        // $diaSemana = $request->query('dia_semana'); // Ej: 1 para Lunes
+        // if (!empty($diaSemana)) {
+        //     // Hacemos JOIN con la tabla de horarios para filtrar
+        //     $q->join('horarios_estudiantes as he', function ($join) use ($tipo) {
+        //         $join->on('he.infoestudiantesifas_id', '=', 'info.id')
+        //              ->where('he.tipo_asignacion', '=', $tipo);
+        //     })->where('he.dia_semana', (int) $diaSemana);
+        // }
+
+        // 1. APLICAR EL FILTRO POR DÍA Y HORA (Modo Live)
+        $diaSemana = $request->query('dia_semana'); 
+        $horaActual = $request->query('hora_actual'); // Ej: '14:51'
+
+        if (!empty($diaSemana)) {
+            $q->join('horarios_estudiantes as he', function ($join) use ($tipo) {
+                $join->on('he.infoestudiantesifas_id', '=', 'info.id')
+                     ->where('he.tipo_asignacion', '=', $tipo);
+            })->where('he.dia_semana', (int) $diaSemana);
+
+            // Si Angular envió la hora actual, filtramos por rango
+            if (!empty($horaActual)) {
+                $q->where(function($query) use ($horaActual) {
+                    /*
+                     * LÓGICA MEJORADA:
+                     * La hora actual debe ser MAYOR o IGUAL a (hora_inicio - 1 hora)
+                     * Y MENOR o IGUAL a (hora_fin + 1 hora)
+                     * 3600 segundos = 1 hora.
+                     */
+                    $query->whereRaw("
+                        (TIME_TO_SEC(?) >= TIME_TO_SEC(he.hora_inicio) - 3600) 
+                        AND 
+                        (TIME_TO_SEC(?) <= TIME_TO_SEC(COALESCE(he.hora_fin, he.hora_inicio)) + 3600)
+                    ", [$horaActual, $horaActual])
+                    ->orWhereNull('he.hora_inicio'); // Mantiene a los que no tienen hora configurada
+                });
+            }
+        }
         if ($search !== '') {
             $searchLower = mb_strtolower($search);
             $tokens = preg_split('/\s+/', $searchLower) ?: [];
@@ -463,7 +501,23 @@ class SesionAvanceEstudiantilController extends Controller
         $q->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre');
 
         $paginated = $q->paginate($perPage);
+        // 2. ADJUNTAR LOS HORARIOS A LOS ESTUDIANTES OBTENIDOS
+        $estudiantesIds = collect($paginated->items())->pluck('infoestudiantesifas_id')->toArray();
+        if (!empty($estudiantesIds)) {
+            $horarios = DB::table('horarios_estudiantes')
+                ->whereIn('infoestudiantesifas_id', $estudiantesIds)
+                ->where('tipo_asignacion', $tipo)
+                ->orderBy('dia_semana')
+                ->get()
+                ->groupBy('infoestudiantesifas_id');
+
+            foreach ($paginated->items() as $item) {
+                $item->horarios = $horarios->get($item->infoestudiantesifas_id, []);
+            }
+        }
+
         return response()->json($paginated);
+        // return response()->json($paginated);
     }
 
     /**

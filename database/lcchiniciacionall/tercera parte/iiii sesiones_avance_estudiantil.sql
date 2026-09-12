@@ -56,8 +56,29 @@ CREATE TABLE `sesiones_avance_estudiantil` (
     INDEX idx_sesav_fecha (fecha)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-
-
+-- ESTA TABLA ES PARA LOS HORARIOS DE CLASE DE LOS ESTUDIANTES DE ESPECIALIDAD, PRÁCTICA DE CONJUNTOS Y COMPLEMENTARIO
+CREATE TABLE `horarios_estudiantes` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `infoestudiantesifas_id` INT NOT NULL,
+    
+    -- Para diferenciar si el horario es de Especialidad, Práctica o Complementario
+    `tipo_asignacion` VARCHAR(30) NOT NULL DEFAULT 'ESPECIALIDAD',
+    
+    -- 1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes, 6=Sábado, 7=Domingo
+    `dia_semana` TINYINT NOT NULL, 
+    
+    `hora_inicio` TIME NULL,
+    `hora_fin` TIME NULL,
+    
+    `created_at` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (`infoestudiantesifas_id`) 
+        REFERENCES `infoestudiantesifas`(`id`) ON UPDATE CASCADE ON DELETE CASCADE,
+        
+    INDEX `idx_horarios_info_tipo` (`infoestudiantesifas_id`, `tipo_asignacion`),
+    INDEX `idx_horarios_dia` (`dia_semana`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO `bibliotecaarchivoslcch` (`id`, `institucion_id`, `categoria`, `nombre_documento`, `fecha`, `archivo`, `estado`, `visibilidad`, `publicado_por`, `dirigido`, `descripcion`, `created_at`, `updated_at`) VALUES
 (0, 2, 'PLAN', 'DIBUJO IV', NULL, 'planes/1677636328PLAN DE CLASE  400 A I-23.pdf', 'ACTIVO', 'VISIBLE', 'PADILLA DURAN GROVER', 'CUARTO SUPERIOR A', 'PLAN DE CLASES DIBUJO IV', '2026-03-02 02:48:12', '2026-03-02 02:48:12'),

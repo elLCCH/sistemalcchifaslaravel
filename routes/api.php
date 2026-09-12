@@ -438,6 +438,8 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration
     Route::post('/planteldocentes', [PlanteldocentesController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::put('/planteldocentes/{id}', [PlanteldocentesController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::delete('/planteldocentes/{id}', [PlanteldocentesController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A)']);
+    
+    Route::post('/planteldocentes/datos-reporte-plan', [PlanteldocentesController::class, 'obtenerDatosReportePlan'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A),PRACTICANTE,OTRO(A),DOCENTE']);
 
     // =========================
     // PlanteldocentesmateriasController
@@ -597,6 +599,15 @@ Route::get('capture-pairings/{token}/pending-capture', [CapturePairingController
 Route::post('capture-pairings/{token}/revoke', [CapturePairingController::class, 'revoke']);
 
 
+use App\Http\Controllers\HorariosEstudiantesController;
+// ============================================================
+// Horarios de Estudiantes
+// ============================================================
+Route::prefix('v1/horarios')->middleware(['auth:sanctum', UpdateTokenExpiration::class])->group(function () {
+    Route::post('/grupal/{tipo}', [HorariosEstudiantesController::class, 'guardarHorarioGrupal']);
+    Route::get('/{infoId}/{tipo}', [HorariosEstudiantesController::class, 'obtenerHorario']);
+    Route::post('/{infoId}/{tipo}', [HorariosEstudiantesController::class, 'guardarHorario']);
+});
 
 // ============================================================
 // RUTAS API PARA EL SISTEMADOCS
