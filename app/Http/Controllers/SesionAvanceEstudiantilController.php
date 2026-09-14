@@ -900,22 +900,25 @@ class SesionAvanceEstudiantilController extends Controller
     {
         $user = $request->user();
 
-        // Aceptar estudiante o admin que proxy-consulte
-        $infoId = null;
-
         if ($user instanceof \App\Models\Estudiantesifas) {
-            // Buscar infoestudiantesifas del estudiante (filtrado por año predeterminado)
-            $anioId = $this->getAnioPredeterminadoId();
+            // 1. Obtener TODOS los IDs de inscripción (infoestudiantesifas_id) del estudiante.
+            // Esto soluciona el problema de los múltiples institutos.
             $infoQuery = DB::table('infoestudiantesifas as info')
-                ->where('info.estudiantesifas_id', (int) $user->id)
-                ->select('info.id');
-            $this->scopeAnio($infoQuery, $anioId);
-            $info = $infoQuery->first();
+                ->where('info.estudiantesifas_id', (int) $user->id);
+            
+            // OPCIONAL: Si quieres que el estudiante SÓLO vea las sesiones de este año, 
+            // descomenta las 2 líneas de abajo. Si las dejas comentadas (recomendado), 
+            // el estudiante podrá ver su historial de años pasados también.
+            // $anioId = $this->getAnioPredeterminadoId();
+            // $this->scopeAnio($infoQuery, $anioId); 
+            
+            $infoIds = $infoQuery->pluck('info.id')->toArray();
 
-            if (!$info) {
-                return response()->json(['message' => 'No se encontró información del estudiante.'], 404);
+            // Si el estudiante no tiene inscripciones, devolvemos un data vacío (200 OK) 
+            // para que Angular no rompa con un error 404.
+            if (empty($infoIds)) {
+                return response()->json(['data' => []]);
             }
-            $infoId = (int) $info->id;
         } else {
             return response()->json(['message' => 'No autorizado'], 403);
         }
@@ -923,27 +926,36 @@ class SesionAvanceEstudiantilController extends Controller
         $tipo = $request->query('tipo_asignacion', '');
         $eval = $request->query('evaluacion', null);
 
-        $query = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId);
-
-        // Estudiantes ven todas las sesiones (incluyendo las que no tienen asistencia registrada)
+        // 2. Buscar las sesiones usando whereIn (para abarcar todos sus institutos)
+        // y haciendo un JOIN para adjuntar el nombre y logo de la institución
+        $query = SesionAvanceEstudiantil::query()
+            ->select(
+                'sesiones_avance_estudiantil.*', 
+                'inst.Nombre as institucion_nombre', 
+                'inst.Logo as institucion_logo', 
+                'inst.ColorBajo as institucion_color'
+            )
+            ->join('infoestudiantesifas as info', 'sesiones_avance_estudiantil.infoestudiantesifas_id', '=', 'info.id')
+            ->join('instituciones as inst', 'info.instituciones_id', '=', 'inst.id')
+            ->whereIn('sesiones_avance_estudiantil.infoestudiantesifas_id', $infoIds);
 
         if ($tipo) {
-            $query->where('tipo_asignacion', $tipo);
+            $query->where('sesiones_avance_estudiantil.tipo_asignacion', $tipo);
         }
         if ($eval !== null && $eval !== '') {
-            $query->where('evaluacion', (int) $eval);
+            $query->where('sesiones_avance_estudiantil.evaluacion', (int) $eval);
         }
 
         $perPage = (int) $request->query('per_page', 0);
         if ($perPage > 0) {
-            $paginated = $query->orderBy('fecha', 'desc')
-                ->orderBy('id', 'desc')
+            $paginated = $query->orderBy('sesiones_avance_estudiantil.fecha', 'desc')
+                ->orderBy('sesiones_avance_estudiantil.id', 'desc')
                 ->paginate($perPage);
             return response()->json($paginated);
         }
 
-        $sesiones = $query->orderBy('fecha', 'desc')
-            ->orderBy('id', 'desc')
+        $sesiones = $query->orderBy('sesiones_avance_estudiantil.fecha', 'desc')
+            ->orderBy('sesiones_avance_estudiantil.id', 'desc')
             ->get();
 
         return response()->json(['data' => $sesiones]);
