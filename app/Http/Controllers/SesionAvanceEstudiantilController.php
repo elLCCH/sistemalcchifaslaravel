@@ -1373,7 +1373,7 @@ class SesionAvanceEstudiantilController extends Controller
     public function estabilizarSesiones(Request $request)
     {
         $user = $request->user();
-        if (!($user instanceof Planteldocentes)) {
+        if (!($user instanceof \App\Models\Planteldocentes)) {
             return response()->json(['message' => 'No autorizado'], 403);
         }
 
@@ -1388,56 +1388,86 @@ class SesionAvanceEstudiantilController extends Controller
 
         $docenteId = (int) $user->id;
         $creadas = 0;
+        $actualizadas = 0;
         $idsCreados = [];
 
         // Ordenar fechas cronológicamente
         sort($fechas);
 
+        // EXTRAER HORARIOS DE LOS ESTUDIANTES SELECCIONADOS (Optimizado en una sola consulta)
+        $horarios = \Illuminate\Support\Facades\DB::table('horarios_estudiantes')
+            ->whereIn('infoestudiantesifas_id', $infoIds)
+            ->where('tipo_asignacion', $tipo)
+            ->get()
+            ->groupBy('infoestudiantesifas_id');
+
         foreach ($infoIds as $infoId) {
             $infoId = (int) $infoId;
             if ($infoId <= 0) continue;
+
+            // Obtener los días de la semana permitidos (1=Lunes a 7=Domingo) para este estudiante
+            $horariosEst = $horarios->get($infoId, collect());
+            $diasPermitidos = $horariosEst->pluck('dia_semana')->toArray();
+
+            // Si el estudiante no tiene horario registrado, saltamos para evitar llenarlo de faltas erróneas
+            if (empty($diasPermitidos)) {
+                continue; 
+            }
 
             foreach ($fechas as $fecha) {
                 $fecha = trim((string) $fecha);
                 if (!$fecha) continue;
 
-                // Verificar si ya existe sesión en esa fecha
-                $existe = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId)
+                // VALIDACIÓN DEL HORARIO INDIVIDUAL
+                $diaFecha = (int) date('N', strtotime($fecha)); // Obtiene el día de 1 a 7
+                if (!in_array($diaFecha, $diasPermitidos)) {
+                    continue; // El estudiante NO tiene clases en este día de la semana, lo ignoramos
+                }
+
+                // La fecha identifica la clase. La evaluación elegida debe aplicarse
+                // también a una sesión existente con otra evaluación.
+                $sesionExistente = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId)
                     ->where('planteldocentes_id', $docenteId)
                     ->where('tipo_asignacion', $tipo)
-                    ->where('evaluacion', $eval)
                     ->where('fecha', $fecha)
-                    ->exists();
+                    ->orderByDesc('id')
+                    ->first();
 
-                if (!$existe) {
-                    // Buscar última sesión anterior a esta fecha para copiar avance_texto
-                    $ultimaAnterior = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId)
-                        ->where('planteldocentes_id', $docenteId)
-                        ->where('tipo_asignacion', $tipo)
-                        ->where('evaluacion', $eval)
-                        ->where('fecha', '<', $fecha)
-                        ->orderBy('fecha', 'desc')
-                        ->orderBy('id', 'desc')
-                        ->first(['avance_texto']);
-
-                    $sesion = SesionAvanceEstudiantil::create([
-                        'infoestudiantesifas_id' => $infoId,
-                        'planteldocentes_id'     => $docenteId,
-                        'tipo_asignacion'        => $tipo,
-                        'evaluacion'             => $eval,
-                        'fecha'                  => $fecha,
-                        'avance_texto'           => $ultimaAnterior->avance_texto ?? '',
-                        'estrellas'              => 0,
-                        'sugerencia'             => 'NO VINO A CLASES',
-                        'asistencia'             => 'F',
-                    ]);
-                    $idsCreados[] = (int) $sesion->id;
-                    $creadas++;
+                if ($sesionExistente) {
+                    if ((int) $sesionExistente->evaluacion !== $eval) {
+                        $sesionExistente->update(['evaluacion' => $eval]);
+                        $actualizadas++;
+                    }
+                    continue;
                 }
+
+                // Buscar última sesión anterior a esta fecha para copiar avance_texto,
+                // incluso si pertenece a otra evaluación.
+                $ultimaAnterior = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId)
+                    ->where('planteldocentes_id', $docenteId)
+                    ->where('tipo_asignacion', $tipo)
+                    ->where('fecha', '<', $fecha)
+                    ->orderBy('fecha', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->first(['avance_texto']);
+
+                $sesion = SesionAvanceEstudiantil::create([
+                    'infoestudiantesifas_id' => $infoId,
+                    'planteldocentes_id'     => $docenteId,
+                    'tipo_asignacion'        => $tipo,
+                    'evaluacion'             => $eval,
+                    'fecha'                  => $fecha,
+                    'avance_texto'           => $ultimaAnterior->avance_texto ?? '',
+                    'estrellas'              => 0,
+                    'sugerencia'             => 'NO VINO A CLASES',
+                    'asistencia'             => 'F',
+                ]);
+                $idsCreados[] = (int) $sesion->id;
+                $creadas++;
             }
         }
 
-        // Registrar log para poder deshacer
+        // Registrar log para poder usar deshacerEstabilizar
         if ($creadas > 0) {
             TerminarClaseLog::create([
                 'planteldocentes_id'   => (int) $user->id,
@@ -1452,11 +1482,11 @@ class SesionAvanceEstudiantilController extends Controller
         }
 
         return response()->json([
-            'message' => "Estabilización completada. Se crearon $creadas registros de falta.",
+            'message' => "Estabilización completada. Se crearon $creadas registros de falta y se actualizaron $actualizadas evaluaciones basados estrictamente en los horarios individuales.",
             'creadas' => $creadas,
+            'actualizadas' => $actualizadas,
         ]);
     }
-
     /**
      * Deshacer última estabilización del docente (hoy).
      * Elimina las sesiones-falta creadas.
