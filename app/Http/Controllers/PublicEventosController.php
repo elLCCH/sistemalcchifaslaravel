@@ -53,6 +53,118 @@ class PublicEventosController extends BaseController
         return response()->json(['data' => $row]);
     }
 
+    private function convertirFechaDdmmyyyy(?string $fecha): ?string
+    {
+        $fecha = trim((string) $fecha);
+        if (!preg_match('/^\d{8}$/', $fecha)) return null;
+
+        $date = \DateTimeImmutable::createFromFormat('!dmY', $fecha);
+        $errors = \DateTimeImmutable::getLastErrors();
+        if (!$date || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) return null;
+        if ($date->format('dmY') !== $fecha) return null;
+
+        return $date->format('Y-m-d');
+    }
+
+    private function buscarInscripcionVerificada(int $eventoId, string $carnet, string $fechaNacimiento): ?Estudianteseventos
+    {
+        return Estudianteseventos::query()
+            ->where('eventos_id', $eventoId)
+            ->whereRaw('UPPER(TRIM(Carnet)) = ?', [mb_strtoupper(trim($carnet), 'UTF-8')])
+            ->whereDate('FechaNac', $fechaNacimiento)
+            ->first();
+    }
+
+    public function verificarInscripcion(int $eventoId, Request $request)
+    {
+        $evento = Eventos::query()
+            ->where('id', $eventoId)
+            ->where('Activo', 1)
+            ->where('PublicoWeb', 1)
+            ->first();
+        if (!$evento) return response()->json(['error' => 'Evento no disponible'], 404);
+
+        $carnet = trim((string) $request->input('Carnet', ''));
+        $fechaNacimiento = $this->convertirFechaDdmmyyyy($request->input('FechaNac'));
+        if ($carnet === '' || !$fechaNacimiento) {
+            return response()->json(['error' => 'Ingrese un carnet y una fecha válida en formato ddmmyyyy'], 422);
+        }
+
+        $row = $this->buscarInscripcionVerificada($eventoId, $carnet, $fechaNacimiento);
+        if (!$row) {
+            return response()->json(['error' => 'No se encontró una inscripción con esos datos para este evento'], 404);
+        }
+
+        return response()->json(['data' => [
+            'id' => $row->id,
+            'Ap_Paterno' => $row->Ap_Paterno,
+            'Ap_Materno' => $row->Ap_Materno,
+            'Nombres' => $row->Nombres,
+            'Carnet' => $row->Carnet,
+            'Foto' => $row->Foto,
+            'Celular' => $row->Celular,
+            'Correo' => $row->Correo,
+            'FechaNac' => $row->FechaNac,
+            'Edad' => $row->Edad,
+            'Tutor' => $row->Tutor,
+            'CelularTutor' => $row->CelularTutor,
+            'Departamento' => $row->Departamento,
+            'NombreInstitucion' => $row->NombreInstitucion,
+            'Especialidad' => $row->Especialidad,
+            'Categoria' => $row->Categoria,
+            'EstadoInscripcion' => $row->EstadoInscripcion,
+            'TienePago' => $row->TienePago,
+            'EstadoPago' => $row->EstadoPago,
+            'CertificadoNacimiento' => $row->CertificadoNacimiento,
+            'ComprobantePago' => $row->ComprobantePago,
+            'DatosEspeciales' => $this->parseParametros($row->DatosEspeciales) ?? [],
+            'ConfiguracionEvento' => [
+                'InputsEspecial' => $evento->InputsEspecial,
+                'Parametros' => $evento->Parametros,
+                'Especialidades' => $evento->Especialidades,
+                'Columnas' => $evento->Columnas,
+            ],
+        ]]);
+    }
+
+    public function actualizarNombreInstitucion(int $eventoId, Request $request)
+    {
+        $evento = Eventos::query()
+            ->where('id', $eventoId)
+            ->where('Activo', 1)
+            ->where('PublicoWeb', 1)
+            ->first();
+        if (!$evento) return response()->json(['error' => 'Evento no disponible'], 404);
+
+        $carnet = trim((string) $request->input('Carnet', ''));
+        $fechaNacimiento = $this->convertirFechaDdmmyyyy($request->input('FechaNac'));
+        $nombreInstitucion = trim((string) $request->input('NombreInstitucion', ''));
+        if ($carnet === '' || !$fechaNacimiento) {
+            return response()->json(['error' => 'Verifique el carnet y la fecha ddmmyyyy'], 422);
+        }
+        if ($nombreInstitucion === '' || mb_strlen($nombreInstitucion, 'UTF-8') > 150) {
+            return response()->json(['error' => 'El nombre de institución es obligatorio y no puede superar 150 caracteres'], 422);
+        }
+
+        $row = $this->buscarInscripcionVerificada($eventoId, $carnet, $fechaNacimiento);
+        if (!$row) {
+            return response()->json(['error' => 'No se encontró una inscripción con esos datos para este evento'], 404);
+        }
+
+        $actualizado = Estudianteseventos::query()
+            ->whereKey($row->getKey())
+            ->where(function ($query) {
+                $query->whereNull('NombreInstitucion')->orWhere('NombreInstitucion', '');
+            })
+            ->update(['NombreInstitucion' => $nombreInstitucion]);
+
+        if (!$actualizado) {
+            return response()->json(['error' => 'El nombre de institución ya fue registrado y no se puede modificar'], 409);
+        }
+
+        return response()->json(['data' => ['NombreInstitucion' => $nombreInstitucion]]);
+    }
+
     private function parseSchema($raw): ?array
     {
         if ($raw === null) return null;
