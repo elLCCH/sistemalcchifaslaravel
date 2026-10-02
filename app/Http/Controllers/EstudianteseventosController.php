@@ -341,7 +341,7 @@ class EstudianteseventosController extends BaseController
                 'estudianteseventos.*',
                 'eventos.NombreEvento as EventoNombre',
                 'eventos.Anio as EventoAnio',
-                $isSuperAdmin ? 'instituciones.Nombre as NombreInstitucion' : DB::raw('NULL as NombreInstitucion')
+                $isSuperAdmin ? 'instituciones.Nombre as InstitucionAsignadaNombre' : DB::raw('NULL as InstitucionAsignadaNombre')
             )
             ->when(!empty($user?->instituciones_id), function ($q) use ($user) {
                 $q->where('estudianteseventos.instituciones_id', (int) $user->instituciones_id);
@@ -373,6 +373,9 @@ class EstudianteseventosController extends BaseController
     {
         $user = $request->user();
         $data = $request->all();
+
+        $data['NombreInstitucion'] = trim((string) ($data['NombreInstitucion'] ?? $data['nombreInstitucion'] ?? ''));
+        unset($data['nombreInstitucion']);
 
         if (!empty($user?->instituciones_id)) {
             $data['instituciones_id'] = (int) $user->instituciones_id;
@@ -489,6 +492,11 @@ class EstudianteseventosController extends BaseController
             ->firstOrFail();
 
         $data = $request->all();
+
+        if (array_key_exists('NombreInstitucion', $data) || array_key_exists('nombreInstitucion', $data)) {
+            $data['NombreInstitucion'] = trim((string) ($data['NombreInstitucion'] ?? $data['nombreInstitucion'] ?? ''));
+            unset($data['nombreInstitucion']);
+        }
 
         if (!empty($user?->instituciones_id)) {
             $data['instituciones_id'] = (int) $user->instituciones_id;

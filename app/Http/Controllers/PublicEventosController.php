@@ -454,7 +454,7 @@ class PublicEventosController extends BaseController
             'Edad' => $edad > 0 ? $edad : null,
             'CelularTutor' => $celularTutor,
             'Departamento' => $departamento,
-            'nombreInstitucion' => $nombreInstitucion,
+            'NombreInstitucion' => $nombreInstitucion,
             'CertificadoNacimiento' => $certificadoNacimiento,
         ];
 
