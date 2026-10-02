@@ -579,8 +579,8 @@ Route::prefix('public')->group(function () {
     Route::get('/eventos', [PublicEventosController::class, 'index']);
     Route::get('/eventos/{id}', [PublicEventosController::class, 'show']);
     Route::post('/eventos/{eventoId}/inscripcion', [PublicEventosController::class, 'inscribir']);
-    Route::post('/eventos/{eventoId}/verificar-inscripcion', [PublicEventosController::class, 'verificarInscripcion'])->middleware('throttle:10,1');
-    Route::put('/eventos/{eventoId}/nombre-institucion', [PublicEventosController::class, 'actualizarNombreInstitucion'])->middleware('throttle:10,1');
+    Route::post('/eventos/{eventoId}/verificar-inscripcion', [PublicEventosController::class, 'verificarInscripcion'])->withoutMiddleware(['auth:sanctum']);
+    Route::put('/eventos/{eventoId}/nombre-institucion', [PublicEventosController::class, 'actualizarNombreInstitucion'])->withoutMiddleware(['auth:sanctum']);
     Route::post('/subicionpublico', [FileUploadPublicoController::class, 'subicionpublico'])
         ->withoutMiddleware(['auth:sanctum']);
     Route::post('/eliminacionpublico', [FileUploadPublicoController::class, 'eliminacionpublico'])
