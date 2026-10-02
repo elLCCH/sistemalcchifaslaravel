@@ -70,7 +70,7 @@ class PublicEventosController extends BaseController
     {
         return Estudianteseventos::query()
             ->where('eventos_id', $eventoId)
-            ->whereRaw('UPPER(TRIM(Carnet)) = ?', [mb_strtoupper(trim($carnet), 'UTF-8')])
+            ->whereRaw('UPPER(TRIM(Carnet)) = ?', [strtoupper(trim($carnet))])
             ->whereDate('FechaNac', $fechaNacimiento)
             ->first();
     }
