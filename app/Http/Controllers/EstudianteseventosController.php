@@ -332,7 +332,11 @@ class EstudianteseventosController extends BaseController
 
         $eventoId = $request->query('eventos_id');
         $search = trim((string) $request->query('search', ''));
+        
+        // Capturamos cuántos registros por página pide Angular (por defecto 10)
+        $perPage = $request->query('per_page', 10);
 
+        // 1. TU BASE DE DATOS Y SEGURIDAD INTACTAS
         $query = Estudianteseventos::query()
             ->join('eventos', 'estudianteseventos.eventos_id', '=', 'eventos.id')
             ->leftJoin('estudiantesifas', 'estudianteseventos.estudiantesifas_id', '=', 'estudiantesifas.id')
@@ -350,23 +354,36 @@ class EstudianteseventosController extends BaseController
                 $q->where('estudianteseventos.eventos_id', (int) $eventoId);
             });
 
+        // 2. LA BÚSQUEDA MEZCLADA POTENTE (Con prefijos para evitar el choque de columnas)
         if ($search !== '') {
-            $q = '%' . $search . '%';
-            $query->where(function ($sub) use ($q) {
-                $sub
-                    ->where('estudianteseventos.Ap_Paterno', 'like', $q)
-                    ->orWhere('estudianteseventos.Ap_Materno', 'like', $q)
-                    ->orWhere('estudianteseventos.Nombres', 'like', $q)
-                    ->orWhere('estudianteseventos.Carnet', 'like', $q)
-                    ->orWhere('estudianteseventos.EstadoInscripcion', 'like', $q)
-                    ->orWhere('estudianteseventos.EstadoPago', 'like', $q);
+            $terms = explode(' ', $search); // Separa las palabras
+            
+            $query->where(function ($q) use ($terms) {
+                foreach ($terms as $term) {
+                    $q->where(function ($sub) use ($term) {
+                        $sub->where('estudianteseventos.Ap_Paterno', 'like', "%{$term}%")
+                            ->orWhere('estudianteseventos.Ap_Materno', 'like', "%{$term}%")
+                            ->orWhere('estudianteseventos.Nombres', 'like', "%{$term}%")
+                            ->orWhere('estudianteseventos.Carnet', 'like', "%{$term}%")
+                            ->orWhere('estudianteseventos.EstadoInscripcion', 'like', "%{$term}%")
+                            ->orWhere('estudianteseventos.EstadoPago', 'like', "%{$term}%");
+                    });
+                }
             });
         }
 
-        $items = $query->orderByDesc('estudianteseventos.id')->get();
-        return response()->json(['data' => $items]);
-    }
+        // 3. ORDENAMIENTO DINÁMICO (Si Angular lo envía, si no, usa el ID descendente)
+        $sortBy = $request->query('sort_by', 'estudianteseventos.id');
+        $sortDir = strtolower($request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $query->orderBy($sortBy, $sortDir);
 
+        // 4. PAGINACIÓN DESDE EL BACKEND EN LUGAR DE ->get()
+        $items = $query->paginate($perPage);
+        
+        // Laravel paginate() ya devuelve un JSON estructurado con 'data', 'total', 'current_page', etc.
+        // Así que lo enviamos directamente
+        return response()->json($items);
+    }
     public function create() {}
 
     public function store(Request $request)
