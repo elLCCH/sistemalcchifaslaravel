@@ -405,6 +405,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration
     // =========================
     Route::get('/estudianteseventos', [EstudianteseventosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::get('/estudianteseventos/by-evento/{eventoId}', [EstudianteseventosController::class, 'byEvento'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/estudianteseventos/verificar-inscripcion-ifas', [EstudianteseventosController::class, 'buscarInscripcionIFAS'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::get('/estudianteseventos/{id}', [EstudianteseventosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::post('/estudianteseventos', [EstudianteseventosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::put('/estudianteseventos/{id}', [EstudianteseventosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);

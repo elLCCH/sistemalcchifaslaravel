@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Http\Middleware\UpdateTokenExpiration;
+use App\Models\Anios;
 use App\Models\Diseniocertificadopdfs;
 use App\Models\Eventos;
+use App\Models\Infoestudiantesifas;
 use App\Models\Estudianteseventos;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
@@ -493,6 +495,56 @@ class EstudianteseventosController extends BaseController
             ->firstOrFail();
 
         return response()->json(['data' => $row]);
+    }
+
+    public function buscarInscripcionIFAS(Request $request)
+    {
+        $validated = $request->validate([
+            'eventos_id' => ['required', 'integer', 'min:1'],
+            'Carnet' => ['required', 'string', 'max:50'],
+            'anio_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $user = $request->user();
+        $evento = Eventos::query()
+            ->whereKey((int) $validated['eventos_id'])
+            ->when(!empty($user?->instituciones_id), function ($query) use ($user) {
+                $query->where('instituciones_id', (int) $user->instituciones_id);
+            })
+            ->firstOrFail();
+
+        $anio = Anios::query()->findOrFail((int) $validated['anio_id']);
+        if (!preg_match('/^(\d{4})/', trim((string) $anio->Anio), $matches)) {
+            return response()->json(['message' => 'El año seleccionado no es válido para la búsqueda'], 422);
+        }
+
+        $carnet = mb_strtoupper(trim($validated['Carnet']), 'UTF-8');
+        $registros = Infoestudiantesifas::query()
+            ->join('estudiantesifas', 'infoestudiantesifas.estudiantesifas_id', '=', 'estudiantesifas.id')
+            ->leftJoin('planteldocentes as docente_especialidad', 'infoestudiantesifas.planteldocadmins_id', '=', 'docente_especialidad.id')
+            ->leftJoin('planteldocentes as docente_pc', 'infoestudiantesifas.planteldocadmins_idPC', '=', 'docente_pc.id')
+            ->leftJoin('planteldocentes as docente_otros', 'infoestudiantesifas.planteldocadmins_idOtros', '=', 'docente_otros.id')
+            ->where('infoestudiantesifas.instituciones_id', (int) $evento->instituciones_id)
+            ->whereRaw("UPPER(TRIM(COALESCE(estudiantesifas.CI, ''))) = ?", [$carnet])
+            ->whereYear('infoestudiantesifas.FechInsc', (int) $matches[1])
+            ->select([
+                'infoestudiantesifas.*',
+                'estudiantesifas.CI',
+                'estudiantesifas.Ap_Paterno',
+                'estudiantesifas.Ap_Materno',
+                'estudiantesifas.Nombre',
+                DB::raw("TRIM(CONCAT_WS(' ', NULLIF(TRIM(docente_especialidad.Nombres), ''), NULLIF(TRIM(docente_especialidad.Apellidos), ''))) as DocenteEspecialidad"),
+                DB::raw("TRIM(CONCAT_WS(' ', NULLIF(TRIM(docente_pc.Nombres), ''), NULLIF(TRIM(docente_pc.Apellidos), ''))) as DocentePC"),
+                DB::raw("TRIM(CONCAT_WS(' ', NULLIF(TRIM(docente_otros.Nombres), ''), NULLIF(TRIM(docente_otros.Apellidos), ''))) as DocenteOtros"),
+            ])
+            ->orderByDesc('infoestudiantesifas.FechInsc')
+            ->orderByDesc('infoestudiantesifas.id')
+            ->get();
+
+        return response()->json([
+            'data' => $registros,
+            'anio' => $anio->Anio,
+        ]);
     }
 
     public function edit(Estudianteseventos $estudianteseventos) {}
