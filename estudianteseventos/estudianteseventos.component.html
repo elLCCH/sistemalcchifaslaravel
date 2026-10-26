@@ -1,0 +1,943 @@
+<div class="container mt-4">
+  <div class="row">
+    <div class="col text-center">
+      <h1 class="display-4 fw-bold titulosGlobales">Inscripciones de Eventos Estudiantiles</h1>
+      <p class="lead text-secondary subtitulosGlobales">Administra la información de los participantes a eventos institucional de manera sencilla y eficiente</p>
+    </div>
+  </div>
+</div>
+
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <div class="d-flex align-items-center flex-wrap gap-2 button">
+    <button (click)="abrirNuevo()" class="btn mouse-dir primary d-flex align-items-center" style="gap: 8px;">
+      <span style="display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;">
+        <ng-lottie [options]="_tools.optionsAdicionar" width="50px" height="50px"></ng-lottie>
+      </span>
+      <span>NUEVA INSCRIPCIÓN</span>
+    </button>
+    <button type="button" class="btn btn-outline-primary" (click)="abrirModalEstadisticas()" [disabled]="!eventoSeleccionadoId || isLoading">
+      <i class="bi bi-bar-chart-line me-1"></i>Estadísticas
+    </button>
+    <button (click)="abrirReporte()" [disabled]="!eventoSeleccionadoId || isLoading || collectionSize === 0" class="btn mouse-dir primary d-flex align-items-center" style="gap: 8px;">
+      <span style="display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;">
+        <ng-lottie [options]="_tools.optionssubgestion" width="50px" height="50px"></ng-lottie>
+      </span>
+      <span>VER REPORTE ({{ collectionSize }})</span>
+    </button>
+  </div>
+
+  <div class="d-flex justify-content-end align-items-end flex-wrap gap-2 ms-auto">
+    <div class="form-floating event-selector">
+      <select class="form-select fw-bold text-primary border-primary" [(ngModel)]="eventoSeleccionadoId" (change)="onChangeEvento()">
+        <option [ngValue]="null">Seleccione un evento</option>
+        <option *ngFor="let e of eventos" [ngValue]="e?.id">{{ e?.Anio }} - {{ e?.NombreEvento }}</option>
+      </select>
+      <label class="fw-bold text-primary">EVENTO INSTITUCIONAL</label>
+    </div>
+    <div class="input-group event-search" title="Presionar ENTER para buscar">
+      <span class="input-group-text bg-white" style="cursor:pointer;" (click)="onSearchEnter()">
+        <ng-lottie [options]="_tools.optionslupa" width="25px" height="25px"></ng-lottie>
+      </span>
+      <input type="search" class="form-control" placeholder="Buscar nombre, CI, pago..." 
+            [(ngModel)]="filterTxt" 
+            (keyup.enter)="onSearchEnter()" 
+            [disabled]="!eventoSeleccionadoId">
+    </div>
+  </div>
+</div>
+
+<!-- PANEL INTERACTIVO DE FILTROS -->
+<div class="card bg-white mb-3 border-0 shadow-sm filtros-container" *ngIf="eventoSeleccionadoId">
+  <div class="card-body">
+    
+    <div class="filter-row" *ngIf="departamentosUnicos.length">
+      <span class="filter-label"><i class="bi bi-geo-alt me-1"></i>Departamento</span>
+      <button class="filter-pill" [class.active]="filtroDepartamentos.length === 0" (click)="toggleFiltro('departamento', '')">Todos</button>
+      <button class="filter-pill" *ngFor="let d of departamentosUnicos" [class.active]="filtroDepartamentos.includes(d)" (click)="toggleFiltro('departamento', d)">{{ d }}</button>
+    </div>
+    
+    <div class="filter-row" *ngIf="especialidadesUnicas.length">
+      <span class="filter-label"><i class="bi bi-star me-1"></i>Especialidad</span>
+      <button class="filter-pill" [class.active]="filtroEspecialidades.length === 0" (click)="toggleFiltro('especialidad', '')">Todas</button>
+      <button class="filter-pill" *ngFor="let e of especialidadesUnicas" [class.active]="filtroEspecialidades.includes(e)" (click)="toggleFiltro('especialidad', e)">{{ e }}</button>
+    </div>
+    
+    <div class="filter-row" *ngIf="categoriasUnicas.length">
+      <span class="filter-label"><i class="bi bi-tags me-1"></i>Categoría</span>
+      <button class="filter-pill" [class.active]="filtroCategorias.length === 0" (click)="toggleFiltro('categoria', '')">Todas</button>
+      <button class="filter-pill" *ngFor="let c of categoriasUnicas" [class.active]="filtroCategorias.includes(c)" (click)="toggleFiltro('categoria', c)">{{ c }}</button>
+    </div>
+
+    <!-- Controles intermedios -->
+    <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top flex-wrap gap-2">
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="mostrarFiltrosAvanzados = !mostrarFiltrosAvanzados">
+          <i class="bi" [ngClass]="mostrarFiltrosAvanzados ? 'bi-funnel-fill' : 'bi-funnel'"></i>
+          {{ mostrarFiltrosAvanzados ? 'Ocultar filtros' : 'Más filtros' }}
+        </button>
+
+        <!-- DESPLEGABLE DE COLUMNAS -->
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside">
+            <i class="bi bi-layout-three-columns me-1"></i>Columnas
+          </button>
+          <ul class="dropdown-menu column-selector">
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.foto" id="cFoto"><label class="form-check-label user-select-none" for="cFoto">Foto</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.paterno" id="cPat"><label class="form-check-label user-select-none" for="cPat">Ap. Paterno</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.materno" id="cMat"><label class="form-check-label user-select-none" for="cMat">Ap. Materno</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.nombres" id="cNom"><label class="form-check-label user-select-none" for="cNom">Nombres</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.carnet" id="cCar"><label class="form-check-label user-select-none" for="cCar">Carnet</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.edad" id="cEd"><label class="form-check-label user-select-none" for="cEd">Edad</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.fechaNac" id="cFechaNac"><label class="form-check-label user-select-none" for="cFechaNac">Fecha de nacimiento</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.celular" id="cCelular"><label class="form-check-label user-select-none" for="cCelular">Celular</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.celularTutor" id="cCelularTutor"><label class="form-check-label user-select-none" for="cCelularTutor">Celular tutor</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.fechaInscripcion" id="cFechaInscripcion"><label class="form-check-label user-select-none" for="cFechaInscripcion">Fecha inscripción</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.nombreInstitucion" id="cNombreInstitucion"><label class="form-check-label user-select-none" for="cNombreInstitucion">Institución</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.departamento" id="cDep"><label class="form-check-label user-select-none" for="cDep">Departamento</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.especialidad" id="cEsp"><label class="form-check-label user-select-none" for="cEsp">Especialidad</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.categoria" id="cCat"><label class="form-check-label user-select-none" for="cCat">Categoría</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.certNac" id="cCert"><label class="form-check-label user-select-none" for="cCert">Certificado Nac.</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.boleta" id="cBol"><label class="form-check-label user-select-none" for="cBol">Boleta Pago</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.estadoInscripcion" id="cIns"><label class="form-check-label user-select-none" for="cIns">Est. Inscripción</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.tienePago" id="cTiePag"><label class="form-check-label user-select-none" for="cTiePag">¿Aplica Pago?</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.monto" id="cMonto"><label class="form-check-label user-select-none" for="cMonto">Monto</label></div></li>
+            <li class="px-3 py-1"><div class="form-check"><input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.estadoPago" id="cPag"><label class="form-check-label user-select-none" for="cPag">Est. Pago</label></div></li>
+            <li class="px-3 py-1">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" [(ngModel)]="columnasVisibles.correo" id="cDoc">
+                <label class="form-check-label user-select-none" for="cDoc">Documentación (Físico)</label>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <!-- NUEVO BOTÓN: DESCARGAR ARCHIVOS (ZIP) -->
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="outside" [disabled]="!eventoSeleccionadoId || isDownloadingZip || collectionSize === 0">
+            <i class="bi" [ngClass]="isDownloadingZip ? 'bi-hourglass-split spinner-border spinner-border-sm' : 'bi-file-earmark-zip'"></i>
+            <span *ngIf="!isDownloadingZip" class="ms-1">Descargar Archivos en Formato Zip</span>
+            <span *ngIf="isDownloadingZip" class="ms-1">{{archivosDescargados}}/{{totalArchivosADescargar}} ({{ tipoDescargaActual }})</span>
+          </button>
+          
+          <ul class="dropdown-menu column-selector" style="min-width: 280px;">
+            <li class="px-3 py-2 bg-light border-bottom text-center">
+              <span class="small fw-bold text-success text-uppercase">1. Formato de Nombres</span>
+            </li>
+            <li class="px-3 py-2">
+              <div class="form-check cursor-pointer mb-2">
+                <input class="form-check-input" type="radio" name="nameMode" id="nmFila" [value]="true" [(ngModel)]="incluirNumeroFilaEnArchivo">
+                <label class="form-check-label user-select-none small" for="nmFila">
+                  <strong>Con número de fila</strong><br><span class="text-muted">Ej: 1 - Apellidos Nombres...</span>
+                </label>
+              </div>
+              <div class="form-check cursor-pointer">
+                <input class="form-check-input" type="radio" name="nameMode" id="nmSinFila" [value]="false" [(ngModel)]="incluirNumeroFilaEnArchivo">
+                <label class="form-check-label user-select-none small" for="nmSinFila">
+                  <strong>Sin número de fila</strong><br><span class="text-muted">Ej: Apellidos Nombres...</span>
+            </label>
+              </div>
+            </li>
+            <li><hr class="dropdown-divider m-0"></li>
+            <li class="px-3 py-2 bg-light border-bottom text-center">
+              <span class="small fw-bold text-success text-uppercase">2. ¿Qué deseas descargar?</span>
+            </li>
+            <li class="px-2 py-1">
+              <button class="btn btn-sm btn-outline-success w-100 text-start" (click)="descargarArchivosZip('foto')" [disabled]="isDownloadingZip">
+                <i class="bi bi-camera me-2"></i>Todas las Fotos
+              </button>
+            </li>
+            <li class="px-2 py-1">
+              <button class="btn btn-sm btn-outline-primary w-100 text-start" (click)="descargarArchivosZip('certificado')" [disabled]="isDownloadingZip">
+                <i class="bi bi-file-earmark-person me-2"></i>Certificados de Nacimiento
+              </button>
+            </li>
+            <li class="px-2 py-1 pb-2">
+              <button class="btn btn-sm btn-outline-info w-100 text-start" (click)="descargarArchivosZip('boleta')" [disabled]="isDownloadingZip">
+                <i class="bi bi-receipt me-2"></i>Boletas de Pago
+              </button>
+            </li>
+          </ul>
+        </div>
+        <!-- FIN NUEVO BOTÓN -->
+        <!-- FIN NUEVO BOTÓN -->
+
+      </div>
+      
+      <div class="d-flex align-items-center gap-2 small text-muted">
+        <span>{{ collectionSize }} resultados</span>
+        <label for="eventosPageSize" class="mb-0">Filas:</label>
+        <select id="eventosPageSize" class="form-select form-select-sm page-size-select" [(ngModel)]="pageSize" (ngModelChange)="onPageSizeChange()">
+          <option *ngFor="let size of pageSizeOptions" [ngValue]="size">{{ size }}</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Filtros Avanzados -->
+    <div class="mt-3 pt-3 border-top" *ngIf="mostrarFiltrosAvanzados">
+      <div class="filter-row" *ngIf="estadosInscripcionUnicos.length">
+        <span class="filter-label"><i class="bi bi-clipboard-check me-1"></i>Inscripción</span>
+        <button class="filter-pill" [class.active]="filtroEstadosInscripcion.length === 0" (click)="toggleFiltro('estadoInscripcion', '')">Todos</button>
+        <button class="filter-pill" *ngFor="let estado of estadosInscripcionUnicos" [class.active]="filtroEstadosInscripcion.includes(estado)" (click)="toggleFiltro('estadoInscripcion', estado)">
+          <i class="bi bi-circle-fill me-1" [ngClass]="{'text-success': estado === 'APROBADO', 'text-warning': estado === 'PENDIENTE', 'text-danger': estado === 'RECHAZADO'}" style="font-size: 0.5rem; vertical-align: middle;"></i>{{ estado }}
+        </button>
+      </div>
+
+      <div class="filter-row">
+        <span class="filter-label"><i class="bi bi-cash-coin me-1"></i>Tiene Pago</span>
+        <button class="filter-pill" [class.active]="filtroTienePago === ''" (click)="toggleFiltro('tienePago', '')">Todos</button>
+        <button class="filter-pill" [class.active]="filtroTienePago === 'SI'" (click)="toggleFiltro('tienePago', 'SI')">Con pago</button>
+        <button class="filter-pill" [class.active]="filtroTienePago === 'NO'" (click)="toggleFiltro('tienePago', 'NO')">Sin pago</button>
+      </div>
+
+      <div class="filter-row" *ngIf="estadosPagoUnicos.length">
+        <span class="filter-label"><i class="bi bi-wallet2 me-1"></i>Estado Pago</span>
+        <button class="filter-pill" [class.active]="filtroEstadosPago.length === 0" (click)="toggleFiltro('estadoPago', '')">Todos</button>
+        <button class="filter-pill" *ngFor="let estado of estadosPagoUnicos" [class.active]="filtroEstadosPago.includes(estado)" (click)="toggleFiltro('estadoPago', estado)">{{ estado }}</button>
+      </div>
+
+      <div class="filter-row align-items-center mt-2">
+        <span class="filter-label"><i class="bi bi-person-bounding-box me-1"></i>Rango Edad</span>
+        <div class="d-flex align-items-center gap-2">
+          <input type="number" class="form-control form-control-sm" style="width: 80px;" placeholder="Mín" [(ngModel)]="filtroEdadMin" (ngModelChange)="onFiltroSelectChange()">
+          <span class="text-muted">-</span>
+          <input type="number" class="form-control form-control-sm" style="width: 80px;" placeholder="Máx" [(ngModel)]="filtroEdadMax" (ngModelChange)="onFiltroSelectChange()">
+        </div>
+        <button type="button" class="btn btn-sm btn-link text-danger text-decoration-none ms-auto" (click)="limpiarFiltros()">
+          <i class="bi bi-trash me-1"></i>Limpiar filtros
+        </button>
+      </div>
+      <div class="mt-3 pt-3 border-top">
+        <span class="filter-label d-block mb-2"><i class="bi bi-sort-down me-1"></i>Ordenamiento Múltiple de Tabla y Reportes</span>
+        <div class="row g-2">
+          <div class="col-12 col-md-auto d-flex align-items-center gap-1" *ngFor="let crit of criteriosOrden; let i = index">
+            <span class="badge bg-secondary">{{ i + 1 }}</span>
+            <select class="form-select form-select-sm" style="width: 145px;" [(ngModel)]="crit.columna" (ngModelChange)="alCambiarOrden(i)">
+              <option value="">-- Ninguno --</option>
+              <option *ngFor="let col of columnasOrdenables" [value]="col.id" [disabled]="columnaYaSeleccionada(col.id, i)">{{ col.label }}</option>
+            </select>
+            <button class="btn btn-sm btn-outline-secondary" type="button" [disabled]="!crit.columna" (click)="cambiarDireccionOrden(i)">
+              <i class="bi" [ngClass]="crit.direccion === 'asc' ? 'bi-sort-alpha-down' : 'bi-sort-alpha-down-alt'"></i>
+            </button>
+          </div>
+          <div class="col-12 col-md-auto d-flex align-items-center">
+            <button type="button" class="btn btn-sm btn-link text-danger text-decoration-none" (click)="limpiarOrden()">
+              <i class="bi bi-eraser me-1"></i>Limpiar orden
+            </button>
+          </div>
+        </div>
+        <small class="text-muted d-block mt-2">Los criterios se aplican de arriba hacia abajo; cada columna se puede elegir una sola vez.</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<div class="container-fluid" style="z-index: 1;">
+
+  <div class="card">
+    <div class="card-body">
+      <div *ngIf="!eventoSeleccionadoId" class="text-muted">Seleccione un evento para ver/registrar inscripciones.</div>
+      <div *ngIf="isLoading" class="text-muted">Cargando...</div>
+
+      <div class="table-responsive" *ngIf="eventoSeleccionadoId && !isLoading">
+        <table class="table table-sm table-striped table-hover align-middle eventos-table">
+          
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th *ngIf="columnasVisibles.foto" class="text-center">Foto</th>
+              <th *ngIf="columnasVisibles.paterno">Apellido paterno</th>
+              <th *ngIf="columnasVisibles.materno">Apellido materno</th>
+              <th *ngIf="columnasVisibles.nombres">Nombres</th>
+              <th *ngIf="columnasVisibles.carnet">Carnet</th>
+              <th *ngIf="columnasVisibles.edad" class="text-end">Edad</th>
+              <th *ngIf="columnasVisibles.fechaNac">Fecha nacimiento</th>
+              <th *ngIf="columnasVisibles.celular">Celular</th>
+              <th *ngIf="columnasVisibles.celularTutor">Celular tutor</th>
+              <th *ngIf="columnasVisibles.fechaInscripcion">Fecha inscripción</th>
+              <th *ngIf="columnasVisibles.nombreInstitucion">Institución</th>
+              <th *ngIf="columnasVisibles.departamento">Departamento</th>
+              <th *ngIf="columnasVisibles.especialidad">Especialidad</th>
+              <th *ngIf="columnasVisibles.categoria">Categoría</th>
+              <th *ngIf="columnasVisibles.certNac" class="text-center">Cert. Nac.</th>
+              <th *ngIf="columnasVisibles.boleta" class="text-center">Boleta Pago</th>
+              <th *ngIf="columnasVisibles.estadoInscripcion" class="text-center">Inscripción</th>
+              <th *ngIf="columnasVisibles.tienePago" class="text-center">¿Aplica Pago?</th>
+              <th *ngIf="columnasVisibles.monto" class="text-end">Monto</th>
+              <th *ngIf="columnasVisibles.estadoPago" class="text-center">Estado Pago</th>
+              <th *ngIf="columnasVisibles.correo" class="text-center">Documentación</th>
+              <th class="text-end">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let r of registrosPaginados; let i = index">
+              <td class="text-center text-muted">{{ indiceFila(i) }}</td>
+              
+              <!-- CELDA FOTO (OPTIMIZADA AL 100% - SIN DESCARGA PREVIA) -->
+              <td *ngIf="columnasVisibles.foto" class="text-center">
+                <a *ngIf="r?.Foto" [href]="ruta + r.Foto" target="_blank" title="Ver foto en pestaña nueva">
+                  <!-- loading="lazy" y decoding="async" evitan que se sature la red -->
+                  <img [src]="ruta + r.Foto" class="table-img-preview" alt="Foto" loading="lazy" decoding="async">
+                </a>
+                <i *ngIf="!r?.Foto" class="bi bi-person-bounding-box text-muted fs-5"></i>
+              </td>
+
+              <td *ngIf="columnasVisibles.paterno">{{ r?.Ap_Paterno || '—' }}</td>
+              <td *ngIf="columnasVisibles.materno">{{ r?.Ap_Materno || '—' }}</td>
+              <td *ngIf="columnasVisibles.nombres">{{ r?.Nombres || '—' }}</td>
+              <td *ngIf="columnasVisibles.carnet">{{ r?.Carnet || '—' }}</td>
+              <td *ngIf="columnasVisibles.edad" class="text-end">{{ edadRegistro(r) ?? '—' }}</td>
+              <td *ngIf="columnasVisibles.fechaNac">{{ fechaTabla(r?.FechaNac) }}</td>
+              <td *ngIf="columnasVisibles.celular">{{ r?.Celular || '—' }}</td>
+              <td *ngIf="columnasVisibles.celularTutor">{{ r?.CelularTutor || '—' }}</td>
+              <td *ngIf="columnasVisibles.fechaInscripcion">{{ fechaTabla(r?.created_at) }}</td>
+              <td *ngIf="columnasVisibles.nombreInstitucion">{{ r?.NombreInstitucion || '—' }}</td>
+              <td *ngIf="columnasVisibles.departamento">{{ r?.Departamento || '—' }}</td>
+              <td *ngIf="columnasVisibles.especialidad">{{ r?.Especialidad || '—' }}</td>
+              <td *ngIf="columnasVisibles.categoria">{{ r?.Categoria || '—' }}</td>
+
+              <!-- CELDA CERTIFICADO NACIMIENTO (SÓLO ÍCONO, 0% GASTO DE DATOS) -->
+              <td *ngIf="columnasVisibles.certNac" class="text-center">
+                <a *ngIf="r?.CertificadoNacimiento" [href]="ruta + r.CertificadoNacimiento" target="_blank" class="btn btn-sm btn-outline-primary" title="Abrir Documento">
+                  <i class="bi" [ngClass]="esArchivoImagen(r?.CertificadoNacimiento) ? 'bi-image' : 'bi-file-earmark-pdf-fill'"></i>
+                  <span class="ms-1 small d-none d-md-inline">Ver</span>
+                </a>
+                <span *ngIf="!r?.CertificadoNacimiento" class="text-muted small">—</span>
+              </td>
+
+              <!-- CELDA BOLETA DE PAGO (SÓLO ÍCONO, 0% GASTO DE DATOS) -->
+              <!-- <td *ngIf="columnasVisibles.boleta" class="text-center">
+                <a *ngIf="r?.ComprobantePago" [href]="ruta + r.ComprobantePago" target="_blank" class="btn btn-sm btn-outline-success" title="Abrir Comprobante">
+                  <i class="bi" [ngClass]="esArchivoImagen(r?.ComprobantePago) ? 'bi-image' : 'bi-file-earmark-pdf-fill'"></i>
+                  <span class="ms-1 small d-none d-md-inline">Ver</span>
+                </a>
+                <span *ngIf="!r?.ComprobantePago" class="text-muted small">—</span>
+              </td>
+              <td *ngIf="columnasVisibles.estadoInscripcion"><span class="badge bg-secondary">{{ r?.EstadoInscripcion || '—' }}</span></td>
+              <td *ngIf="columnasVisibles.estadoPago">
+                <div *ngIf="r?.TienePago == 1">
+                  <div class="fw-semibold">{{ r?.EstadoPago || 'PENDIENTE' }}</div>
+                  <small class="text-muted">{{ r?.Monto || 0 }}</small>
+                </div>
+                <div *ngIf="r?.TienePago != 1" class="text-muted">No aplica</div>
+              </td> -->
+              <td *ngIf="columnasVisibles.estadoInscripcion" class="text-center">
+                <span class="badge"
+                      [ngClass]="{
+                        'bg-success': r?.EstadoInscripcion === 'APROBADO',
+                        'bg-warning text-dark': r?.EstadoInscripcion === 'PENDIENTE',
+                        'bg-danger': r?.EstadoInscripcion === 'RECHAZADO',
+                        'bg-secondary': !r?.EstadoInscripcion
+                      }">
+                  {{ r?.EstadoInscripcion || '—' }}
+                </span>
+              </td>
+
+              <!-- <td *ngIf="columnasVisibles.estadoPago" class="text-center">
+                <div *ngIf="r?.TienePago == 1">
+                  <span class="badge mb-1"
+                        [ngClass]="{
+                          'bg-success': r?.EstadoPago === 'PAGADO',
+                          'bg-warning text-dark': r?.EstadoPago === 'PENDIENTE',
+                          'bg-danger': r?.EstadoPago === 'ANULADO',
+                          'bg-secondary': !r?.EstadoPago
+                        }">
+                    {{ r?.EstadoPago || 'PENDIENTE' }}
+                  </span>
+                  <br>
+                  <small class="text-muted fw-bold">Bs. {{ r?.Monto || 0 }}</small>
+                </div>
+                <span *ngIf="r?.TienePago != 1" class="badge bg-light text-secondary border">No aplica</span>
+              </td> -->
+              <!-- TIENE PAGO -->
+              <td *ngIf="columnasVisibles.tienePago" class="text-center">
+                <span class="badge" [ngClass]="r?.TienePago == 1 ? 'bg-info text-dark' : 'bg-secondary'">
+                  {{ r?.TienePago == 1 ? 'SÍ' : 'NO' }}
+                </span>
+              </td>
+
+              <!-- MONTO -->
+              <td *ngIf="columnasVisibles.monto" class="text-end text-nowrap">
+                <span *ngIf="r?.TienePago == 1" class="fw-bold">Bs. {{ r?.Monto || 0 }}</span>
+                <span *ngIf="r?.TienePago != 1" class="text-muted">—</span>
+              </td>
+
+              <!-- ESTADO PAGO -->
+              <td *ngIf="columnasVisibles.estadoPago" class="text-center">
+                <span *ngIf="r?.TienePago == 1" class="badge"
+                      [ngClass]="{
+                        'bg-success': r?.EstadoPago === 'PAGADO',
+                        'bg-warning text-dark': r?.EstadoPago === 'PENDIENTE',
+                        'bg-danger': r?.EstadoPago === 'ANULADO',
+                        'bg-secondary': !r?.EstadoPago
+                      }">
+                  {{ r?.EstadoPago || 'PENDIENTE' }}
+                </span>
+                <span *ngIf="r?.TienePago != 1" class="badge bg-light text-secondary border">No aplica</span>
+              </td>
+              <td *ngIf="columnasVisibles.correo" class="text-center">
+                <span class="badge"
+                      [ngClass]="{
+                        'bg-success': r?.Correo === 'RECEPCIONADO',
+                        'bg-warning text-dark': r?.Correo === 'OBSERVADO',
+                        'bg-danger': r?.Correo === 'RECHAZADO',
+                        'bg-secondary': !r?.Correo || r?.Correo === 'PENDIENTE'
+                      }">
+                  {{ r?.Correo || 'PENDIENTE' }}
+                </span>
+                <!-- Opcional: mostrar un icono de tooltip si hay observación -->
+                <i *ngIf="r?.Correo === 'OBSERVADO' && r?.Observacion" 
+                  class="bi bi-info-circle-fill text-warning ms-1" 
+                  [title]="r?.Observacion" style="cursor: help;"></i>
+              </td>
+
+              <td class="text-end text-nowrap">
+                <div class="d-inline-flex justify-content-end gap-1">
+                  <a *ngIf="r?.CertificadoPdf" class="btn btn-outline-success btn-sm action-icon" [href]="ruta + r.CertificadoPdf" target="_blank" title="Ver certificado"
+                     (mouseenter)="hoverAccion('ver-certificado-' + r.id, true)" (mouseleave)="hoverAccion('ver-certificado-' + r.id, false)">
+                    <i *ngIf="!_tools.hoverBotonMap['ver-certificado-' + r.id]" class="bi bi-file-earmark-pdf"></i>
+                    <ng-lottie *ngIf="_tools.hoverBotonMap['ver-certificado-' + r.id]" [options]="_tools.optionsarchivopdf" width="26px" height="26px"></ng-lottie>
+                  </a>
+                  <button type="button" class="btn btn-outline-success btn-sm action-icon" (click)="generarCertificado(r)" title="Generar certificado"
+                          (mouseenter)="hoverAccion('generar-certificado-' + r.id, true)" (mouseleave)="hoverAccion('generar-certificado-' + r.id, false)">
+                    <i *ngIf="!_tools.hoverBotonMap['generar-certificado-' + r.id]" class="bi bi-file-earmark-plus"></i>
+                    <ng-lottie *ngIf="_tools.hoverBotonMap['generar-certificado-' + r.id]" [options]="_tools.optionsarchivopdf" width="26px" height="26px"></ng-lottie>
+                  </button>
+                  <button type="button" class="btn btn-outline-warning btn-sm action-icon" (click)="abrirEditar(r)" title="Editar inscripción"
+                          (mouseenter)="hoverAccion('editar-evento-' + r.id, true)" (mouseleave)="hoverAccion('editar-evento-' + r.id, false)">
+                    <img *ngIf="!_tools.hoverBotonMap['editar-evento-' + r.id]" [src]="_tools.rutabtniconsanimaciones + 'pencil.svg'" width="20" alt="Editar">
+                    <ng-lottie *ngIf="_tools.hoverBotonMap['editar-evento-' + r.id]" [options]="_tools.optionsEditar" width="30px" height="35px"></ng-lottie>
+                  </button>
+                  <button type="button" class="btn btn-outline-danger btn-sm action-icon" (click)="eliminar(r)" title="Eliminar inscripción"
+                          (mouseenter)="hoverAccion('eliminar-evento-' + r.id, true)" (mouseleave)="hoverAccion('eliminar-evento-' + r.id, false)">
+                    <img *ngIf="!_tools.hoverBotonMap['eliminar-evento-' + r.id]" [src]="_tools.rutabtniconsanimaciones + 'delete.svg'" width="20" alt="Eliminar">
+                    <ng-lottie *ngIf="_tools.hoverBotonMap['eliminar-evento-' + r.id]" [options]="_tools.optionsEliminar" width="30px" height="35px"></ng-lottie>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- PAGINACIÓN RESPONSIVA -->
+      <div class="d-flex justify-content-center mt-3" style="overflow-x: auto; max-width: 100vw;">
+        <ngb-pagination
+          *ngIf="eventoSeleccionadoId && collectionSize > 0"
+          [page]="pagin"
+          (pageChange)="onPageChange($event)"
+          [pageSize]="pageSize"
+          [collectionSize]="collectionSize"
+          [boundaryLinks]="true"
+          [maxSize]="3" 
+          [rotate]="true"
+          [ellipses]="true"
+          size="sm"
+          class="mb-0"
+        ></ngb-pagination>
+      </div>
+    </div>
+  </div>
+
+  <ng-template #modalEstadisticas let-modal>
+    <div class="modal-header">
+      <h5 class="modal-title"><i class="bi bi-bar-chart-line me-2"></i>Estadísticas del evento</h5>
+      <button type="button" class="btn-close" aria-label="Cerrar" (click)="modal.dismiss()"></button>
+    </div>
+    <div class="modal-body">
+      <div class="d-flex flex-wrap gap-4 mb-3">
+        <div><div class="small text-secondary">Total inscritos</div><div class="fs-4 fw-bold">{{ estadisticasEvento.total }}</div></div>
+        <div><div class="small text-secondary">Con pago</div><div class="fs-4 fw-bold text-success">{{ estadisticasEvento.pagos }}</div></div>
+        <div><div class="small text-secondary">Sin pago</div><div class="fs-4 fw-bold text-secondary">{{ estadisticasEvento.sinPago }}</div></div>
+      </div>
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <h6>Por categoría</h6>
+          <div class="table-responsive stats-table"><table class="table table-sm table-striped align-middle"><thead><tr><th>Categoría</th><th class="text-end">Total</th><th class="text-end">%</th></tr></thead><tbody>
+            <tr *ngFor="let item of estadisticasEvento.categorias"><td>{{ item.label }}</td><td class="text-end">{{ item.total }}</td><td class="text-end">{{ item.porcentaje }}%</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="col-12 col-md-6">
+          <h6>Por especialidad</h6>
+          <div class="table-responsive stats-table"><table class="table table-sm table-striped align-middle"><thead><tr><th>Especialidad</th><th class="text-end">Total</th><th class="text-end">%</th></tr></thead><tbody>
+            <tr *ngFor="let item of estadisticasEvento.especialidades"><td>{{ item.label }}</td><td class="text-end">{{ item.total }}</td><td class="text-end">{{ item.porcentaje }}%</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="col-12 col-md-6">
+          <h6>Por departamento</h6>
+          <div class="table-responsive stats-table"><table class="table table-sm table-striped align-middle"><thead><tr><th>Departamento</th><th class="text-end">Total</th><th class="text-end">%</th></tr></thead><tbody>
+            <tr *ngFor="let item of estadisticasEvento.departamentos"><td>{{ item.label }}</td><td class="text-end">{{ item.total }}</td><td class="text-end">{{ item.porcentaje }}%</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="col-12 col-md-6">
+          <h6>Por institución</h6>
+          <div class="table-responsive stats-table"><table class="table table-sm table-striped align-middle"><thead><tr><th>Institución</th><th class="text-end">Total</th><th class="text-end">%</th></tr></thead><tbody>
+            <tr *ngFor="let item of estadisticasEvento.instituciones"><td>{{ item.label }}</td><td class="text-end">{{ item.total }}</td><td class="text-end">{{ item.porcentaje }}%</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="col-12 col-md-6">
+          <h6>Estado de inscripción</h6>
+          <div class="table-responsive stats-table"><table class="table table-sm table-striped align-middle"><thead><tr><th>Estado</th><th class="text-end">Total</th><th class="text-end">%</th></tr></thead><tbody>
+            <tr *ngFor="let item of estadisticasEvento.estados"><td>{{ item.label }}</td><td class="text-end">{{ item.total }}</td><td class="text-end">{{ item.porcentaje }}%</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="col-12 col-md-6">
+          <h6>Por edad</h6>
+          <div class="table-responsive stats-table"><table class="table table-sm table-striped align-middle"><thead><tr><th>Rango</th><th class="text-end">Total</th><th class="text-end">%</th></tr></thead><tbody>
+            <tr *ngFor="let item of estadisticasEvento.edades"><td>{{ item.label }}</td><td class="text-end">{{ item.total }}</td><td class="text-end">{{ item.porcentaje }}%</td></tr>
+          </tbody></table></div>
+        </div>
+        <div class="col-12 col-md-6">
+          <h6>Estado de pago</h6>
+          <div class="table-responsive stats-table"><table class="table table-sm table-striped align-middle"><thead><tr><th>Estado</th><th class="text-end">Total</th><th class="text-end">%</th></tr></thead><tbody>
+            <tr *ngFor="let item of estadisticasEvento.pagosPorEstado"><td>{{ item.label }}</td><td class="text-end">{{ item.total }}</td><td class="text-end">{{ item.porcentaje }}%</td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </ng-template>
+
+  <ng-template #modalRegistro>
+    <div class="modal-header">
+      <h5 class="modal-title fw-bold"><i class="bi bi-person-lines-fill me-2"></i>{{ editId ? 'Editar insc2ripción' : 'Nueva inscripción' }}</h5>
+      <button type="button" class="btn-close" aria-label="Close" (click)="modalRegistroRef.close()"></button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Buscador de Estudiantes (Exclusivo del Admin) -->
+      <div class="col-12 mb-4" *ngIf="!editId">
+        <label class="form-label fw-bold text-primary"><i class="bi bi-search me-1"></i>Buscar estudiante (IFAS) (USADO PARA AUTOCOMPLETAR EL FORMULARIO)</label>
+        <div class="input-group builder-card-search shadow-sm">
+          <input class="form-control" [formControl]="estudianteInput" placeholder="Apellidos / nombre / CI..." (focus)="mostrarListaEstudiantes = true" />
+          <button class="btn btn-primary" type="button" (click)="buscarEstudiante()">Buscar</button>
+        </div>
+
+        <div class="list-group mt-1 shadow" *ngIf="mostrarListaEstudiantes" style="position: absolute; z-index: 1000; width: 95%;">
+          <div class="list-group-item text-center text-muted" *ngIf="isBuscandoEstudiante">
+            <div class="spinner-border spinner-border-sm me-2"></div> Buscando...
+          </div>
+          <button type="button" class="list-group-item list-group-item-action" *ngFor="let s of estudiantesBuscados" (click)="seleccionarEstudiante(s)">
+            {{ s?.Ap_Paterno }} {{ s?.Ap_Materno }} {{ s?.Nombre }} ({{ s?.CI }})
+          </button>
+          <button type="button" class="list-group-item list-group-item-action text-danger fw-bold text-center" (click)="mostrarListaEstudiantes = false">Cerrar lista</button>
+        </div>
+      </div>
+
+      <section class="card border-primary-subtle mb-4" *ngIf="editId">
+        <div class="card-header bg-primary-subtle fw-bold">
+          Verificar inscripción en esta institución (este campo no afecta al formulario, es solo informativo)
+        </div>
+        <div class="card-body">
+          <!-- <p class="small text-muted">
+            Se comparará el carnet de esta inscripción con los registros IFAS de la institución organizadora,
+            usando el año de la fecha de inscripción.
+          </p> -->
+          <div class="row g-2 align-items-end mb-3">
+            <div class="col-md-4">
+              <!-- <label class="form-label">Año IFAS</label> -->
+              <select class="form-select" [formControl]="anioIFASControl">
+                <option [ngValue]="null">Seleccione un año</option>
+                <option *ngFor="let anio of aniosIFAS" [ngValue]="+anio.id">{{ anio.Anio | slice:0:4 }}</option>
+              </select>
+            </div>
+            <div class="col-md-auto">
+              <button type="button" class="btn btn-outline-primary" (click)="buscarInscripcionIFAS()" [disabled]="buscandoInscripcionIFAS">
+                <span *ngIf="buscandoInscripcionIFAS" class="spinner-border spinner-border-sm me-1"></span>
+                {{ buscandoInscripcionIFAS ? 'Verificando...' : 'Verificar si es parte de la Institución' }}
+              </button>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small mb-1">Calcular edad</label>
+              <input type="date" class="form-control" [formControl]="fechaNacimientoCalculadora" aria-label="Fecha de nacimiento para calcular la edad" />
+            </div>
+            <div class="col-md-auto">
+              <button type="button" class="btn btn-outline-secondary" (click)="calcularEdadInscripcion()" [disabled]="!fechaNacimientoCalculadora.value">
+                Calcular edad
+              </button>
+            </div>
+            <div class="col-md-auto" *ngIf="edadCalculada !== null">
+              <span class="badge text-bg-info">Edad: {{ edadCalculada }}</span>
+            </div>
+          </div>
+
+          <div class="text-muted small" *ngIf="inscripcionesIFAS.length === 0 && !buscandoInscripcionIFAS && !consultaIFASHecha && !errorConsultaIFAS">
+            Seleccione el año y pulse “Verificar” para consultar.
+          </div>
+
+          <div class="alert alert-danger py-2" *ngIf="errorConsultaIFAS">{{ errorConsultaIFAS }}</div>
+
+          <div class="alert alert-warning py-2" *ngIf="inscripcionesIFAS.length === 0 && !buscandoInscripcionIFAS && consultaIFASHecha">
+            No se encontró una inscripción IFAS con este carnet para el año seleccionado.
+          </div>
+
+          <div class="card mb-3" *ngFor="let info of inscripcionesIFAS">
+            <div class="card-header fw-semibold">
+              Inscripción IFAS · {{ info.Ap_Paterno }} {{ info.Ap_Materno }} {{ info.Nombre }}
+              <span class="text-muted">({{ info.CI }})</span>
+            </div>
+            <div class="card-body">
+              <div class="row g-2 small">
+                <div class="col-md-4"><strong>Fecha de inscripción:</strong> {{ fechaInscripcionIFAS(info.FechInsc) }}</div>
+                <div class="col-md-4"><strong>Matrícula:</strong> {{ info.Matricula || '—' }}</div>
+                <div class="col-md-4"><strong>Categoría:</strong> {{ info.Categoria || '—' }}</div>
+                <div class="col-md-4"><strong>Curso:</strong> {{ info.Curso_Solicitado || '—' }}</div>
+                <div class="col-md-4"><strong>Paralelo:</strong> {{ info.Paralelo_Solicitado || '—' }}</div>
+                <div class="col-md-4"><strong>Turno:</strong> {{ info.Turno || '—' }}</div>
+                <div class="col-md-6"><strong>Instrumento:</strong> {{ info.InstrumentoMusical || '—' }}</div>
+                <div class="col-md-6"><strong>Instrumento secundario:</strong> {{ info.InstrumentoMusicalSecundario || '—' }}</div>
+                <div class="col-md-4"><strong>Docente de especialidad:</strong> {{ info.DocenteEspecialidad || 'Sin asignar' }}</div>
+                <div class="col-md-4"><strong>Docente práctica de conjuntos:</strong> {{ info.DocentePC || 'Sin asignar' }}</div>
+                <div class="col-md-4"><strong>Otro docente:</strong> {{ info.DocenteOtros || 'Sin asignar' }}</div>
+                <div class="col-md-4"><strong>Materias asignadas:</strong> {{ info.CantidadMateriasAsignadas ?? '—' }}</div>
+                <div class="col-12" *ngIf="info.Verificacion"><strong>Verificación:</strong> {{ info.Verificacion }}</div>
+                <div class="col-12" *ngIf="info.Anotaciones"><strong>Anotaciones:</strong> {{ info.Anotaciones }}</div>
+                
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <form [formGroup]="frm" class="row g-2">
+        
+        <!-- SECCIÓN: INFORMACIÓN PERSONAL -->
+        <div class="col-12"><h6 class="text-secondary fw-bold border-bottom pb-2 mt-2">INFORMACIÓN PERSONAL</h6></div>
+        
+        <div class="form-floating mb-3 col-md-3">
+          <input class="form-control" placeholder="" formControlName="Ap_Paterno" [ngClass]="ValidacionestudianteseventosxElemento('Ap_Paterno')" (change)="_tools.EscribirEnMayuscula($event, frm, 'Ap_Paterno')" style="text-transform: uppercase" />
+          <label>Apellido paterno</label>
+          <div class="invalid-feedback">Este campo es obligatorio*</div>
+        </div>
+        <div class="form-floating mb-3 col-md-3">
+          <input class="form-control" placeholder="" formControlName="Ap_Materno" [ngClass]="ValidacionestudianteseventosxElemento('Ap_Materno')" (change)="_tools.EscribirEnMayuscula($event, frm, 'Ap_Materno')"  style="text-transform: uppercase" />
+          <label>Apellido materno</label>
+          <div class="invalid-feedback">Este campo es obligatorio*</div>
+        </div>
+        <div class="form-floating mb-3 col-md-6">
+          <input class="form-control" placeholder="" formControlName="Nombres" [ngClass]="ValidacionestudianteseventosxElemento('Nombres')" (change)="_tools.EscribirEnMayuscula($event, frm, 'Nombres')" style="text-transform: uppercase" />
+          <label>Nombres</label>
+          <div class="invalid-feedback">Este campo es obligatorio*</div>
+        </div>
+
+        <div class="form-floating mb-3 col-md-3">
+          <input class="form-control" placeholder="" formControlName="Carnet" [ngClass]="ValidacionestudianteseventosxElemento('Carnet')" (change)="_tools.EscribirEnMayuscula($event, frm, 'Carnet')" style="text-transform: uppercase" />
+          <label>Carnet</label>
+          <div class="invalid-feedback">Este campo es obligatorio*</div>
+        </div>
+        <div class="form-floating mb-3 col-md-3">
+          <input type="date" class="form-control" placeholder="" formControlName="FechaNac" [ngClass]="ValidacionestudianteseventosxElemento('FechaNac')" (change)="frm.get('Edad')?.setValue(_tools.CalcularEdad($any($event.target).value))" />
+          <label>Fecha de Nacimiento</label>
+        </div>
+        <div class="form-floating mb-3 col-md-2">
+          <input type="number" class="form-control bg-light" placeholder="" formControlName="Edad" readonly tabindex="-1" style="pointer-events: none;" />
+          <label>Edad</label>
+        </div>
+        <div class="form-floating mb-3 col-md-4">
+          <input class="form-control" placeholder="" formControlName="Celular" />
+          <label>Celular</label>
+        </div>
+
+        <!-- FOTO DRAG AND DROP -->
+        <div class="mb-3 col-lg-3">
+          <label class="form-label fw-bold text-secondary mb-1">FOTOGRAFÍA</label>
+          <div class="upload-zone text-center p-3" [class.drag-active]="isDraggingFoto" (dragover)="onFotoDragOver($event)" (dragleave)="onFotoDragLeave($event)" (drop)="onFotoDrop($event)">
+            <div *ngIf="isUploadingFoto" class="w-100 text-center">
+              <div class="spinner-border text-primary mb-2" role="status"></div>
+              <div class="progress mx-auto" style="height: 6px; max-width: 80%;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" [style.width.%]="uploadProgressFoto"></div>
+              </div>
+            </div>
+            <ng-container *ngIf="!frm.get('Foto')?.value && !isUploadingFoto">
+              <i class="bi bi-cloud-arrow-up text-primary icon-huge mb-2" (click)="abrirSelector(fotoInput)"></i>
+              <p class="small text-muted mb-0">Arrastra o haz clic</p>
+            </ng-container>
+            <ng-container *ngIf="frm.get('Foto')?.value && !isUploadingFoto">
+              <a [href]="ruta + frm.get('Foto')?.value" target="_blank" title="Abrir en nueva pestaña">
+                <img [src]="ruta + frm.get('Foto')?.value" alt="Foto" class="preview-img mb-2" />
+              </a>
+              <div class="small text-primary fw-bold" style="cursor: pointer;" (click)="abrirSelector(fotoInput)"><i class="bi bi-arrow-repeat me-1"></i>Cambiar</div>
+            </ng-container>
+          </div>
+          <input #fotoInput type="file" accept="image/*" class="d-none" (change)="onFotoFileSelected($event)" />
+        </div>
+
+        <!-- DATOS TUTOR E INSTITUCIÓN -->
+        <div class="col-lg-9 row g-2 m-0">
+          <div class="form-floating mb-3 col-md-8">
+            <input class="form-control" placeholder="" formControlName="Tutor" (change)="_tools.EscribirEnMayuscula($event, frm, 'Tutor')"  style="text-transform: uppercase" />
+            <label>Nombre Tutor o Padre</label>
+          </div>
+          <div class="form-floating mb-3 col-md-4">
+            <input class="form-control" placeholder="" formControlName="CelularTutor" />
+            <label>Celular Tutor</label>
+          </div>
+          <!-- <div class="form-floating mb-3 col-md-12">
+            <input class="form-control" placeholder="" formControlName="Correo" />
+            <label>Correo</label>
+          </div> -->
+          <!-- SECCIÓN: DOCUMENTACIÓN FÍSICA -->
+          <div class="col-12"><h6 class="text-secondary fw-bold border-bottom pb-2 mt-3">DOCUMENTACIÓN FÍSICA (FOLDER)</h6></div>
+
+          <div class="form-floating mb-3 col-md-4">
+            <select class="form-select fw-bold" formControlName="Correo"
+                    [ngClass]="{
+                      'text-success': frm.get('Correo')?.value === 'RECEPCIONADO',
+                      'text-warning bg-warning-subtle': frm.get('Correo')?.value === 'OBSERVADO',
+                      'text-danger': frm.get('Correo')?.value === 'RECHAZADO'
+                    }">
+              <option value="" disabled>Seleccione estado...</option>
+              <option value="PENDIENTE">PENDIENTE</option>
+              <option value="RECEPCIONADO">RECEPCIONADO</option>
+              <option value="OBSERVADO">OBSERVADO</option>
+              <option value="RECHAZADO">RECHAZADO</option>
+            </select>
+            <label><i class="bi bi-folder-check me-1"></i>Estado del Folder</label>
+          </div>
+
+          <!-- Muestra el campo Observación sólo si hay un problema con la documentación -->
+          <div class="form-floating mb-3 col-md-8" *ngIf="frm.get('Correo')?.value === 'OBSERVADO' || frm.get('Correo')?.value === 'RECHAZADO'">
+            <textarea class="form-control" placeholder="Detalle qué falta..." formControlName="Observacion" 
+                      style="height: 60px;"
+                      [ngClass]="{'border-warning': frm.get('Correo')?.value === 'OBSERVADO', 'border-danger': frm.get('Correo')?.value === 'RECHAZADO'}">
+            </textarea>
+            <label [ngClass]="{'text-warning fw-bold': frm.get('Correo')?.value === 'OBSERVADO', 'text-danger fw-bold': frm.get('Correo')?.value === 'RECHAZADO'}">
+              <i class="bi bi-exclamation-triangle me-1"></i>Detalle los documentos faltantes o motivo
+            </label>
+          </div>
+        </div>
+
+        <!-- SECCIÓN: INFORMACIÓN DE EVENTO -->
+        <div class="col-12"><h6 class="text-secondary fw-bold border-bottom pb-2 mt-3">INFORMACIÓN DE EVENTO</h6></div>
+
+        <div class="form-floating mb-3 col-md-6" *ngIf="especialidadOptions.length > 0">
+          <select class="form-select" formControlName="Especialidad" [ngClass]="ValidacionestudianteseventosxElemento('Especialidad')" (change)="onEspecialidadChange()">
+            <option [ngValue]="''">Seleccione una especialidad</option>
+            <option *ngFor="let esp of especialidadOptions" [ngValue]="esp.especialidad" >{{ esp.especialidad }}</option>
+          </select>
+          <label>Especialidad</label>
+          <div class="invalid-feedback">Seleccione una especialidad*</div>
+        </div>
+
+        <div class="form-floating mb-3 col-md-6" *ngIf="categoriaOptions.length > 0">
+          <select class="form-select" formControlName="Categoria" [ngClass]="ValidacionestudianteseventosxElemento('Categoria')" (change)="onCategoriaChange()">
+            <option [ngValue]="''">Seleccione una categoría</option>
+            <option *ngFor="let cat of categoriaOptions" [ngValue]="cat.categoria">{{ cat.categoria }}{{ cat.edades ? ' · ' + cat.edades : '' }}</option>
+          </select>
+          <label>Categoría</label>
+          <div class="invalid-feedback">Seleccione una categoría*</div>
+        </div>
+
+        <div class="form-floating mb-3 col-md-8">
+          <input class="form-control" placeholder="" formControlName="NombreInstitucion" (change)="_tools.EscribirEnMayuscula($event, frm, 'NombreInstitucion')"  style="text-transform: uppercase" />
+          <label>Nombre de su Institución</label>
+        </div>
+        <div class="form-floating mb-3 col-md-4">
+          <select class="form-select" formControlName="Departamento">
+            <option [value]="''">Seleccione...</option>
+            <option value="BENI">BENI</option><option value="CHUQUISACA">CHUQUISACA</option><option value="COCHABAMBA">COCHABAMBA</option><option value="LA PAZ">LA PAZ</option><option value="ORURO">ORURO</option><option value="PANDO">PANDO</option><option value="POTOSI">POTOSI</option><option value="SANTA CRUZ">SANTA CRUZ</option><option value="TARIJA">TARIJA</option>
+          </select>
+          <label>Departamento</label>
+        </div>
+
+        <div class="mb-3 col-lg-3">
+          <label class="form-label fw-bold text-secondary mb-1">CERTIFICADO NAC.</label>
+          <div class="upload-zone text-center p-3" [class.drag-active]="isDraggingCertificado" (dragover)="onCertificadoDragOver($event)" (dragleave)="onCertificadoDragLeave($event)" (drop)="onCertificadoDrop($event)">
+            <div *ngIf="isUploadingCertificado" class="w-100 text-center">
+              <div class="spinner-border text-success mb-2" role="status"></div>
+              <div class="progress mx-auto" style="height: 6px; max-width: 80%;"><div class="progress-bar progress-bar-striped progress-bar-animated bg-success" [style.width.%]="uploadProgressCertificado"></div></div>
+            </div>
+            <ng-container *ngIf="!frm.get('CertificadoNacimiento')?.value && !isUploadingCertificado">
+              <i class="bi bi-file-earmark-arrow-up text-secondary icon-huge mb-2" (click)="abrirSelector(certificadoInput)"></i>
+              <p class="small text-muted mb-0">Arrastra o haz clic</p>
+            </ng-container>
+            <ng-container *ngIf="frm.get('CertificadoNacimiento')?.value && !isUploadingCertificado">
+              <a [href]="ruta + frm.get('CertificadoNacimiento')?.value" target="_blank" title="Ver documento">
+                <ng-container *ngIf="esArchivoImagen(frm.get('CertificadoNacimiento')?.value); else certPdf"><img [src]="ruta + frm.get('CertificadoNacimiento')?.value" class="preview-img mb-2" /></ng-container>
+                <ng-template #certPdf><i class="bi bi-file-earmark-pdf-fill text-danger icon-huge mb-2"></i></ng-template>
+              </a>
+              <div class="small text-success fw-bold" style="cursor: pointer" (click)="abrirSelector(certificadoInput)"><i class="bi bi-arrow-repeat me-1"></i>Cambiar</div>
+            </ng-container>
+          </div>
+          <input #certificadoInput type="file" accept="application/pdf,image/*" class="d-none" (change)="onCertificadoFileSelected($event)" />
+        </div>
+
+        <!-- ESTADO DE LA INSCRIPCIÓN (Exclusivo Admin) -->
+        <div class="col-lg-9 row g-2 m-0 align-content-start">
+          <div class="form-floating mb-3 col-md-4">
+            <select class="form-select fw-bold" formControlName="EstadoInscripcion" [ngClass]="{'text-success': frm.get('EstadoInscripcion')?.value === 'APROBADO', 'text-warning': frm.get('EstadoInscripcion')?.value === 'PENDIENTE', 'text-danger': frm.get('EstadoInscripcion')?.value === 'RECHAZADO'}">
+              <option value="PENDIENTE">PENDIENTE</option>
+              <option value="APROBADO">APROBADO</option>
+              <option value="RECHAZADO">RECHAZADO</option>
+            </select>
+            <label>Estado inscripción</label>
+          </div>
+          <div class="form-floating mb-3 col-md-8">
+            <textarea class="form-control" placeholder="" rows="2" formControlName="Observacion" style="height: 60px;"></textarea>
+            <label>Observación interna</label>
+          </div>
+        </div>
+
+        <!-- SECCIÓN: DISEÑO ESPECIAL DINÁMICO (Se mantiene intacto) -->
+        <div class="col-12" *ngIf="dynamicSections.length > 0">
+          <h6 class="text-secondary fw-bold border-bottom pb-2 mt-3">INFORMACIÓN ADICIONAL DEL EVENTO</h6>
+          <div class="card mb-2 border-0 shadow-sm bg-light" *ngFor="let section of dynamicSections">
+            <div class="card-header py-2 bg-white"><strong>{{ section.title }}</strong></div>
+            
+            <div class="card-body" *ngIf="section.kind === 'phases'">
+              <div class="card mb-2" *ngFor="let ph of section.phases">
+                <div class="card-header py-2"><strong>{{ ph.title }}</strong></div>
+                <div class="card-body">
+                  <div class="builder-card bg-white small mb-2" *ngFor="let f of ph.fields">
+                    <div class="fw-semibold mb-2" *ngIf="usaColumnasEnInputs">{{ f.label || f.key }}</div>
+                    <div class="row g-2">
+                      <div [class]="usaColumnasEnInputs ? 'col-md-4' : 'col-md-6'" *ngFor="let control of getFieldControls(f)">
+                        <label class="form-label">{{ control.label }}</label>
+                        <input *ngIf="control.type === 'text' || control.type === 'number' || control.type === 'date'" class="form-control" [type]="control.type" [formControl]="$any(dynamicForm.get(control.key))" />
+                        <textarea *ngIf="control.type === 'textarea'" class="form-control" rows="2" [formControl]="$any(dynamicForm.get(control.key))"></textarea>
+                        <select *ngIf="control.type === 'select'" class="form-select" [formControl]="$any(dynamicForm.get(control.key))">
+                          <option [ngValue]="''">--</option>
+                          <option *ngFor="let opt of control.options" [ngValue]="opt">{{ opt }}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-body" *ngIf="section.kind === 'simple'">
+              <div class="builder-card bg-white small mb-2" *ngFor="let f of section.fields">
+                <div class="fw-semibold mb-2" *ngIf="usaColumnasEnInputs">{{ f.label || f.key }}</div>
+                <div class="row g-2">
+                  <div [class]="usaColumnasEnInputs ? 'col-md-4' : 'col-md-6'" *ngFor="let control of getFieldControls(f)">
+                    <label class="form-label">{{ control.label }}</label>
+                    <input *ngIf="control.type === 'text' || control.type === 'number' || control.type === 'date'" class="form-control" [type]="control.type" [formControl]="dynamicForm.get(control.key)" />
+                    <textarea *ngIf="control.type === 'textarea'" class="form-control" rows="2" [formControl]="dynamicForm.get(control.key)"></textarea>
+                    <select *ngIf="control.type === 'select'" class="form-select" [formControl]="dynamicForm.get(control.key)">
+                      <option [ngValue]="''">--</option>
+                      <option *ngFor="let opt of control.options" [ngValue]="opt">{{ opt }}</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- SECCIÓN: PAGO -->
+        <div class="col-12"><h6 class="text-secondary fw-bold border-bottom pb-2 mt-3">DATOS DE PAGO</h6></div>
+
+        <div class="form-floating mb-3 col-md-3">
+          <select class="form-select" formControlName="TienePago">
+            <option [ngValue]="0">No aplica</option>
+            <option [ngValue]="1">Sí, tiene pago</option>
+          </select>
+          <label>¿Aplica pago?</label>
+        </div>
+
+        <ng-container *ngIf="tienePagoSeleccionado">
+          <div class="form-floating mb-3 col-md-3">
+            <select class="form-select" formControlName="MetodoPago">
+              <option [value]="''">Seleccione...</option>
+              <option value="QR">QR</option>
+              <option value="DEPÓSITO">DEPÓSITO</option>
+            </select>
+            <label>Método de pago</label>
+          </div>
+          <div class="form-floating mb-3 col-md-2">
+            <input type="number" class="form-control" placeholder="" formControlName="Monto" />
+            <label>Monto</label>
+          </div>
+          <div class="form-floating mb-3 col-md-4">
+            <input type="datetime-local" class="form-control" placeholder="" formControlName="FechaPago" step="60" />
+            <label>Fecha y hora de pago</label>
+          </div>
+
+          <!-- COMPROBANTE DRAG AND DROP -->
+          <div class="mb-3 col-lg-4">
+            <label class="form-label fw-bold text-secondary mb-1">COMPROBANTE</label>
+            <div class="upload-zone text-center p-3" [class.drag-active]="isDraggingComprobante" (dragover)="onComprobanteDragOver($event)" (dragleave)="onComprobanteDragLeave($event)" (drop)="onComprobanteDrop($event)">
+              <div *ngIf="isUploadingComprobante" class="w-100 text-center">
+                <div class="spinner-border text-info mb-2" role="status"></div>
+                <div class="progress mx-auto" style="height: 6px; max-width: 80%;">
+                  <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" [style.width.%]="uploadProgressComprobante"></div>
+                </div>
+              </div>
+              <ng-container *ngIf="!frm.get('ComprobantePago')?.value && !isUploadingComprobante">
+                <i class="bi bi-receipt text-secondary icon-huge mb-2" (click)="abrirSelector(comprobInput)"></i>
+                <p class="small text-muted mb-0">Arrastra o haz clic</p>
+              </ng-container>
+              <ng-container *ngIf="frm.get('ComprobantePago')?.value && !isUploadingComprobante">
+                <a [href]="ruta + frm.get('ComprobantePago')?.value" target="_blank" title="Ver comprobante">
+                  <ng-container *ngIf="esArchivoImagen(frm.get('ComprobantePago')?.value); else compPdf">
+                    <img [src]="ruta + frm.get('ComprobantePago')?.value" class="preview-img mb-2" />
+                  </ng-container>
+                  <ng-template #compPdf><i class="bi bi-file-earmark-pdf-fill text-danger icon-huge mb-2"></i></ng-template>
+                </a>
+                <div class="small text-info fw-bold" style="cursor: pointer;" (click)="abrirSelector(comprobInput)"><i class="bi bi-arrow-repeat me-1"></i>Cambiar</div>
+              </ng-container>
+            </div>
+            <input #comprobInput type="file" accept="application/pdf,image/*" class="d-none" (change)="onComprobanteFileSelected($event)" />
+          </div>
+
+          <div class="col-lg-8 align-content-center">
+            <div class="form-floating mb-3 w-50">
+              <select class="form-select fw-bold" formControlName="EstadoPago" [ngClass]="{'text-success': frm.get('EstadoPago')?.value === 'PAGADO', 'text-warning': frm.get('EstadoPago')?.value === 'PENDIENTE', 'text-danger': frm.get('EstadoPago')?.value === 'ANULADO'}">
+                <option value="PENDIENTE">PENDIENTE</option>
+                <option value="PAGADO">PAGADO</option>
+                <option value="ANULADO">ANULADO</option>
+              </select>
+              <label>Estado de validación de pago</label>
+            </div>
+          </div>
+        </ng-container>
+
+      </form>
+    </div>
+
+    <div class="modal-footer bg-light">
+      <button class="btn btn-secondary px-4" (click)="modalRegistroRef.close()">Cancelar</button>
+      <button class="btn btn-primary px-5 fw-bold" (click)="guardar()"><i class="bi bi-save me-2"></i>Guardar inscripción</button>
+    </div>
+  </ng-template>
+
+  <!-- Modal para el Reporte -->
+  <ng-template #modalReporte>
+    <div class="modal-header">
+      <h5 class="modal-title">Reporte de Inscritos - {{ eventoSeleccionadoId ? 'Evento ID: ' + eventoSeleccionadoId : '' }}</h5>
+      <button type="button" class="btn-close" aria-label="Close" (click)="modalReporteRef.close()"></button>
+    </div>
+
+    <div class="modal-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="text-muted">Se encontraron <strong>{{ reporteRows.length }}</strong> registros.</span>
+        <button class="btn btn-success" (click)="copiarTablaPortapapeles()">
+          <i class="bi bi-clipboard-check"></i> Copiar tabla para Excel
+        </button>
+      </div>
+
+      <!-- Tabla del reporte -->
+      <div class="table-responsive" style="max-height: 65vh;">
+        <table class="table table-sm table-bordered table-hover align-middle" style="white-space: nowrap;">
+          <thead class="table-light">
+            <tr>
+              <th *ngFor="let head of reporteHeaders">{{ head }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of reporteRows">
+              <td *ngFor="let cell of row">{{ cell }}</td>
+            </tr>
+            <tr *ngIf="reporteRows.length === 0">
+              <td [colSpan]="reporteHeaders.length" class="text-center text-muted">No hay registros para mostrar.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </ng-template>
+
+</div>

@@ -1,0 +1,230 @@
+.list-group {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.table td, .table th {
+  vertical-align: middle;
+}
+
+.event-selector {
+  min-width: 240px;
+}
+
+.event-search {
+  flex: 1 1 280px;
+  min-width: 250px;
+  max-width: 390px;
+}
+
+.filter-select {
+  min-width: 165px;
+}
+
+.page-size-select {
+  width: 76px;
+}
+
+.eventos-table .sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.eventos-table .sortable:hover {
+  color: #0d6efd;
+}
+
+.sort-priority {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: #0d6efd;
+  color: #fff;
+  font-size: 0.62rem;
+  vertical-align: middle;
+}
+
+.action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.action-icon img {
+  display: block;
+}
+
+.stats-table {
+  max-height: 220px;
+  overflow-y: auto;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.stats-table td {
+  padding: 0.3rem 0.45rem;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 575.98px) {
+  .event-selector,
+  .event-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+
+.builder-card {
+  border: 1px solid #dfe3e8;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: #fafbfc;
+}
+
+.builder-card-search {
+  border-radius: 0.75rem;
+}
+
+.phase-card,
+.card {
+  border-radius: 0.9rem;
+}
+
+.floating-textarea {
+  min-height: 96px;
+}
+
+
+
+// Añade al final del archivo estudianteseventos.component.scss
+.upload-zone {
+  border: 2px dashed #cdd4dc;
+  border-radius: 12px;
+  background-color: #f8f9fa;
+  transition: all 0.25s ease-in-out;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-zone:hover {
+  border-color: #0d6efd;
+  background-color: #f1f5fe;
+}
+
+.upload-zone.drag-active {
+  border-color: #198754;
+  background-color: #e8f7f0;
+  transform: scale(1.02);
+}
+
+.upload-zone img.preview-img {
+  width: 90px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transition: transform 0.2s ease;
+}
+
+.upload-zone img.preview-img:hover {
+  transform: scale(1.05);
+}
+
+.upload-zone .icon-huge {
+  font-size: 3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+// ==========================================
+// ESTILOS NUEVOS: Filtros (Pills) y Fotos
+// ==========================================
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.filter-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #6c757d;
+  text-transform: uppercase;
+  min-width: 135px;
+}
+
+.filter-pill {
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 50rem;
+  padding: 0.25rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #495057;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+
+  &:hover {
+    background: #f8f9fa;
+    border-color: #cdd4dc;
+  }
+
+  &.active {
+    background: #0d6efd;
+    color: #fff;
+    border-color: #0d6efd;
+    box-shadow: 0 2px 4px rgba(13, 110, 253, 0.2);
+  }
+}
+
+.table-img-preview {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid #dee2e6;
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  cursor: pointer;
+
+  &:hover {
+    transform: scale(1.3);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    border-color: #0d6efd;
+    z-index: 10;
+    position: relative;
+  }
+}
+
+/* Corrección del menú de columnas (z-index y opacidad) */
+.column-selector {
+  z-index: 9999999999999 !important; /* Lo pone por encima de todo */
+  background-color: #ffffff !important; /* Elimina la transparencia */
+  opacity: 1 !important;
+  border: 1px solid #cdd4dc;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25) !important;
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+/* Elevar contenedor de filtros por encima de la tabla */
+.filtros-container {
+  position: relative;
+  z-index: 1020; /* Garantiza que sus menús caigan sobre la tabla */
+}
