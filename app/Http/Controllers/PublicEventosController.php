@@ -17,8 +17,8 @@ class PublicEventosController extends BaseController
         $search = trim((string) $request->query('search', ''));
 
         $query = Eventos::query()
-            ->where('eventos.Activo', 1)
-            ->where('eventos.PublicoWeb', 1);
+            ->where('eventos.Activo', 1);
+            // ->where('eventos.PublicoWeb', 1);
 
         if ($institucionId !== null && $institucionId !== '' && (int) $institucionId > 0) {
             $query->where('eventos.instituciones_id', (int) $institucionId);
@@ -80,7 +80,7 @@ class PublicEventosController extends BaseController
         $evento = Eventos::query()
             ->where('id', $eventoId)
             ->where('Activo', 1)
-            ->where('PublicoWeb', 1)
+            // ->where('PublicoWeb', 1)
             ->first();
         if (!$evento) return response()->json(['error' => 'Evento no disponible'], 404);
 
@@ -117,6 +117,9 @@ class PublicEventosController extends BaseController
             'EstadoPago' => $row->EstadoPago,
             'CertificadoNacimiento' => $row->CertificadoNacimiento,
             'ComprobantePago' => $row->ComprobantePago,
+            'Monto' => $row->Monto,
+            'MetodoPago' => $row->MetodoPago,
+            'FechaPago' => $row->FechaPago,
             'DatosEspeciales' => $this->parseParametros($row->DatosEspeciales) ?? [],
             'ConfiguracionEvento' => [
                 'InputsEspecial' => $evento->InputsEspecial,
