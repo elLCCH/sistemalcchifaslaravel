@@ -29,6 +29,11 @@ use App\Http\Controllers\EventosController;
 use App\Http\Controllers\EstudianteseventosController;
 use App\Http\Controllers\PublicEventosController;
 use App\Http\Controllers\DiseniocertificadopdfsController;
+use App\Http\Controllers\JuradoController;
+use App\Http\Controllers\JuradoAsignacionController;
+use App\Http\Controllers\RubricasEventoController;
+use App\Http\Controllers\CalificacionesEventoController;
+use App\Http\Controllers\JuradoPortalController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -413,7 +418,51 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration
     Route::post('/estudianteseventos/{id}/generar-certificado', [EstudianteseventosController::class, 'generarCertificado'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
 
     // =========================
-    // PlandeestudiosController
+    // JuradoController
+    // =========================
+    Route::get('/jurados', [JuradoController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/jurados/{jurado}', [JuradoController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/jurados', [JuradoController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::put('/jurados/{jurado}', [JuradoController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::delete('/jurados/{jurado}', [JuradoController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+
+    // =========================
+    // JuradoAsignacionController
+    // =========================
+    Route::get('/jurado-asignaciones', [JuradoAsignacionController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/jurado-asignaciones/opciones-evento/{eventoId}', [JuradoAsignacionController::class, 'opcionesEvento'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/jurado-asignaciones/{juradoAsignacion}', [JuradoAsignacionController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/jurado-asignaciones', [JuradoAsignacionController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::put('/jurado-asignaciones/{juradoAsignacion}', [JuradoAsignacionController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::delete('/jurado-asignaciones/{juradoAsignacion}', [JuradoAsignacionController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+
+    // =========================
+    // RubricasEventoController
+    // =========================
+    Route::get('/rubricas-eventos', [RubricasEventoController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/rubricas-eventos/{rubricasEvento}', [RubricasEventoController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/rubricas-eventos', [RubricasEventoController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::put('/rubricas-eventos/{rubricasEvento}', [RubricasEventoController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::delete('/rubricas-eventos/{rubricasEvento}', [RubricasEventoController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+
+    // =========================
+    // CalificacionesEventoController
+    // =========================
+    Route::get('/calificaciones-eventos', [CalificacionesEventoController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/calificaciones-eventos/tablero', [CalificacionesEventoController::class, 'tablero'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/calificaciones-eventos/guardar-lote', [CalificacionesEventoController::class, 'guardarLote'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/calificaciones-eventos/{calificacionesEvento}', [CalificacionesEventoController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/calificaciones-eventos', [CalificacionesEventoController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::put('/calificaciones-eventos/{calificacionesEvento}', [CalificacionesEventoController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::delete('/calificaciones-eventos/{calificacionesEvento}', [CalificacionesEventoController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/calificaciones-eventos/por-estudiante/{estudianteEventoId}', [CalificacionesEventoController::class, 'obtenerCalificacionesPorEstudiante'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/calificaciones-eventos/por-jurado/{juradoId}/{eventoId}', [CalificacionesEventoController::class, 'obtenerCalificacionesPorJurado'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+
+    // Portal del jurado (solo habilidad JURADO(A))
+    Route::get('/jurado-portal/mis-eventos', [JuradoPortalController::class, 'misEventos'])->middleware([CheckAbilities::class . ':JURADO(A)']);
+    Route::get('/jurado-portal/tablero', [JuradoPortalController::class, 'tablero'])->middleware([CheckAbilities::class . ':JURADO(A)']);
+    Route::post('/jurado-portal/guardar-lote', [JuradoPortalController::class, 'guardarLote'])->middleware([CheckAbilities::class . ':JURADO(A)']);
+
     // =========================
     Route::get('/plandeestudios', [PlandeestudiosController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);
     Route::get('/plandeestudios/{id}', [PlandeestudiosController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,TÉCNICO,RECTOR(A),DIRECTOR(A)_ACADÉMICO(A),SECRETARIO(A),ADMINISTRADOR(A)']);

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Estudiantesifas;
 use App\Models\Planteladministrativos;
 use App\Models\Planteldocentes;
+use App\Models\Jurado;
 use Illuminate\Http\Request;
 use App\Models\Usuarioslcchs;
 
@@ -204,6 +205,26 @@ class AuthController extends Controller
             }
         }
 
+        //INTENTANDO INICIO DE SESION COMO JURADO
+        if ($login==false) {
+            $sesion = Jurado::where('usuario','=', $user)->first();
+            try {
+                if ($sesion->activo) {
+                    if ($this->passwordMatches($pass, $sesion->password)) {
+                        $login =true;
+                        $tipoSesion = 'jurados';
+                        // Migra contraseñas heredadas en texto plano a hash
+                        if (!$this->isHashedPassword((string) $sesion->password)) {
+                            $sesion->password = Hash::make($pass);
+                            $sesion->save();
+                        }
+                    }
+                }
+            } catch (\Throwable $th) {
+                $login =false;
+            }
+        }
+
         //SI SE LOGRÓ REALIZAR EL LOGIN ENTONCES HACER TOKENS}
         if ($login==false) {
             return response()->json([
@@ -358,6 +379,16 @@ class AuthController extends Controller
                         "usuario" => $sesion
                     ]);
                     break;
+                case 'jurados':
+                    $NomC = $sesion->apellidos.' '.$sesion->nombres;
+                    $tokenResult = $sesion->createPersonalizedToken('JURADO', ['JURADO(A)'], now()->addMinutes(120), ['nombrecompleto' => $NomC,'pertenencia' => 'jurados']);
+                    return response()->json([
+                        "access_token" => $tokenResult->plainTextToken,
+                        "token_type" => "Bearer",
+                        "tipo" => 'jurados',
+                        "usuario" => $sesion
+                    ]);
+                    break;
                 default:
                     // Lógica por defecto si no coincide ningún caso
                     return response()->json([
@@ -461,6 +492,14 @@ class AuthController extends Controller
             'abilities' => $abilities
             ]);
         } 
+        elseif ($user instanceof \App\Models\Jurado) {
+            return response()->json([
+            'tipo' => 'jurados',
+            'usuario' => $user,
+            'nameInst' => $name,
+            'abilities' => $abilities
+            ]);
+        }
         else {
             return response()->json([
             'message' => 'No autenticado.'
@@ -481,7 +520,8 @@ class AuthController extends Controller
             return response()->json(['message' => 'No autenticado.'], 401);
         }
 
-        $stored = (string) ($user->Contrasenia ?? $user->contrasenia ?? '');
+        $campo = $user instanceof Jurado ? 'password' : 'Contrasenia';
+        $stored = (string) ($user->$campo ?? $user->contrasenia ?? '');
 
         // Verificar clave actual (soporta legado en texto plano)
         if (!$this->passwordMatches((string) $request->input('claveActual'), $stored)) {
@@ -489,7 +529,7 @@ class AuthController extends Controller
         }
 
         // Actualizar la contraseña
-        $user->Contrasenia = Hash::make($request->input('nuevaClave'));
+        $user->$campo = Hash::make($request->input('nuevaClave'));
         $user->save();
 
         return response()->json(['message' => 'Contraseña actualizada correctamente.']);

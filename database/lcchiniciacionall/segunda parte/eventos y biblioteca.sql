@@ -139,6 +139,73 @@ CREATE TABLE `estudianteseventos` (
   ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- CALIFICACIONES DE EVENTOS CON JURADOS
+-- 1. Tabla: jurados
+CREATE TABLE IF NOT EXISTS `jurados` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `nombres` VARCHAR(150) NOT NULL,
+  `apellidos` VARCHAR(150) NOT NULL,
+  `carnet` VARCHAR(30) UNIQUE NOT NULL,
+  `usuario` VARCHAR(100) UNIQUE NOT NULL,
+  `password` VARCHAR(255) NOT NULL,
+  `foto` VARCHAR(255) NULL,
+  `biografia` TEXT NULL,
+  `activo` TINYINT(1) DEFAULT 1,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- 2. Tabla: jurado_asignaciones
+CREATE TABLE IF NOT EXISTS `jurado_asignaciones` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `jurado_id` INT UNSIGNED NOT NULL,
+  `evento_id` INT UNSIGNED NOT NULL,
+  `especialidad` VARCHAR(100) NOT NULL,
+  `categoria` VARCHAR(100) NOT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  UNIQUE KEY `uq_jurado_asignacion` (`jurado_id`, `evento_id`, `especialidad`, `categoria`),
+  
+  CONSTRAINT `fk_jasig_jurados` FOREIGN KEY (`jurado_id`) REFERENCES `jurados` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_jasig_eventos` FOREIGN KEY (`evento_id`) REFERENCES `eventos` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- 3. Tabla: rubricaseventos
+CREATE TABLE IF NOT EXISTS `rubricaseventos` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `evento_id` INT UNSIGNED NOT NULL,
+  `especialidad` VARCHAR(100) NOT NULL,
+  `categoria` VARCHAR(100) NOT NULL,
+  `criterio` VARCHAR(255) NOT NULL,
+  `puntaje_maximo` VARCHAR(3) NOT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  CONSTRAINT `fk_rub_eventos` FOREIGN KEY (`evento_id`) REFERENCES `eventos` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- 4. Tabla: calificacioneseventos
+CREATE TABLE IF NOT EXISTS `calificacioneseventos` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `jurado_id` INT UNSIGNED NOT NULL,
+  `estudiantesevento_id` INT UNSIGNED NOT NULL,
+  `rubrica_id` INT UNSIGNED NOT NULL,
+  `puntaje_asignado` VARCHAR(3) NOT NULL,
+  `observaciones` TEXT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  UNIQUE KEY `uq_jurado_estudiante_rubrica` (`jurado_id`, `estudiantesevento_id`, `rubrica_id`),
+
+  CONSTRAINT `fk_cal_jurados` FOREIGN KEY (`jurado_id`) REFERENCES `jurados` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_cal_estudiantes` FOREIGN KEY (`estudiantesevento_id`) REFERENCES `estudianteseventos` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_cal_rubricas` FOREIGN KEY (`rubrica_id`) REFERENCES `rubricaseventos` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 CREATE TABLE `bibliotecaarchivoslcch` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
