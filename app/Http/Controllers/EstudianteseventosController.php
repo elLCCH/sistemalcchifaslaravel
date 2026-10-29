@@ -755,6 +755,7 @@ class EstudianteseventosController extends BaseController
             $nombreCompleto = trim($nombre . ' ' . $apP . ' ' . $apM);
 
             if ($k === 'NOMBRE' || $k === 'NOMBRE_COMPLETO') return $nombreCompleto;
+            if ($k === 'NOMBRE_COMPLETO_A') return 'A: ' . $nombreCompleto;
             if ($k === 'CARNET') return trim((string) ($insc->Carnet ?? ''));
             if ($k === 'EVENTO') return trim((string) ($evento->NombreEvento ?? ''));
             if ($k === 'ANIO') return trim((string) ($evento->Anio ?? ''));
