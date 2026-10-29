@@ -395,12 +395,8 @@
 
               <td class="text-end text-nowrap">
                 <div class="d-inline-flex justify-content-end gap-1">
-                  <a *ngIf="r?.CertificadoPdf" class="btn btn-outline-success btn-sm action-icon" [href]="ruta + r.CertificadoPdf" target="_blank" title="Ver certificado"
-                     (mouseenter)="hoverAccion('ver-certificado-' + r.id, true)" (mouseleave)="hoverAccion('ver-certificado-' + r.id, false)">
-                    <i *ngIf="!_tools.hoverBotonMap['ver-certificado-' + r.id]" class="bi bi-file-earmark-pdf"></i>
-                    <ng-lottie *ngIf="_tools.hoverBotonMap['ver-certificado-' + r.id]" [options]="_tools.optionsarchivopdf" width="26px" height="26px"></ng-lottie>
-                  </a>
-                  <button type="button" class="btn btn-outline-success btn-sm action-icon" (click)="generarCertificado(r)" title="Generar certificado"
+                  
+                  <button type="button" class="btn btn-outline-success btn-sm action-icon" (click)="generarCertificado(r)" title="Generar certificado sin firmas"
                           (mouseenter)="hoverAccion('generar-certificado-' + r.id, true)" (mouseleave)="hoverAccion('generar-certificado-' + r.id, false)">
                     <i *ngIf="!_tools.hoverBotonMap['generar-certificado-' + r.id]" class="bi bi-file-earmark-plus"></i>
                     <ng-lottie *ngIf="_tools.hoverBotonMap['generar-certificado-' + r.id]" [options]="_tools.optionsarchivopdf" width="26px" height="26px"></ng-lottie>

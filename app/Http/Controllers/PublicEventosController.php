@@ -130,6 +130,26 @@ class PublicEventosController extends BaseController
         ]]);
     }
 
+    public function certificadoPublico(int $eventoId, Request $request)
+    {
+        $evento = Eventos::query()->where('id', $eventoId)->where('Activo', 1)->first();
+        if (!$evento) return response()->json(['error' => 'Evento no disponible'], 404);
+
+        $carnet = trim((string) $request->input('Carnet', ''));
+        $fechaNacimiento = $this->convertirFechaDdmmyyyy($request->input('FechaNac'));
+        if ($carnet === '' || !$fechaNacimiento) {
+            return response()->json(['error' => 'Ingrese un carnet y una fecha válida en formato ddmmyyyy'], 422);
+        }
+
+        $row = $this->buscarInscripcionVerificada($eventoId, $carnet, $fechaNacimiento);
+        if (!$row) {
+            return response()->json(['error' => 'No se encontró una inscripción con esos datos para este evento'], 404);
+        }
+
+        // El participante solo obtiene el certificado con firmas.
+        return app(EstudianteseventosController::class)->emitirCertificadoPdf($row, $evento, true, null);
+    }
+
     public function actualizarNombreInstitucion(int $eventoId, Request $request)
     {
         $evento = Eventos::query()

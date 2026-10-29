@@ -672,9 +672,26 @@ class EstudianteseventosController extends BaseController
             })
             ->firstOrFail();
 
-        $designId = (int) ($evento->diseniocertificadopdfs_id ?? 0);
+        $conFirmas = filter_var($request->input('conFirmas', false), FILTER_VALIDATE_BOOLEAN);
+        return $this->emitirCertificadoPdf($insc, $evento, $conFirmas, $user);
+    }
+
+    // Genera el PDF del certificado; $user = null en el flujo público (sin filtro por institución).
+    public function emitirCertificadoPdf(Estudianteseventos $insc, Eventos $evento, bool $conFirmas, $user = null)
+    {
+        // Prioridad: especialidad+categoría > solo especialidad > solo categoría > todas > diseño por defecto del evento.
+        $esp = trim((string) ($insc->Especialidad ?? ''));
+        $cat = trim((string) ($insc->Categoria ?? ''));
+        $asignado = \App\Models\CertificadoAsignacion::where('evento_id', (int) $evento->id)
+            ->whereIn('especialidad', array_unique([$esp, '']))
+            ->whereIn('categoria', array_unique([$cat, '']))
+            ->get()
+            ->sortByDesc(fn ($a) => ($a->especialidad !== '' ? 2 : 0) + ($a->categoria !== '' ? 1 : 0))
+            ->first();
+
+        $designId = (int) ($asignado?->diseniocertificadopdfs_id ?: ($evento->diseniocertificadopdfs_id ?? 0));
         if ($designId <= 0) {
-            return response()->json(['error' => 'El evento no tiene un diseño de certificado asignado'], 422);
+            return response()->json(['error' => 'No hay un diseño de certificado asignado para este evento o aún no esta disponible'], 422);
         }
 
         $design = Diseniocertificadopdfs::query()
@@ -684,9 +701,9 @@ class EstudianteseventosController extends BaseController
             })
             ->firstOrFail();
 
-        $templatePath = trim((string) ($design->ArchivoPdf ?? ''));
+        $templatePath = trim((string) ($conFirmas ? ($design->ArchivoPdfFirmas ?? '') : ($design->ArchivoPdf ?? '')));
         if ($templatePath === '') {
-            return response()->json(['error' => 'El diseño no tiene ArchivoPdf'], 422);
+            return response()->json(['error' => $conFirmas ? 'El diseño no tiene plantilla PDF con firmas' : 'El diseño no tiene ArchivoPdf'], 422);
         }
 
         $templateFullPath = public_path($templatePath);
@@ -694,7 +711,11 @@ class EstudianteseventosController extends BaseController
             return response()->json(['error' => 'No se encontró el PDF de plantilla en el servidor'], 422);
         }
 
-        $configRaw = $evento->CertificadoConfig ?? $design->Parametros ?? '';
+        // Cada plantilla (sin firmas / con firmas) tiene sus propios parámetros.
+        $paramsDiseno = $conFirmas ? ($design->ParametrosFirmas ?? '') : ($design->Parametros ?? '');
+        $configRaw = $asignado
+            ? (trim((string) $paramsDiseno) !== '' ? $paramsDiseno : ($evento->CertificadoConfig ?? ''))
+            : ($evento->CertificadoConfig ?? $paramsDiseno);
         $config = null;
         if (is_string($configRaw) && trim($configRaw) !== '') {
             try {
@@ -703,14 +724,16 @@ class EstudianteseventosController extends BaseController
                 return response()->json(['error' => 'CertificadoConfig/Parametros: JSON inválido'], 422);
             }
         }
-        if (!$config || !is_array($config)) {
-            return response()->json(['error' => 'No hay configuración de posiciones para el certificado (CertificadoConfig)'], 422);
+        // Sin configuración: se usa una disposición por defecto (nombre centrado) calculada con el tamaño de la plantilla.
+        $usarPorDefecto = !$config || !is_array($config);
+        if ($usarPorDefecto) {
+            $config = ['page' => 1, 'fields' => []];
         }
 
         $page = (int) ($config['page'] ?? 1);
         if ($page <= 0) $page = 1;
         $fields = $config['fields'] ?? [];
-        if (!is_array($fields) || count($fields) === 0) {
+        if (!$usarPorDefecto && (!is_array($fields) || count($fields) === 0)) {
             return response()->json(['error' => 'CertificadoConfig: falta fields[]'], 422);
         }
 
@@ -736,6 +759,8 @@ class EstudianteseventosController extends BaseController
             if ($k === 'EVENTO') return trim((string) ($evento->NombreEvento ?? ''));
             if ($k === 'ANIO') return trim((string) ($evento->Anio ?? ''));
             if ($k === 'FECHA') return date('d/m/Y');
+            if ($k === 'ESPECIALIDAD') return trim((string) ($insc->Especialidad ?? ''));
+            if ($k === 'CATEGORIA') return trim((string) ($insc->Categoria ?? ''));
 
             // Permitir que el diseño pida un dato del formulario especial
             foreach ($datosEspeciales as $dk => $dv) {
@@ -757,6 +782,17 @@ class EstudianteseventosController extends BaseController
         $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
         $pdf->useTemplate($tplId);
 
+        if ($usarPorDefecto) {
+            $fields = [[
+                'key' => 'NOMBRE_COMPLETO',
+                'x' => 0,
+                'y' => $size['height'] / 2,
+                'w' => $size['width'],
+                'align' => 'C',
+                'fontSize' => 28,
+                'font' => 'Helvetica',
+            ]];
+        }
         foreach ($fields as $f) {
             if (!is_array($f)) continue;
             $key = (string) ($f['key'] ?? '');
@@ -764,18 +800,65 @@ class EstudianteseventosController extends BaseController
             $y = $f['y'] ?? null;
             if ($key === '' || $x === null || $y === null) continue;
 
+            if (strtoupper($key) === 'FOTO') {
+                $fotoRel = ltrim(trim((string) ($insc->Foto ?? '')), '/\\');
+                $fotoPath = $fotoRel !== '' ? public_path($fotoRel) : '';
+                $w = (float) ($f['w'] ?? 35);
+                $h = (float) ($f['h'] ?? 45);
+                if ($fotoPath === '' || !File::exists($fotoPath) || $w <= 0 || $h <= 0) continue;
+                $ext = strtolower(pathinfo($fotoPath, PATHINFO_EXTENSION));
+                if (!in_array($ext, ['jpg', 'jpeg', 'png'])) continue;
+                try {
+                    if (!function_exists('imagecrop')) {
+                        // Sin la extensión GD: se ajusta la foto dentro del recuadro conservando proporción.
+                        [$iw, $ih] = getimagesize($fotoPath) ?: [0, 0];
+                        if ($iw > 0 && $ih > 0) {
+                            $esc = min($w / $iw, $h / $ih);
+                            $dw = $iw * $esc;
+                            $dh = $ih * $esc;
+                            $pdf->Image($fotoPath, (float) $x + ($w - $dw) / 2, (float) $y + ($h - $dh) / 2, $dw, $dh);
+                        }
+                        continue;
+                    }
+                    [$iw, $ih] = getimagesize($fotoPath) ?: [0, 0];
+                    $img = $ext === 'png' ? @imagecreatefrompng($fotoPath) : @imagecreatefromjpeg($fotoPath);
+                    if ($img && $iw > 0 && $ih > 0) {
+                        $ratio = $w / $h;
+                        if ($iw / $ih > $ratio) {
+                            $cw = (int) round($ih * $ratio);
+                            $crop = ['x' => (int) round(($iw - $cw) / 2), 'y' => 0, 'width' => $cw, 'height' => $ih];
+                        } else {
+                            $ch = (int) round($iw / $ratio);
+                            $crop = ['x' => 0, 'y' => (int) round(($ih - $ch) / 2), 'width' => $iw, 'height' => $ch];
+                        }
+                        $cropped = imagecrop($img, $crop);
+                        if ($cropped) {
+                            $tmp = tempnam(sys_get_temp_dir(), 'cf') . '.jpg';
+                            imagejpeg($cropped, $tmp, 90);
+                            $pdf->Image($tmp, (float) $x, (float) $y, $w, $h, 'JPG');
+                            @unlink($tmp);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // Si la foto no se puede procesar, el certificado se genera sin ella.
+                }
+                continue;
+            }
+
             $value = trim((string) ($f['value'] ?? ''));
             if ($value === '') {
                 $value = $resolver($key);
             }
             if ($value === '') continue;
-
+            // Las fuentes estándar de FPDF usan ISO-8859-1 (tildes y ñ).
+            $value = mb_convert_encoding($value, 'ISO-8859-1', 'UTF-8');
             $font = (string) ($f['font'] ?? 'Helvetica');
             $fontSize = (float) ($f['fontSize'] ?? 18);
             $align = strtoupper((string) ($f['align'] ?? 'L'));
             $maxWidth = $f['w'] ?? null;
 
-            $pdf->SetFont($font, '', $fontSize);
+            $style = strtoupper(preg_replace('/[^BIUbiu]/', '', (string) ($f['style'] ?? '')));
+            $pdf->SetFont($font, $style, $fontSize);
 
             // Color en hex opcional
             $color = (string) ($f['color'] ?? '#000000');
@@ -798,26 +881,14 @@ class EstudianteseventosController extends BaseController
             }
         }
 
-        $institucionId = (int) ($insc->instituciones_id ?? ($user?->instituciones_id ?? 0));
-        $outDir = 'archivos/institucion' . $institucionId . '/eventos/certificados/' . (int) $evento->id;
-        if (!File::exists(public_path($outDir))) {
-            File::makeDirectory(public_path($outDir), 0755, true, true);
-        }
+        // El PDF se devuelve directamente, sin guardarlo en el servidor.
+        $content = $pdf->Output('S');
+        $fileName = 'certificado_' . (int) $insc->id . ($conFirmas ? '_firmas' : '') . '.pdf';
 
-        $outName = 'cert_' . (int) $insc->id . '_' . time() . '.pdf';
-        $outPath = $outDir . '/' . $outName;
-        $pdf->Output('F', public_path($outPath));
-
-        $insc->update([
-            'CertificadoPdf' => $outPath,
-            'CertificadoGeneradoAt' => date('Y-m-d H:i:s'),
-        ]);
-
-        return response()->json([
-            'data' => [
-                'filePath' => $outPath,
-                'url' => url($outPath),
-            ],
+        return response($content, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
+            'Cache-Control' => 'no-store',
         ]);
     }
 }

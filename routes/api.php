@@ -29,6 +29,7 @@ use App\Http\Controllers\EventosController;
 use App\Http\Controllers\EstudianteseventosController;
 use App\Http\Controllers\PublicEventosController;
 use App\Http\Controllers\DiseniocertificadopdfsController;
+use App\Http\Controllers\CertificadoAsignacionController;
 use App\Http\Controllers\JuradoController;
 use App\Http\Controllers\JuradoAsignacionController;
 use App\Http\Controllers\RubricasEventoController;
@@ -405,6 +406,11 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration
     Route::put('/diseniocertificadopdfs/{id}', [DiseniocertificadopdfsController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO']);
     Route::delete('/diseniocertificadopdfs/{id}', [DiseniocertificadopdfsController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO']);
 
+    // Plantilla de certificado por evento / especialidad / categoría
+    Route::get('/certificado-asignaciones', [CertificadoAsignacionController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/certificado-asignaciones', [CertificadoAsignacionController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::delete('/certificado-asignaciones/{id}', [CertificadoAsignacionController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+
     // =========================
     // EstudianteseventosController
     // =========================
@@ -631,6 +637,7 @@ Route::prefix('public')->group(function () {
     Route::get('/eventos/{id}', [PublicEventosController::class, 'show']);
     Route::post('/eventos/{eventoId}/inscripcion', [PublicEventosController::class, 'inscribir']);
     Route::post('/eventos/{eventoId}/verificar-inscripcion', [PublicEventosController::class, 'verificarInscripcion'])->withoutMiddleware(['auth:sanctum']);
+    Route::post('/eventos/{eventoId}/certificado', [PublicEventosController::class, 'certificadoPublico'])->withoutMiddleware(['auth:sanctum']);
     Route::put('/eventos/{eventoId}/nombre-institucion', [PublicEventosController::class, 'actualizarNombreInstitucion'])->withoutMiddleware(['auth:sanctum']);
     Route::post('/subicionpublico', [FileUploadPublicoController::class, 'subicionpublico'])
         ->withoutMiddleware(['auth:sanctum']);

@@ -7,7 +7,9 @@ CREATE TABLE `diseniocertificadopdfs` (
 
   `Nombre` VARCHAR(150) NOT NULL,
   `ArchivoPdf` VARCHAR(255) NOT NULL,      -- ruta relativa en /public (ej: archivos/institucionX/eventos/certificados/disenos/xxx.pdf)
+  `ArchivoPdfFirmas` VARCHAR(255) NULL,    -- plantilla PDF con firmas (opcional)
   `Parametros` LONGTEXT NULL,              -- JSON (posiciones por defecto/plantilla)
+  `ParametrosFirmas` LONGTEXT NULL,        -- JSON (posiciones por defecto/plantilla con firmas)
   `Activo` TINYINT(1) NOT NULL DEFAULT 1,
   `Observacion` TEXT NULL,
 
@@ -217,6 +219,20 @@ CREATE TABLE IF NOT EXISTS `clasificacioneseventos` (
   `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uq_clasif_est_inst` (`estudiantesevento_id`, `nroinstancia`),
   CONSTRAINT `fk_clasif_estudiantes` FOREIGN KEY (`estudiantesevento_id`) REFERENCES `estudianteseventos` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6. Tabla: certificadoasignaciones (plantilla de certificado por evento / especialidad / categoría; '' = todas)
+CREATE TABLE IF NOT EXISTS `certificadoasignaciones` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `evento_id` INT UNSIGNED NOT NULL,
+  `especialidad` VARCHAR(100) NOT NULL DEFAULT '',
+  `categoria` VARCHAR(100) NOT NULL DEFAULT '',
+  `diseniocertificadopdfs_id` INT UNSIGNED NOT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_certasig` (`evento_id`, `especialidad`, `categoria`),
+  CONSTRAINT `fk_certasig_eventos` FOREIGN KEY (`evento_id`) REFERENCES `eventos` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_certasig_diseno` FOREIGN KEY (`diseniocertificadopdfs_id`) REFERENCES `diseniocertificadopdfs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `bibliotecaarchivoslcch` (

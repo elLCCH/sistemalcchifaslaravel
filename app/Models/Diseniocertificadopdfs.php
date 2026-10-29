@@ -12,7 +12,9 @@ class Diseniocertificadopdfs extends Model
         'instituciones_id',
         'Nombre',
         'ArchivoPdf',
+        'ArchivoPdfFirmas',
         'Parametros',
+        'ParametrosFirmas',
         'Activo',
         'Observacion',
     ];
