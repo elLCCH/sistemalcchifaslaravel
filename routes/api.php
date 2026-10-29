@@ -451,6 +451,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration
     Route::get('/calificaciones-eventos', [CalificacionesEventoController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::get('/calificaciones-eventos/tablero', [CalificacionesEventoController::class, 'tablero'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::post('/calificaciones-eventos/guardar-lote', [CalificacionesEventoController::class, 'guardarLote'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/calificaciones-eventos/clasificar', [CalificacionesEventoController::class, 'clasificar'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::get('/calificaciones-eventos/{calificacionesEvento}', [CalificacionesEventoController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::post('/calificaciones-eventos', [CalificacionesEventoController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::put('/calificaciones-eventos/{calificacionesEvento}', [CalificacionesEventoController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);

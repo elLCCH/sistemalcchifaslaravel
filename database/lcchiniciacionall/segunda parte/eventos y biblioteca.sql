@@ -194,18 +194,30 @@ CREATE TABLE IF NOT EXISTS `calificacioneseventos` (
   `jurado_id` INT UNSIGNED NOT NULL,
   `estudiantesevento_id` INT UNSIGNED NOT NULL,
   `rubrica_id` INT UNSIGNED NOT NULL,
+  `nroinstancia` INT NOT NULL DEFAULT 1,
   `puntaje_asignado` VARCHAR(3) NOT NULL,
   `observaciones` TEXT NULL,
   `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-  UNIQUE KEY `uq_jurado_estudiante_rubrica` (`jurado_id`, `estudiantesevento_id`, `rubrica_id`),
+  -- Restricción clave que incluye la instancia para permitir recalificar en una ronda distinta
+  UNIQUE KEY `uq_jurado_est_rub_inst` (`jurado_id`, `estudiantesevento_id`, `rubrica_id`, `nroinstancia`),
 
   CONSTRAINT `fk_cal_jurados` FOREIGN KEY (`jurado_id`) REFERENCES `jurados` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_cal_estudiantes` FOREIGN KEY (`estudiantesevento_id`) REFERENCES `estudianteseventos` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_cal_rubricas` FOREIGN KEY (`rubrica_id`) REFERENCES `rubricaseventos` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 5. Tabla: clasificacioneseventos (participantes que pasan a la instancia N >= 2; la instancia 1 incluye a todos)
+CREATE TABLE IF NOT EXISTS `clasificacioneseventos` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `estudiantesevento_id` INT UNSIGNED NOT NULL,
+  `nroinstancia` INT NOT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_clasif_est_inst` (`estudiantesevento_id`, `nroinstancia`),
+  CONSTRAINT `fk_clasif_estudiantes` FOREIGN KEY (`estudiantesevento_id`) REFERENCES `estudianteseventos` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `bibliotecaarchivoslcch` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

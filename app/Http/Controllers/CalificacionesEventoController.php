@@ -28,6 +28,10 @@ class CalificacionesEventoController extends Controller
             $query->where('estudiantesevento_id', $request->input('estudiantesevento_id'));
         }
 
+        if ($request->has('nroinstancia')) {
+            $query->where('nroinstancia', $request->input('nroinstancia'));
+        }
+
         if ($request->has('evento_id')) {
             $query->whereHas('rubrica', function ($q) {
                 $q->where('evento_id', request()->input('evento_id'));
@@ -53,14 +57,42 @@ class CalificacionesEventoController extends Controller
         return $q;
     }
 
+    public static function instancia(Request $request): int
+    {
+        return max(1, (int) $request->input('nroinstancia', 1));
+    }
+
+    // La instancia 1 incluye a todos; las siguientes solo a los clasificados.
+    public static function enInstancia(int $estudianteEventoId, int $instancia): bool
+    {
+        return $instancia <= 1
+            || DB::table('clasificacioneseventos')
+                ->where('estudiantesevento_id', $estudianteEventoId)
+                ->where('nroinstancia', $instancia)->exists();
+    }
+
+    public static function filtrarInstancia($query, int $instancia)
+    {
+        if ($instancia > 1) {
+            $query->whereIn('id', DB::table('clasificacioneseventos')->where('nroinstancia', $instancia)->select('estudiantesevento_id'));
+        }
+        return $query;
+    }
+
     public function tablero(Request $request)
     {
         $request->validate(['evento_id' => 'required|integer|exists:eventos,id']);
         $eventoId = (int) $request->input('evento_id');
+        $instancia = self::instancia($request);
         $esp = $request->input('especialidad');
         $cat = $request->input('categoria');
 
-        $participantes = $this->participantesQuery($request, $eventoId)
+        $todosIds = $this->participantesQuery($request, $eventoId)->pluck('id');
+        $clasificaciones = DB::table('clasificacioneseventos')->whereIn('estudiantesevento_id', $todosIds)
+            ->get(['estudiantesevento_id', 'nroinstancia']);
+        $instancias = $clasificaciones->pluck('nroinstancia')->push(1)->unique()->sort()->values();
+
+        $participantes = self::filtrarInstancia($this->participantesQuery($request, $eventoId), $instancia)
             ->when($esp, fn ($q) => $q->where('Especialidad', $esp))
             ->when($cat, fn ($q) => $q->where('Categoria', $cat))
             ->orderBy('Ap_Paterno')->orderBy('Ap_Materno')->orderBy('Nombres')
@@ -78,14 +110,58 @@ class CalificacionesEventoController extends Controller
             ->get();
 
         $calificaciones = CalificacionesEvento::whereIn('estudiantesevento_id', $participantes->pluck('id'))
-            ->get(['id', 'jurado_id', 'estudiantesevento_id', 'rubrica_id', 'puntaje_asignado', 'observaciones', 'updated_at']);
+            ->where('nroinstancia', $instancia)
+            ->get(['id', 'jurado_id', 'estudiantesevento_id', 'rubrica_id', 'nroinstancia', 'puntaje_asignado', 'observaciones', 'updated_at']);
 
         return response()->json(['data' => [
             'participantes' => $participantes,
             'rubricas' => $rubricas,
             'asignaciones' => $asignaciones,
             'calificaciones' => $calificaciones,
+            'instancias' => $instancias,
+            'clasificaciones' => $clasificaciones,
         ]]);
+    }
+
+    // Marca o desmarca participantes como clasificados a la instancia siguiente.
+    public function clasificar(Request $request)
+    {
+        $data = $request->validate([
+            'evento_id' => 'required|integer|exists:eventos,id',
+            'nroinstancia' => 'required|integer|min:2',
+            'estudiantes_ids' => 'required|array|min:1',
+            'estudiantes_ids.*' => 'integer',
+            'clasificar' => 'required|boolean',
+        ]);
+        $destino = (int) $data['nroinstancia'];
+
+        $ids = $this->participantesQuery($request, (int) $data['evento_id'])
+            ->whereIn('id', $data['estudiantes_ids'])->pluck('id');
+        if ($ids->isEmpty()) {
+            return response()->json(['data' => 'Participantes no encontrados'], 404);
+        }
+
+        if ($data['clasificar']) {
+            $validos = $ids->filter(fn ($id) => self::enInstancia((int) $id, $destino - 1))->values();
+            DB::transaction(function () use ($validos, $destino) {
+                foreach ($validos as $id) {
+                    \App\Models\ClasificacionEvento::firstOrCreate(['estudiantesevento_id' => $id, 'nroinstancia' => $destino]);
+                }
+            });
+            return response()->json(['data' => 'CLASIFICADOS', 'afectados' => $validos->count()]);
+        }
+
+        $bloqueados = CalificacionesEvento::whereIn('estudiantesevento_id', $ids)
+            ->where('nroinstancia', '>=', $destino)->distinct()->pluck('estudiantesevento_id');
+        $quitar = $ids->diff($bloqueados)->values();
+        DB::table('clasificacioneseventos')->whereIn('estudiantesevento_id', $quitar)
+            ->where('nroinstancia', '>=', $destino)->delete();
+
+        return response()->json([
+            'data' => 'ACTUALIZADO',
+            'afectados' => $quitar->count(),
+            'bloqueados' => $bloqueados->count(),
+        ]);
     }
 
     public function guardarLote(Request $request)
@@ -93,11 +169,14 @@ class CalificacionesEventoController extends Controller
         $data = $request->validate([
             'jurado_id' => 'required|integer|exists:jurados,id',
             'estudiantesevento_id' => 'required|integer|exists:estudianteseventos,id',
+            'nroinstancia' => 'nullable|integer|min:1',
             'items' => 'required|array|min:1',
             'items.*.rubrica_id' => 'required|integer|exists:rubricaseventos,id',
             'items.*.puntaje_asignado' => ['nullable', 'regex:/^(-|\d{1,3})$/'],
             'items.*.observaciones' => 'nullable|string',
         ]);
+        $instancia = self::instancia($request);
+        $data['nroinstancia'] = $instancia;
 
         $user = $request->user();
         $est = DB::table('estudianteseventos')->where('id', $data['estudiantesevento_id'])
@@ -105,6 +184,9 @@ class CalificacionesEventoController extends Controller
             ->first();
         if (!$est) {
             return response()->json(['data' => 'Participante no encontrado'], 404);
+        }
+        if (!self::enInstancia((int) $est->id, $instancia)) {
+            return response()->json(['data' => "El participante no clasificó a la instancia {$instancia}"], 422);
         }
 
         $asignado = \App\Models\JuradoAsignacion::where('jurado_id', $data['jurado_id'])
@@ -129,12 +211,13 @@ class CalificacionesEventoController extends Controller
             }
         }
 
-        DB::transaction(function () use ($data) {
+        DB::transaction(function () use ($data, $instancia) {
             foreach ($data['items'] as $item) {
                 $where = [
                     'jurado_id' => $data['jurado_id'],
                     'estudiantesevento_id' => $data['estudiantesevento_id'],
                     'rubrica_id' => $item['rubrica_id'],
+                    'nroinstancia' => $instancia,
                 ];
                 if (!isset($item['puntaje_asignado'])) {
                     CalificacionesEvento::where($where)->delete();
@@ -156,9 +239,11 @@ class CalificacionesEventoController extends Controller
             'jurado_id' => 'required|exists:jurados,id',
             'estudiantesevento_id' => 'required|exists:estudianteseventos,id',
             'rubrica_id' => 'required|exists:rubricaseventos,id',
+            'nroinstancia' => 'nullable|integer|min:1',
             'puntaje_asignado' => ['required', 'regex:/^(-|\d{1,3})$/'],
             'observaciones' => 'nullable|string',
         ]);
+        $validated['nroinstancia'] = max(1, (int) ($validated['nroinstancia'] ?? 1));
 
         $rubrica = RubricasEvento::findOrFail($validated['rubrica_id']);
         

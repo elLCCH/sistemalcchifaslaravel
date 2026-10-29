@@ -12,6 +12,7 @@ class CalificacionesEvento extends Model
         'jurado_id',
         'estudiantesevento_id',
         'rubrica_id',
+        'nroinstancia',
         'puntaje_asignado',
         'observaciones',
     ];

@@ -43,6 +43,8 @@ class JuradoPortalController extends Controller
         $request->validate(['evento_id' => 'required|integer|exists:eventos,id']);
         $eventoId = (int) $request->input('evento_id');
 
+        $instancia = CalificacionesEventoController::instancia($request);
+
         $asignaciones = JuradoAsignacion::where('jurado_id', $jurado->id)
             ->where('evento_id', $eventoId)->get();
 
@@ -50,8 +52,15 @@ class JuradoPortalController extends Controller
             return response()->json(['data' => 'No tiene asignaciones en este evento'], 403);
         }
 
-        $participantes = DB::table('estudianteseventos')
-            ->where('eventos_id', $eventoId)
+        $instancias = DB::table('clasificacioneseventos')
+            ->join('estudianteseventos', 'estudianteseventos.id', '=', 'clasificacioneseventos.estudiantesevento_id')
+            ->where('estudianteseventos.eventos_id', $eventoId)
+            ->pluck('clasificacioneseventos.nroinstancia')->push(1)->unique()->sort()->values();
+
+        $participantes = CalificacionesEventoController::filtrarInstancia(
+            DB::table('estudianteseventos')->where('eventos_id', $eventoId),
+            $instancia
+        )
             ->where(function ($q) use ($asignaciones) {
                 foreach ($asignaciones as $a) {
                     $q->orWhere(fn ($w) => $w->where('Especialidad', $a->especialidad)->where('Categoria', $a->categoria));
@@ -71,14 +80,16 @@ class JuradoPortalController extends Controller
 
         // Solo las calificaciones propias: el jurado no ve las de otros jurados.
         $calificaciones = CalificacionesEvento::where('jurado_id', $jurado->id)
+            ->where('nroinstancia', $instancia)
             ->whereIn('estudiantesevento_id', $participantes->pluck('id'))
-            ->get(['id', 'jurado_id', 'estudiantesevento_id', 'rubrica_id', 'puntaje_asignado', 'observaciones', 'updated_at']);
+            ->get(['id', 'jurado_id', 'estudiantesevento_id', 'rubrica_id', 'nroinstancia', 'puntaje_asignado', 'observaciones', 'updated_at']);
 
         return response()->json(['data' => [
             'participantes' => $participantes,
             'rubricas' => $rubricas,
             'asignaciones' => $asignaciones,
             'calificaciones' => $calificaciones,
+            'instancias' => $instancias,
         ]]);
     }
 
@@ -87,6 +98,7 @@ class JuradoPortalController extends Controller
         $jurado = $this->jurado($request);
         $data = $request->validate([
             'estudiantesevento_id' => 'required|integer|exists:estudianteseventos,id',
+            'nroinstancia' => 'nullable|integer|min:1',
             'items' => 'required|array|min:1',
             'items.*.rubrica_id' => 'required|integer',
             'items.*.puntaje_asignado' => ['required', 'regex:/^(-|\d{1,3})$/'],
@@ -108,6 +120,7 @@ class JuradoPortalController extends Controller
         // Una calificación enviada es definitiva: el jurado ya no puede modificarla.
         $yaCalificado = CalificacionesEvento::where('jurado_id', $jurado->id)
             ->where('estudiantesevento_id', $est->id)
+            ->where('nroinstancia', CalificacionesEventoController::instancia($request))
             ->whereIn('rubrica_id', $rubricasGrupo)
             ->exists();
         if ($yaCalificado) {
