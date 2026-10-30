@@ -11,6 +11,7 @@ class Diseniocertificadopdfs extends Model
     protected $fillable = [
         'instituciones_id',
         'Nombre',
+        'Destinadoa',
         'ArchivoPdf',
         'ArchivoPdfFirmas',
         'Parametros',

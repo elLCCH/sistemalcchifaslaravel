@@ -12,6 +12,7 @@ CREATE TABLE `diseniocertificadopdfs` (
   `ParametrosFirmas` LONGTEXT NULL,        -- JSON (posiciones por defecto/plantilla con firmas)
   `Activo` TINYINT(1) NOT NULL DEFAULT 1,
   `Observacion` TEXT NULL,
+  `Destinadoa` VARCHAR(50) NULL,    -- PARTICIPANTES, GANADORES
 
   `created_at` DATETIME NULL,
   `updated_at` DATETIME NULL,

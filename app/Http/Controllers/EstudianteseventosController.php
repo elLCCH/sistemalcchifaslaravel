@@ -673,12 +673,142 @@ class EstudianteseventosController extends BaseController
             ->firstOrFail();
 
         $conFirmas = filter_var($request->input('conFirmas', false), FILTER_VALIDATE_BOOLEAN);
-        return $this->emitirCertificadoPdf($insc, $evento, $conFirmas, $user);
+        $destinadoa = strtoupper(trim((string) $request->input('destinadoa', 'PARTICIPANTES')));
+        return $this->emitirCertificadoPdf($insc, $evento, $conFirmas, $user, $destinadoa, (int) $request->input('nroinstancia', 0));
+    }
+
+    // Un solo PDF con los certificados de los ids recibidos, en ese mismo orden.
+    public function generarCertificadosLote(Request $request)
+    {
+        $data = $request->validate([
+            'ids' => 'required|array|min:1|max:500',
+            'ids.*' => 'integer',
+            'conFirmas' => 'nullable',
+            'destinadoa' => 'nullable|string',
+            'nroinstancia' => 'nullable|integer',
+        ]);
+        $user = $request->user();
+        $conFirmas = filter_var($data['conFirmas'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $destinadoa = strtoupper(trim((string) ($data['destinadoa'] ?? 'PARTICIPANTES')));
+        $instancia = (int) ($data['nroinstancia'] ?? 0);
+
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+        $inscs = Estudianteseventos::query()
+            ->whereIn('id', $ids)
+            ->when(!empty($user?->instituciones_id), fn ($q) => $q->where('instituciones_id', (int) $user->instituciones_id))
+            ->get()->keyBy('id');
+
+        $eventos = [];
+        $pdf = new Fpdi();
+        $generados = 0;
+        $omitidos = [];
+        foreach ($ids as $id) {
+            $insc = $inscs->get($id);
+            if (!$insc) continue;
+            $evento = $eventos[$insc->eventos_id] ??= Eventos::query()
+                ->where('id', (int) $insc->eventos_id)
+                ->when(!empty($user?->instituciones_id), fn ($q) => $q->where('instituciones_id', (int) $user->instituciones_id))
+                ->first();
+            if (!$evento) continue;
+
+            try {
+                $r = $this->emitirCertificadoPdf($insc, $evento, $conFirmas, $user, $destinadoa, $instancia, $pdf);
+            } catch (\Throwable $e) {
+                $r = response()->json(['error' => 'Error al generar'], 422);
+            }
+            if ($r === null) {
+                $generados++;
+            } else {
+                $msg = $r instanceof \Illuminate\Http\JsonResponse ? ($r->getData(true)['error'] ?? 'Error') : 'Error';
+                $omitidos[] = trim($insc->Nombres . ' ' . $insc->Ap_Paterno . ' ' . $insc->Ap_Materno) . ': ' . $msg;
+            }
+        }
+
+        if ($generados === 0) {
+            return response()->json(['error' => 'No se pudo generar ningún certificado. ' . ($omitidos[0] ?? '')], 422);
+        }
+
+        return response($pdf->Output('S'), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="certificados.pdf"',
+            'Cache-Control' => 'no-store',
+            'X-Certificados-Generados' => $generados,
+            'X-Certificados-Omitidos' => count($omitidos),
+            'Access-Control-Expose-Headers' => 'X-Certificados-Generados, X-Certificados-Omitidos',
+        ]);
+    }
+
+    private function normTxt($v): string
+    {
+        return mb_strtolower(trim((string) $v));
+    }
+
+    // Puesto del participante en su grupo (especialidad + categoría) para una instancia; mismo criterio que el tablero de calificaciones.
+    private function calcularPuesto(Estudianteseventos $insc, int $instancia): ?array
+    {
+        if ($instancia <= 0) {
+            $instancia = (int) (DB::table('calificacioneseventos')->where('estudiantesevento_id', $insc->id)->max('nroinstancia') ?: 1);
+        }
+        $esp = $this->normTxt($insc->Especialidad);
+        $cat = $this->normTxt($insc->Categoria);
+        $mismo = fn ($e, $c) => $this->normTxt($e) === $esp && $this->normTxt($c) === $cat;
+
+        $grupoIds = DB::table('estudianteseventos')->where('eventos_id', $insc->eventos_id)
+            ->get(['id', 'Especialidad', 'Categoria'])
+            ->filter(fn ($p) => $mismo($p->Especialidad, $p->Categoria))->pluck('id')->all();
+        if ($instancia > 1) {
+            $clasif = DB::table('clasificacioneseventos')->where('nroinstancia', $instancia)->pluck('estudiantesevento_id')->all();
+            $grupoIds = array_values(array_intersect($grupoIds, $clasif));
+        }
+        if (!in_array($insc->id, $grupoIds)) return null;
+
+        $rubIds = \App\Models\RubricasEvento::where('evento_id', $insc->eventos_id)->get()
+            ->filter(fn ($r) => $mismo($r->especialidad, $r->categoria))->pluck('id')->all();
+        $juradoIds = \App\Models\JuradoAsignacion::where('evento_id', $insc->eventos_id)->get()
+            ->filter(fn ($a) => $mismo($a->especialidad, $a->categoria))->pluck('jurado_id')->unique()->all();
+        if (!$rubIds || !$juradoIds) return null;
+
+        $cals = DB::table('calificacioneseventos')
+            ->whereIn('estudiantesevento_id', $grupoIds)->whereIn('rubrica_id', $rubIds)
+            ->whereIn('jurado_id', $juradoIds)->where('nroinstancia', $instancia)
+            ->get(['estudiantesevento_id', 'rubrica_id', 'puntaje_asignado'])
+            ->filter(fn ($c) => preg_match('/^\d+$/', trim((string) $c->puntaje_asignado)));
+
+        $puntajes = [];
+        foreach ($cals->groupBy('estudiantesevento_id') as $estId => $filas) {
+            $suma = 0;
+            foreach ($filas->groupBy('rubrica_id') as $notas) {
+                $suma += $notas->avg(fn ($n) => (int) $n->puntaje_asignado);
+            }
+            $puntajes[$estId] = $suma;
+        }
+        if (!isset($puntajes[$insc->id])) return null;
+
+        $mejores = count(array_filter($puntajes, fn ($p) => $p > $puntajes[$insc->id] + 1e-9));
+        return ['puesto' => $mejores + 1, 'instancia' => $instancia];
+    }
+
+    private function etiquetaPuesto(int $n, bool $abrev): string
+    {
+        $largo = [1 => 'Primer', 2 => 'Segundo', 3 => 'Tercer', 4 => 'Cuarto', 5 => 'Quinto', 6 => 'Sexto', 7 => 'Séptimo', 8 => 'Octavo', 9 => 'Noveno', 10 => 'Décimo'];
+        $corto = [1 => '1er', 2 => '2do', 3 => '3er', 4 => '4to', 5 => '5to', 6 => '6to', 7 => '7mo', 8 => '8vo', 9 => '9no', 10 => '10mo'];
+        if ($abrev) return ($corto[$n] ?? $n . 'º') . ' Lugar';
+        return ($largo[$n] ?? $n . 'º') . ' Lugar';
     }
 
     // Genera el PDF del certificado; $user = null en el flujo público (sin filtro por institución).
-    public function emitirCertificadoPdf(Estudianteseventos $insc, Eventos $evento, bool $conFirmas, $user = null)
+    public function emitirCertificadoPdf(Estudianteseventos $insc, Eventos $evento, bool $conFirmas, $user = null, string $destinadoa = 'PARTICIPANTES', int $instancia = 0, ?Fpdi $pdfExterno = null)
     {
+        if (!in_array($destinadoa, ['PARTICIPANTES', 'GANADORES'], true)) $destinadoa = 'PARTICIPANTES';
+
+        $puestoInfo = null;
+        if ($destinadoa === 'GANADORES') {
+            $puestoInfo = $this->calcularPuesto($insc, $instancia);
+            if (!$puestoInfo) {
+                return response()->json(['error' => 'El participante no tiene puesto (sin calificaciones en esa instancia)'], 422);
+            }
+        }
+
         // Prioridad: especialidad+categoría > solo especialidad > solo categoría > todas > diseño por defecto del evento.
         $esp = trim((string) ($insc->Especialidad ?? ''));
         $cat = trim((string) ($insc->Categoria ?? ''));
@@ -686,12 +816,16 @@ class EstudianteseventosController extends BaseController
             ->whereIn('especialidad', array_unique([$esp, '']))
             ->whereIn('categoria', array_unique([$cat, '']))
             ->get()
+            ->filter(function ($a) use ($destinadoa) {
+                $d = Diseniocertificadopdfs::find($a->diseniocertificadopdfs_id);
+                return $d && strtoupper(trim((string) ($d->Destinadoa ?: 'PARTICIPANTES'))) === $destinadoa;
+            })
             ->sortByDesc(fn ($a) => ($a->especialidad !== '' ? 2 : 0) + ($a->categoria !== '' ? 1 : 0))
             ->first();
 
-        $designId = (int) ($asignado?->diseniocertificadopdfs_id ?: ($evento->diseniocertificadopdfs_id ?? 0));
+        $designId = (int) ($asignado?->diseniocertificadopdfs_id ?: ($destinadoa === 'PARTICIPANTES' ? ($evento->diseniocertificadopdfs_id ?? 0) : 0));
         if ($designId <= 0) {
-            return response()->json(['error' => 'No hay un diseño de certificado asignado para este evento o aún no esta disponible'], 422);
+            return response()->json(['error' => 'No hay un diseño de certificado (' . $destinadoa . ') asignado para este evento / especialidad / categoría'], 422);
         }
 
         $design = Diseniocertificadopdfs::query()
@@ -747,8 +881,11 @@ class EstudianteseventosController extends BaseController
             }
         }
 
-        $resolver = function (string $key) use ($insc, $evento, $datosEspeciales): string {
+        $resolver = function (string $key) use ($insc, $evento, $datosEspeciales, $puestoInfo): string {
             $k = strtoupper(trim($key));
+            if ($k === 'PUESTO') return $puestoInfo ? $this->etiquetaPuesto($puestoInfo['puesto'], false) : '';
+            if ($k === 'PUESTO_ABREV') return $puestoInfo ? $this->etiquetaPuesto($puestoInfo['puesto'], true) : '';
+            if ($k === 'PUESTO_NUMERO') return $puestoInfo ? (string) $puestoInfo['puesto'] : '';
             $nombre = trim((string) ($insc->Nombres ?? ''));
             $apP = trim((string) ($insc->Ap_Paterno ?? ''));
             $apM = trim((string) ($insc->Ap_Materno ?? ''));
@@ -774,7 +911,7 @@ class EstudianteseventosController extends BaseController
             return '';
         };
 
-        $pdf = new Fpdi();
+        $pdf = $pdfExterno ?? new Fpdi();
         $pageCount = $pdf->setSourceFile($templateFullPath);
         $pageNum = min(max(1, $page), $pageCount);
 
@@ -851,8 +988,9 @@ class EstudianteseventosController extends BaseController
                 $value = $resolver($key);
             }
             if ($value === '') continue;
-            // Las fuentes estándar de FPDF usan ISO-8859-1 (tildes y ñ).
-            $value = mb_convert_encoding($value, 'ISO-8859-1', 'UTF-8');
+            // Las fuentes estándar de FPDF usan Windows-1252; se unifican los guiones tipográficos a "-".
+            $value = preg_replace('/[\x{2010}-\x{2015}\x{2212}]/u', '-', $value);
+            $value = mb_convert_encoding($value, 'Windows-1252', 'UTF-8');
             $font = (string) ($f['font'] ?? 'Helvetica');
             $fontSize = (float) ($f['fontSize'] ?? 18);
             $align = strtoupper((string) ($f['align'] ?? 'L'));
@@ -881,6 +1019,9 @@ class EstudianteseventosController extends BaseController
                 $pdf->Write(0, $value);
             }
         }
+
+        // En modo lote la página queda en el PDF compartido y no se devuelve respuesta.
+        if ($pdfExterno) return null;
 
         // El PDF se devuelve directamente, sin guardarlo en el servidor.
         $content = $pdf->Output('S');

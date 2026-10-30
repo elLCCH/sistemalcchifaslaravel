@@ -421,6 +421,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration
     Route::post('/estudianteseventos', [EstudianteseventosController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::put('/estudianteseventos/{id}', [EstudianteseventosController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::delete('/estudianteseventos/{id}', [EstudianteseventosController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/estudianteseventos/generar-certificados-lote', [EstudianteseventosController::class, 'generarCertificadosLote'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::post('/estudianteseventos/{id}/generar-certificado', [EstudianteseventosController::class, 'generarCertificado'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
 
     // =========================
