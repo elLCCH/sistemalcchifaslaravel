@@ -58,7 +58,8 @@ class JuradoPortalController extends Controller
             ->pluck('clasificacioneseventos.nroinstancia')->push(1)->unique()->sort()->values();
 
         $participantes = CalificacionesEventoController::filtrarInstancia(
-            DB::table('estudianteseventos')->where('eventos_id', $eventoId),
+            DB::table('estudianteseventos')->where('eventos_id', $eventoId)
+                ->where(fn ($w) => $w->whereNull('EstadoInscripcion')->orWhere('EstadoInscripcion', '!=', 'RECHAZADO')),
             $instancia
         )
             ->where(function ($q) use ($asignaciones) {
@@ -108,6 +109,9 @@ class JuradoPortalController extends Controller
         ]);
 
         $est = DB::table('estudianteseventos')->where('id', $data['estudiantesevento_id'])->first();
+        if (strtoupper(trim((string) $est->EstadoInscripcion)) === 'RECHAZADO') {
+            return response()->json(['data' => 'La inscripción de este participante fue rechazada'], 422);
+        }
         $rubricasGrupo = RubricasEvento::where('evento_id', $est->eventos_id)
             ->whereRaw('UPPER(especialidad) = ?', [mb_strtoupper((string) $est->Especialidad)])
             ->whereRaw('UPPER(categoria) = ?', [mb_strtoupper((string) $est->Categoria)])

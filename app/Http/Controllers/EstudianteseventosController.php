@@ -705,6 +705,7 @@ class EstudianteseventosController extends BaseController
         foreach ($ids as $id) {
             $insc = $inscs->get($id);
             if (!$insc) continue;
+            if (strtoupper(trim((string) $insc->EstadoInscripcion)) === 'RECHAZADO') continue; // los rechazados se ignoran
             $evento = $eventos[$insc->eventos_id] ??= Eventos::query()
                 ->where('id', (int) $insc->eventos_id)
                 ->when(!empty($user?->instituciones_id), fn ($q) => $q->where('instituciones_id', (int) $user->instituciones_id))
@@ -754,6 +755,7 @@ class EstudianteseventosController extends BaseController
         $mismo = fn ($e, $c) => $this->normTxt($e) === $esp && $this->normTxt($c) === $cat;
 
         $grupoIds = DB::table('estudianteseventos')->where('eventos_id', $insc->eventos_id)
+            ->where(fn ($w) => $w->whereNull('EstadoInscripcion')->orWhere('EstadoInscripcion', '!=', 'RECHAZADO'))
             ->get(['id', 'Especialidad', 'Categoria'])
             ->filter(fn ($p) => $mismo($p->Especialidad, $p->Categoria))->pluck('id')->all();
         if ($instancia > 1) {
@@ -800,6 +802,10 @@ class EstudianteseventosController extends BaseController
     public function emitirCertificadoPdf(Estudianteseventos $insc, Eventos $evento, bool $conFirmas, $user = null, string $destinadoa = 'PARTICIPANTES', int $instancia = 0, ?Fpdi $pdfExterno = null)
     {
         if (!in_array($destinadoa, ['PARTICIPANTES', 'GANADORES'], true)) $destinadoa = 'PARTICIPANTES';
+
+        if (strtoupper(trim((string) $insc->EstadoInscripcion)) === 'RECHAZADO') {
+            return response()->json(['error' => 'La inscripción fue rechazada: no se puede generar el certificado'], 422);
+        }
 
         $puestoInfo = null;
         if ($destinadoa === 'GANADORES') {

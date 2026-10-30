@@ -50,7 +50,8 @@ class CalificacionesEventoController extends Controller
     private function participantesQuery(Request $request, int $eventoId)
     {
         $user = $request->user();
-        $q = DB::table('estudianteseventos')->where('eventos_id', $eventoId);
+        $q = DB::table('estudianteseventos')->where('eventos_id', $eventoId)
+            ->where(fn ($w) => $w->whereNull('EstadoInscripcion')->orWhere('EstadoInscripcion', '!=', 'RECHAZADO'));
         if (!empty($user?->instituciones_id)) {
             $q->where('instituciones_id', $user->instituciones_id);
         }
