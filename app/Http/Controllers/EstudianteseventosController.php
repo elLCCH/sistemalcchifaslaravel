@@ -787,7 +787,16 @@ class EstudianteseventosController extends BaseController
         if (!isset($puntajes[$insc->id])) return null;
 
         $mejores = count(array_filter($puntajes, fn ($p) => $p > $puntajes[$insc->id] + 1e-9));
-        return ['puesto' => $mejores + 1, 'instancia' => $instancia];
+
+        // El puesto N del ranking pasa al N-ésimo lugar no desierto.
+        $desiertos = \App\Models\LugarDesierto::where('evento_id', $insc->eventos_id)->where('nroinstancia', $instancia)->get()
+            ->filter(fn ($d) => $mismo($d->especialidad, $d->categoria))->pluck('lugar')->map(fn ($l) => (int) $l)->all();
+        $lugar = 0;
+        for ($contados = 0; $contados < $mejores + 1;) {
+            $lugar++;
+            if (!in_array($lugar, $desiertos, true)) $contados++;
+        }
+        return ['puesto' => $lugar, 'instancia' => $instancia];
     }
 
     private function etiquetaPuesto(int $n, bool $abrev): string

@@ -63,8 +63,9 @@ class CertificadoAsignacionController extends Controller
                 'evento_id' => $validated['evento_id'],
                 'especialidad' => $validated['especialidad'],
                 'categoria' => $validated['categoria'],
+                'diseniocertificadopdfs_id' => $validated['diseniocertificadopdfs_id'],
             ],
-            ['diseniocertificadopdfs_id' => $validated['diseniocertificadopdfs_id']],
+            [],
         );
         $row->load(['evento:id,NombreEvento,Anio', 'diseno:id,Nombre,ArchivoPdf,ArchivoPdfFirmas']);
 

@@ -121,7 +121,42 @@ class CalificacionesEventoController extends Controller
             'calificaciones' => $calificaciones,
             'instancias' => $instancias,
             'clasificaciones' => $clasificaciones,
+            'desiertos' => \App\Models\LugarDesierto::where('evento_id', $eventoId)->where('nroinstancia', $instancia)
+                ->get(['especialidad', 'categoria', 'lugar']),
         ]]);
+    }
+
+    // Marca o desmarca un lugar como desierto para un grupo (especialidad + categoría) en una instancia.
+    public function alternarDesierto(Request $request)
+    {
+        $v = $request->validate([
+            'evento_id' => 'required|integer|exists:eventos,id',
+            'especialidad' => 'nullable|string|max:100',
+            'categoria' => 'nullable|string|max:100',
+            'nroinstancia' => 'nullable|integer|min:1',
+            'lugar' => 'required|integer|min:1|max:100',
+            'desierto' => 'required|boolean',
+        ]);
+        $user = $request->user();
+        if (!empty($user?->instituciones_id)
+            && !\App\Models\Eventos::where('id', $v['evento_id'])->where('instituciones_id', $user->instituciones_id)->exists()) {
+            return response()->json(['data' => 'Evento no válido'], 422);
+        }
+
+        $clave = [
+            'evento_id' => $v['evento_id'],
+            'especialidad' => trim((string) ($v['especialidad'] ?? '')),
+            'categoria' => trim((string) ($v['categoria'] ?? '')),
+            'nroinstancia' => (int) ($v['nroinstancia'] ?? 1),
+            'lugar' => $v['lugar'],
+        ];
+        if ($v['desierto']) {
+            \App\Models\LugarDesierto::firstOrCreate($clave);
+        } else {
+            \App\Models\LugarDesierto::where($clave)->delete();
+        }
+
+        return response()->json(['data' => 'OK']);
     }
 
     // Marca o desmarca participantes como clasificados a la instancia siguiente.

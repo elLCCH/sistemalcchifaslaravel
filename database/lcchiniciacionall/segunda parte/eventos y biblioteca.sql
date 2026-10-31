@@ -238,9 +238,23 @@ CREATE TABLE IF NOT EXISTS `certificadoasignaciones` (
   `diseniocertificadopdfs_id` INT UNSIGNED NOT NULL,
   `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY `uq_certasig` (`evento_id`, `especialidad`, `categoria`),
+  UNIQUE KEY `uq_certasig_diseno` (`evento_id`, `especialidad`, `categoria`, `diseniocertificadopdfs_id`),
   CONSTRAINT `fk_certasig_eventos` FOREIGN KEY (`evento_id`) REFERENCES `eventos` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_certasig_diseno` FOREIGN KEY (`diseniocertificadopdfs_id`) REFERENCES `diseniocertificadopdfs` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 7. Tabla: lugaresdesiertos (lugares del ranking declarados desiertos por evento / especialidad / categoría / instancia)
+CREATE TABLE IF NOT EXISTS `lugaresdesiertos` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `evento_id` INT UNSIGNED NOT NULL,
+  `especialidad` VARCHAR(100) NOT NULL DEFAULT '',
+  `categoria` VARCHAR(100) NOT NULL DEFAULT '',
+  `nroinstancia` INT NOT NULL DEFAULT 1,
+  `lugar` INT NOT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_lugar_desierto` (`evento_id`, `especialidad`, `categoria`, `nroinstancia`, `lugar`),
+  CONSTRAINT `fk_lugdes_eventos` FOREIGN KEY (`evento_id`) REFERENCES `eventos` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `bibliotecaarchivoslcch` (
