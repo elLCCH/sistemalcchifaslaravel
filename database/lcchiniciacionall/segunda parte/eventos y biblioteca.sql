@@ -12,7 +12,7 @@ CREATE TABLE `diseniocertificadopdfs` (
   `ParametrosFirmas` LONGTEXT NULL,        -- JSON (posiciones por defecto/plantilla con firmas)
   `Activo` TINYINT(1) NOT NULL DEFAULT 1,
   `Observacion` TEXT NULL,
-  `Destinadoa` VARCHAR(50) NULL,    -- PARTICIPANTES, GANADORES
+  `Destinadoa` VARCHAR(50) NULL,    -- PARTICIPANTES, GANADORES, JURADOS, DOCENTES, ADMINISTRADORES
 
   `created_at` DATETIME NULL,
   `updated_at` DATETIME NULL,
@@ -154,8 +154,15 @@ CREATE TABLE IF NOT EXISTS `jurados` (
   `foto` VARCHAR(255) NULL,
   `biografia` TEXT NULL,
   `activo` TINYINT(1) DEFAULT 1,
+  `parametro1` VARCHAR(80) NULL,
+  `parametro2` VARCHAR(80) NULL,
+  `parametro3` VARCHAR(80) NULL,
+  `parametro4` VARCHAR(80) NULL,
+  `parametro5` VARCHAR(80) NULL,
+  `instituciones_id` INT NOT NULL DEFAULT 1,
   `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `fk_jurados_instituciones` FOREIGN KEY (`instituciones_id`) REFERENCES `instituciones` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -261,4 +268,27 @@ CREATE TABLE `bibliotecaarchivoslcch` (
   CONSTRAINT `fk_biblio_inst`
     FOREIGN KEY (`institucion_id`) REFERENCES `instituciones`(`id`)
     ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- Personal (docentes / administrativos) inscrito a un evento. No modifica planteldocentes ni planteladministrativos.
+CREATE TABLE IF NOT EXISTS `eventospersonal` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `instituciones_id` INT NOT NULL,
+  `eventos_id` INT UNSIGNED NOT NULL,
+  `tipo` VARCHAR(20) NOT NULL,
+  `planteldocentes_id` INT NULL,
+  `planteladministrativos_id` INT NULL,
+  `rol` VARCHAR(100) NULL,
+  `parametro1` VARCHAR(80) NULL,
+  `parametro2` VARCHAR(80) NULL,
+  `parametro3` VARCHAR(80) NULL,
+  `parametro4` VARCHAR(80) NULL,
+  `parametro5` VARCHAR(80) NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_evper_docente` (`eventos_id`, `planteldocentes_id`),
+  UNIQUE KEY `uq_evper_admin` (`eventos_id`, `planteladministrativos_id`),
+  CONSTRAINT `fk_evper_inst` FOREIGN KEY (`instituciones_id`) REFERENCES `instituciones` (`id`) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT `fk_evper_evento` FOREIGN KEY (`eventos_id`) REFERENCES `eventos` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_evper_docente` FOREIGN KEY (`planteldocentes_id`) REFERENCES `planteldocentes` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_evper_admin` FOREIGN KEY (`planteladministrativos_id`) REFERENCES `planteladministrativos` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

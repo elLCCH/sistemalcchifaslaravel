@@ -35,6 +35,7 @@ use App\Http\Controllers\JuradoAsignacionController;
 use App\Http\Controllers\RubricasEventoController;
 use App\Http\Controllers\CalificacionesEventoController;
 use App\Http\Controllers\JuradoPortalController;
+use App\Http\Controllers\EventoPersonalController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -429,6 +430,7 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration
     // =========================
     Route::get('/jurados', [JuradoController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::get('/jurados/{jurado}', [JuradoController::class, 'show'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/jurados/{id}/generar-certificado', [JuradoController::class, 'generarCertificado'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::post('/jurados', [JuradoController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::put('/jurados/{jurado}', [JuradoController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::delete('/jurados/{jurado}', [JuradoController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
@@ -465,6 +467,14 @@ Route::middleware(['auth:sanctum', AuditMiddleware::class, UpdateTokenExpiration
     Route::delete('/calificaciones-eventos/{calificacionesEvento}', [CalificacionesEventoController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::get('/calificaciones-eventos/por-estudiante/{estudianteEventoId}', [CalificacionesEventoController::class, 'obtenerCalificacionesPorEstudiante'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
     Route::get('/calificaciones-eventos/por-jurado/{juradoId}/{eventoId}', [CalificacionesEventoController::class, 'obtenerCalificacionesPorJurado'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+
+    // Personal (docentes / administrativos) inscrito a eventos
+    Route::get('/eventos-personal', [EventoPersonalController::class, 'index'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::get('/eventos-personal/candidatos', [EventoPersonalController::class, 'candidatos'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/eventos-personal', [EventoPersonalController::class, 'store'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::put('/eventos-personal/{id}', [EventoPersonalController::class, 'update'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::delete('/eventos-personal/{id}', [EventoPersonalController::class, 'destroy'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
+    Route::post('/eventos-personal/{id}/generar-certificado', [EventoPersonalController::class, 'generarCertificado'])->middleware([CheckAbilities::class . ':CREADOR,SECRETARIO(A),TÉCNICO,INSCRIPCIÓN_DE_EVENTOS']);
 
     // Portal del jurado (solo habilidad JURADO(A))
     Route::get('/jurado-portal/mis-eventos', [JuradoPortalController::class, 'misEventos'])->middleware([CheckAbilities::class . ':JURADO(A)']);

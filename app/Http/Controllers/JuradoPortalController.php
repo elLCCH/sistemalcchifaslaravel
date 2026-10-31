@@ -26,6 +26,7 @@ class JuradoPortalController extends Controller
 
         $asignaciones = JuradoAsignacion::where('jurado_id', $jurado->id)->get();
         $eventos = DB::table('eventos')
+            ->where('instituciones_id', $jurado->instituciones_id)
             ->whereIn('id', $asignaciones->pluck('evento_id')->unique())
             ->orderByDesc('id')
             ->get()
@@ -42,7 +43,7 @@ class JuradoPortalController extends Controller
         $jurado = $this->jurado($request);
         $request->validate(['evento_id' => 'required|integer|exists:eventos,id']);
         $eventoId = (int) $request->input('evento_id');
-
+        abort_unless(DB::table('eventos')->where('id', $eventoId)->where('instituciones_id', $jurado->instituciones_id)->exists(), 403, 'Evento no disponible');
         $instancia = CalificacionesEventoController::instancia($request);
 
         $asignaciones = JuradoAsignacion::where('jurado_id', $jurado->id)
@@ -109,7 +110,7 @@ class JuradoPortalController extends Controller
         ]);
 
         $est = DB::table('estudianteseventos')->where('id', $data['estudiantesevento_id'])->first();
-        if (strtoupper(trim((string) $est->EstadoInscripcion)) === 'RECHAZADO') {
+        if (strtoupper(trim((string) $est->EstadoInscripcion)) === 'RECHAZADO' || (int) $est->instituciones_id !== (int) $jurado->instituciones_id) {
             return response()->json(['data' => 'La inscripción de este participante fue rechazada'], 422);
         }
         $rubricasGrupo = RubricasEvento::where('evento_id', $est->eventos_id)

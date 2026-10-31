@@ -25,6 +25,12 @@ class Jurado extends Authenticatable
         'foto',
         'biografia',
         'activo',
+        'parametro1',
+        'parametro2',
+        'parametro3',
+        'parametro4',
+        'parametro5',
+        'instituciones_id',
     ];
 
     protected $casts = [

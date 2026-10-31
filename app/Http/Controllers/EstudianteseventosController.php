@@ -801,7 +801,7 @@ class EstudianteseventosController extends BaseController
     // Genera el PDF del certificado; $user = null en el flujo público (sin filtro por institución).
     public function emitirCertificadoPdf(Estudianteseventos $insc, Eventos $evento, bool $conFirmas, $user = null, string $destinadoa = 'PARTICIPANTES', int $instancia = 0, ?Fpdi $pdfExterno = null)
     {
-        if (!in_array($destinadoa, ['PARTICIPANTES', 'GANADORES'], true)) $destinadoa = 'PARTICIPANTES';
+        if (!in_array($destinadoa, ['PARTICIPANTES', 'GANADORES', 'JURADOS', 'DOCENTES', 'ADMINISTRATIVOS'], true)) $destinadoa = 'PARTICIPANTES';
 
         if (strtoupper(trim((string) $insc->EstadoInscripcion)) === 'RECHAZADO') {
             return response()->json(['error' => 'La inscripción fue rechazada: no se puede generar el certificado'], 422);
@@ -818,15 +818,18 @@ class EstudianteseventosController extends BaseController
         // Prioridad: especialidad+categoría > solo especialidad > solo categoría > todas > diseño por defecto del evento.
         $esp = trim((string) ($insc->Especialidad ?? ''));
         $cat = trim((string) ($insc->Categoria ?? ''));
+        $esPersonal = in_array($destinadoa, ['DOCENTES', 'ADMINISTRATIVOS'], true);
         $asignado = \App\Models\CertificadoAsignacion::where('evento_id', (int) $evento->id)
-            ->whereIn('especialidad', array_unique([$esp, '']))
-            ->whereIn('categoria', array_unique([$cat, '']))
+            // El personal no tiene especialidad/categoría: sirve cualquier asignación del evento con ese Destinadoa.
+            ->when(!$esPersonal, fn ($q) => $q->whereIn('especialidad', array_unique([$esp, '']))->whereIn('categoria', array_unique([$cat, ''])))
             ->get()
             ->filter(function ($a) use ($destinadoa) {
                 $d = Diseniocertificadopdfs::find($a->diseniocertificadopdfs_id);
                 return $d && strtoupper(trim((string) ($d->Destinadoa ?: 'PARTICIPANTES'))) === $destinadoa;
             })
-            ->sortByDesc(fn ($a) => ($a->especialidad !== '' ? 2 : 0) + ($a->categoria !== '' ? 1 : 0))
+            ->sortByDesc(fn ($a) => $esPersonal
+                ? -(($a->especialidad !== '' ? 1 : 0) + ($a->categoria !== '' ? 1 : 0))
+                : ($a->especialidad !== '' ? 2 : 0) + ($a->categoria !== '' ? 1 : 0))
             ->first();
 
         $designId = (int) ($asignado?->diseniocertificadopdfs_id ?: ($destinadoa === 'PARTICIPANTES' ? ($evento->diseniocertificadopdfs_id ?? 0) : 0));

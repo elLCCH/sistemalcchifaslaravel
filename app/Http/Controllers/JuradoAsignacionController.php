@@ -15,9 +15,28 @@ class JuradoAsignacionController extends Controller
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
     }
 
+    private function institucionId(Request $request): ?int
+    {
+        $id = $request->user()?->instituciones_id;
+        return empty($id) ? null : (int) $id;
+    }
+
+    // La asignación solo es válida si el jurado y el evento pertenecen a la institución del usuario.
+    private function validarAsignacion(Request $request, JuradoAsignacion $a): void
+    {
+        $instId = $this->institucionId($request);
+        if (!$instId) return;
+        $juradoOk = \App\Models\Jurado::where('id', $a->jurado_id)->where('instituciones_id', $instId)->exists();
+        abort_unless($juradoOk, 404);
+    }
+
     public function index(Request $request)
     {
         $query = JuradoAsignacion::with(['jurado', 'evento']);
+        $instId = $this->institucionId($request);
+        if ($instId) {
+            $query->whereHas('jurado', fn ($q) => $q->where('instituciones_id', $instId));
+        }
 
         if ($request->has('evento_id')) {
             $query->where('evento_id', $request->input('evento_id'));
@@ -36,9 +55,10 @@ class JuradoAsignacionController extends Controller
         //
     }
 
-    public function opcionesEvento($eventoId)
+    public function opcionesEvento(Request $request, $eventoId)
     {
-        $base = DB::table('estudianteseventos')->where('eventos_id', $eventoId);
+        $base = DB::table('estudianteseventos')->where('eventos_id', $eventoId)
+            ->when($this->institucionId($request), fn ($q, $i) => $q->where('instituciones_id', $i));
 
         $especialidades = (clone $base)
             ->whereNotNull('Especialidad')->where('Especialidad', '<>', '')
@@ -63,6 +83,15 @@ class JuradoAsignacionController extends Controller
             'categoria' => 'required|string|max:100',
         ]);
 
+        $instId = $this->institucionId($request);
+        if ($instId) {
+            $juradoOk = \App\Models\Jurado::where('id', $validated['jurado_id'])->where('instituciones_id', $instId)->exists();
+            $eventoOk = DB::table('eventos')->where('id', $validated['evento_id'])->where('instituciones_id', $instId)->exists();
+            if (!$juradoOk || !$eventoOk) {
+                return response()->json(['data' => 'El jurado y el evento deben pertenecer a su institución'], 422);
+            }
+        }
+
         if (JuradoAsignacion::where($validated)->exists()) {
             return response()->json(['data' => 'El jurado ya tiene esta asignación'], 422);
         }
@@ -72,8 +101,9 @@ class JuradoAsignacionController extends Controller
         return response()->json(['data' => $asignacion], 201);
     }
 
-    public function show(JuradoAsignacion $juradoAsignacion)
+    public function show(Request $request, JuradoAsignacion $juradoAsignacion)
     {
+        $this->validarAsignacion($request, $juradoAsignacion);
         $juradoAsignacion->load(['jurado', 'evento']);
         return response()->json(['data' => $juradoAsignacion]);
     }
@@ -85,6 +115,7 @@ class JuradoAsignacionController extends Controller
 
     public function update(Request $request, JuradoAsignacion $juradoAsignacion)
     {
+        $this->validarAsignacion($request, $juradoAsignacion);
         $validated = $request->validate([
             'especialidad' => 'sometimes|string|max:100',
             'categoria' => 'sometimes|string|max:100',
@@ -95,8 +126,9 @@ class JuradoAsignacionController extends Controller
         return response()->json(['data' => $juradoAsignacion]);
     }
 
-    public function destroy(JuradoAsignacion $juradoAsignacion)
+    public function destroy(Request $request, JuradoAsignacion $juradoAsignacion)
     {
+        $this->validarAsignacion($request, $juradoAsignacion);
         $juradoAsignacion->delete();
         return response()->json(['data' => 'ELIMINADO EXITOSAMENTE']);
     }
