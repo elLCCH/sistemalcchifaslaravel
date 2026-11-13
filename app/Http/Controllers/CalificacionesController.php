@@ -38,6 +38,54 @@ class CalificacionesController extends Controller
         return !empty($user) && ($user instanceof Planteldocentes);
     }
 
+    public function reporteSegundaInstancia(Request $request)
+    {
+        $data = $request->validate([
+            'anio_id' => ['required', 'integer', 'min:1'],
+            'institucion_id' => ['required', 'integer', 'min:1'],
+            'lvl_curso' => ['required', 'string', 'max:100'],
+            'paralelo' => ['required', 'string', 'max:100'],
+        ]);
+        if (!$this->isSuperAdmin($request->user()) && (int) $request->user()->instituciones_id !== (int) $data['institucion_id']) {
+            abort(403);
+        }
+
+        $selected = DB::table('calificaciones as seleccion')
+            ->join('materias as ms', 'ms.id', '=', 'seleccion.materias_id')
+            ->join('plandeestudios as ps', 'ps.id', '=', 'ms.plandeestudios_id')
+            ->join('carreras as cs', 'cs.id', '=', 'ps.carreras_id')
+            ->where('ps.anio_id', $data['anio_id'])
+            ->where('cs.instituciones_id', $data['institucion_id'])
+            ->where('ps.LvlCurso', $data['lvl_curso'])
+            ->where('ms.Paralelo', $data['paralelo'])
+            ->select('seleccion.infoestudiantesifas_id');
+
+        $rows = DB::table('calificaciones as c')
+            ->join('infoestudiantesifas as ie', 'ie.id', '=', 'c.infoestudiantesifas_id')
+            ->join('estudiantesifas as e', 'e.id', '=', 'ie.estudiantesifas_id')
+            ->join('materias as m', 'm.id', '=', 'c.materias_id')
+            ->join('plandeestudios as pe', 'pe.id', '=', 'm.plandeestudios_id')
+            ->join('carreras as ca', 'ca.id', '=', 'pe.carreras_id')
+            ->whereIn('c.infoestudiantesifas_id', $selected)
+            ->where('ie.instituciones_id', $data['institucion_id'])
+            ->where('ca.instituciones_id', $data['institucion_id'])
+            ->where('pe.anio_id', $data['anio_id'])
+            ->select([
+                'c.id', 'c.infoestudiantesifas_id', 'c.materias_id',
+                'e.Ap_Paterno', 'e.Ap_Materno', 'e.Nombre', 'e.CI',
+                'pe.NombreMateria', 'pe.LvlCurso', 'm.Paralelo',
+                'ca.NotaAprobacion', 'ca.NotaMinRevalida',
+                'c.Teorico1', 'c.Teorico2', 'c.Teorico3', 'c.Teorico4',
+                'c.Practico1', 'c.Practico2', 'c.Practico3', 'c.Practico4',
+                'c.PromTeorico', 'c.PromPractico', 'c.Promedio', 'c.PruebaRecuperacion',
+            ])
+            ->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre')
+            ->orderBy('pe.Rango')->orderBy('pe.NombreMateria')
+            ->get();
+
+        return response()->json(['data' => $rows]);
+    }
+
     private function normalizeBulkString($value): string
     {
         return trim((string) ($value ?? ''));
@@ -693,39 +741,38 @@ class CalificacionesController extends Controller
             ->orderBy('planteldocentes.Nombres')
             ->get();
 
-        // Fallback para modos especiales: los docentes pueden venir por inscripción
-        // (infoestudiantesifas.planteldocadmins_id*) y no existir en planteldocentesmaterias.
-        if ($docentes->count() === 0) {
-            $modoMateria = trim((string) ($materia->ModoMateria ?? ''));
-            $docCol = null;
-            if ($modoMateria === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
-                $docCol = 'info.planteldocadmins_id';
-            } elseif ($modoMateria === 'MODO PRÁCTICA DE CONJUNTOS') {
-                $docCol = 'info.planteldocadmins_idPC';
-            } elseif ($modoMateria === 'MODO INSTRUMENTO COMPLEMENTARIO') {
-                $docCol = 'info.planteldocadmins_idOtros';
-            }
+        // En modos especiales también hay docentes asignados directamente en la inscripción.
+        $modoMateria = trim((string) ($materia->ModoMateria ?? ''));
+        $docCol = null;
+        if ($modoMateria === 'MODO INSTRUMENTOS DE ESPECIALIDAD') {
+            $docCol = 'info.planteldocadmins_id';
+        } elseif ($modoMateria === 'MODO PRÁCTICA DE CONJUNTOS') {
+            $docCol = 'info.planteldocadmins_idPC';
+        } elseif ($modoMateria === 'MODO INSTRUMENTO COMPLEMENTARIO') {
+            $docCol = 'info.planteldocadmins_idOtros';
+        }
 
-            if ($docCol) {
-                $docentes = DB::table('calificaciones as cal')
-                    ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
-                    ->join('planteldocentes as d', function ($join) use ($docCol) {
-                        $join->on(DB::raw($docCol), '=', 'd.id');
-                    })
-                    ->where('cal.materias_id', $materiaId)
-                    ->where('d.instituciones_id', $materiaInstitucionId)
-                    ->distinct()
-                    ->select([
-                        'd.id',
-                        'd.Nombres',
-                        'd.Apellidos',
-                    ])
-                    ->orderByRaw("(d.Apellidos IS NULL OR TRIM(d.Apellidos)='') DESC")
-                    ->orderBy('d.Apellidos')
-                    ->orderByRaw("(d.Nombres IS NULL OR TRIM(d.Nombres)='') DESC")
-                    ->orderBy('d.Nombres')
-                    ->get();
-            }
+        if ($docCol) {
+            $docentesInscripciones = DB::table('calificaciones as cal')
+                ->join('infoestudiantesifas as info', 'cal.infoestudiantesifas_id', '=', 'info.id')
+                ->join('planteldocentes as d', function ($join) use ($docCol) {
+                    $join->on(DB::raw($docCol), '=', 'd.id');
+                })
+                ->where('cal.materias_id', $materiaId)
+                ->where('info.instituciones_id', $materiaInstitucionId)
+                ->where('d.instituciones_id', $materiaInstitucionId)
+                ->distinct()
+                ->select([
+                    'd.id',
+                    'd.Nombres',
+                    'd.Apellidos',
+                ])
+                ->orderByRaw("(d.Apellidos IS NULL OR TRIM(d.Apellidos)='') DESC")
+                ->orderBy('d.Apellidos')
+                ->orderByRaw("(d.Nombres IS NULL OR TRIM(d.Nombres)='') DESC")
+                ->orderBy('d.Nombres')
+                ->get();
+            $docentes = $docentes->merge($docentesInscripciones)->unique('id')->values();
         }
 
         $query = Calificaciones::query()
