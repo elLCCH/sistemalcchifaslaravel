@@ -191,6 +191,7 @@ class PublicHorariosController extends Controller
                 'ie.Observacion',
                 'ie.InstrumentoMusical as Especialidad',
                 'ca.NombreCarrera as Carrera',
+                'ca.Capacitacion',
                 'ca.Area',
                 'ca.Resolucion',
             ])
