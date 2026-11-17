@@ -24,6 +24,9 @@ class CentralizadorGeneralCapacitacionTest extends TestCase
         Schema::create('infoestudiantesifas', function (Blueprint $table) {
             $table->integer('id'); $table->integer('estudiantesifas_id'); $table->integer('instituciones_id');
             $table->string('Observacion')->nullable(); $table->string('InstrumentoMusical')->nullable();
+            $table->string('InstrumentoMusicalSecundario')->nullable();
+            $table->integer('planteldocadmins_id')->nullable(); $table->integer('planteldocadmins_idPC')->nullable();
+            $table->integer('planteldocadmins_idOtros')->nullable();
         });
         Schema::create('carreras', function (Blueprint $table) {
             $table->integer('id'); $table->integer('instituciones_id');
@@ -33,7 +36,8 @@ class CentralizadorGeneralCapacitacionTest extends TestCase
         Schema::create('plandeestudios', function (Blueprint $table) {
             $table->integer('id'); $table->integer('carreras_id'); $table->integer('anio_id');
             $table->string('LvlCurso'); $table->string('NombreMateria'); $table->string('SiglaMateria');
-            $table->string('TipoMateria')->nullable(); $table->integer('Rango'); $table->integer('RangoLvlCurso');
+            $table->string('TipoMateria')->nullable(); $table->string('ModoMateria')->nullable();
+            $table->integer('Rango'); $table->integer('RangoLvlCurso');
         });
         Schema::create('materias', function (Blueprint $table) {
             $table->integer('id'); $table->integer('plandeestudios_id'); $table->string('Paralelo'); $table->string('Turno');
@@ -68,5 +72,61 @@ class CentralizadorGeneralCapacitacionTest extends TestCase
         $result = (new PublicHorariosController())->centralizadorGeneral($request)->getData(true);
         $this->assertSame(['NO EXISTE REPROBADOS', null], array_column($result['data'], 'Capacitacion'));
         $this->assertSame([50, 50], array_column($result['data'], 'Promedio'));
+
+        DB::table('planteldocentes')->insert([
+            ['id' => 1, 'Nombres' => 'Especialidad Piano', 'Apellidos' => 'Docente'],
+            ['id' => 2, 'Nombres' => 'Conjunto Piano', 'Apellidos' => 'Docente'],
+            ['id' => 3, 'Nombres' => 'Complementario Piano', 'Apellidos' => 'Docente'],
+            ['id' => 4, 'Nombres' => 'Especialidad Violin', 'Apellidos' => 'Docente'],
+            ['id' => 5, 'Nombres' => 'Conjunto Violin', 'Apellidos' => 'Docente'],
+            ['id' => 6, 'Nombres' => 'Complementario Violin', 'Apellidos' => 'Docente'],
+        ]);
+        DB::table('infoestudiantesifas')->update([
+            'InstrumentoMusical' => 'Piano',
+            'InstrumentoMusicalSecundario' => 'Flauta',
+            'planteldocadmins_id' => 1,
+            'planteldocadmins_idPC' => 2,
+            'planteldocadmins_idOtros' => 3,
+        ]);
+        DB::table('estudiantesifas')->insert([
+            'id' => 2, 'Ap_Paterno' => 'Lopez', 'Ap_Materno' => '', 'Nombre' => 'Eva', 'CI' => '456', 'Sexo' => 'F',
+        ]);
+        DB::table('infoestudiantesifas')->insert([
+            'id' => 2, 'estudiantesifas_id' => 2, 'instituciones_id' => 1, 'InstrumentoMusical' => 'Violin',
+            'InstrumentoMusicalSecundario' => 'Piano',
+            'planteldocadmins_id' => 4, 'planteldocadmins_idPC' => 5, 'planteldocadmins_idOtros' => 6,
+        ]);
+
+        $modosEspeciales = [
+            [3, 'INSTRUMENTO DE ESPECIALIDAD', 'MODO INSTRUMENTOS DE ESPECIALIDAD'],
+            [4, 'PRÁCTICA DE CONJUNTOS', 'MODO PRÁCTICA DE CONJUNTOS'],
+            [5, 'INSTRUMENTO COMPLEMENTARIO', 'MODO INSTRUMENTO COMPLEMENTARIO'],
+        ];
+        foreach ($modosEspeciales as [$id, $nombre, $modo]) {
+            DB::table('plandeestudios')->insert([
+                'id' => $id, 'carreras_id' => 1, 'anio_id' => 2026, 'LvlCurso' => 'Primero',
+                'NombreMateria' => $nombre, 'SiglaMateria' => "M$id", 'TipoMateria' => 'PRÁCTICO',
+                'ModoMateria' => $modo, 'Rango' => $id, 'RangoLvlCurso' => 1,
+            ]);
+            DB::table('materias')->insert(['id' => $id, 'plandeestudios_id' => $id, 'Paralelo' => 'A', 'Turno' => 'M']);
+            DB::table('calificaciones')->insert([
+                ['id' => $id * 10, 'infoestudiantesifas_id' => 1, 'materias_id' => $id, 'Promedio' => 80],
+                ['id' => $id * 10 + 1, 'infoestudiantesifas_id' => 2, 'materias_id' => $id, 'Promedio' => 80],
+            ]);
+        }
+
+        $result = (new PublicHorariosController())->centralizadorGeneral($request)->getData(true);
+        $firmasPorModo = array_map(
+            fn ($firma) => implode('|', [$firma['ModoMateria'], $firma['Especialidad'], $firma['InstrumentoSecundario'], $firma['Docente']]),
+            $result['meta']['firmas_docentes']
+        );
+        $this->assertEqualsCanonicalizing([
+            'MODO INSTRUMENTOS DE ESPECIALIDAD|Piano|Flauta|Especialidad Piano Docente',
+            'MODO INSTRUMENTOS DE ESPECIALIDAD|Violin|Piano|Especialidad Violin Docente',
+            'MODO PRÁCTICA DE CONJUNTOS|Piano|Flauta|Conjunto Piano Docente',
+            'MODO PRÁCTICA DE CONJUNTOS|Violin|Piano|Conjunto Violin Docente',
+            'MODO INSTRUMENTO COMPLEMENTARIO|Piano|Flauta|Complementario Piano Docente',
+            'MODO INSTRUMENTO COMPLEMENTARIO|Violin|Piano|Complementario Violin Docente',
+        ], $firmasPorModo);
     }
 }

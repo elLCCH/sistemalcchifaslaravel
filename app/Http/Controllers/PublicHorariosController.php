@@ -227,12 +227,24 @@ class PublicHorariosController extends Controller
             ->select([
                 'pe.NombreMateria',
                 'pe.TipoMateria',
+                'pe.ModoMateria',
                 'pe.Rango',
                 DB::raw("TRIM(CONCAT(COALESCE(pd.Nombres, ''), ' ', COALESCE(pd.Apellidos, ''))) as Docente"),
             ])
             ->where('pe.anio_id', '=', $anioId)
             ->where('pe.LvlCurso', '=', $lvlCurso)
             ->where('m.Paralelo', '=', $paralelo)
+            ->where(function ($query) {
+                $query->whereNotIn('pe.ModoMateria', [
+                    'MODO INSTRUMENTOS DE ESPECIALIDAD',
+                    'MODO PRÁCTICA DE CONJUNTOS',
+                    'MODO INSTRUMENTO COMPLEMENTARIO',
+                ])->orWhereNull('pe.ModoMateria')
+                    ->orWhere(function ($subquery) {
+                        $subquery->where('pe.ModoMateria', '=', 'MODO INSTRUMENTOS DE ESPECIALIDAD')
+                            ->where('pe.NombreMateria', 'not like', '%INSTRUMENTO DE ESPECIALIDAD%');
+                    });
+            })
             ->whereNotNull('pd.id')
             ->orderBy('pe.Rango')
             ->orderBy('pe.NombreMateria');
@@ -245,6 +257,7 @@ class PublicHorariosController extends Controller
             ->map(function ($row) {
                 $row->NombreMateria = trim((string) ($row->NombreMateria ?? ''));
                 $row->TipoMateria = trim((string) ($row->TipoMateria ?? ''));
+                $row->ModoMateria = trim((string) ($row->ModoMateria ?? ''));
                 $row->Docente = trim((string) ($row->Docente ?? ''));
                 return $row;
             })
@@ -252,7 +265,75 @@ class PublicHorariosController extends Controller
                 return $row->NombreMateria !== '' && $row->Docente !== '';
             })
             ->unique(function ($row) {
-                return ($row->NombreMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->Docente ?? '');
+                return ($row->NombreMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->ModoMateria ?? '') . '|' . ($row->Docente ?? '');
+            })
+            ->values();
+
+        $firmasDocentesInscripcionQuery = DB::table('materias as m')
+            ->join('plandeestudios as pe', 'pe.id', '=', 'm.plandeestudios_id')
+            ->join('carreras as ca', 'ca.id', '=', 'pe.carreras_id')
+            ->join('calificaciones as c', 'c.materias_id', '=', 'm.id')
+            ->join('infoestudiantesifas as ie', 'ie.id', '=', 'c.infoestudiantesifas_id')
+            ->leftJoin('planteldocentes as pd', function ($join) {
+                $join->on(function ($query) {
+                    $query->where(function ($subquery) {
+                        $subquery->where('pe.ModoMateria', '=', 'MODO INSTRUMENTOS DE ESPECIALIDAD')
+                            ->whereColumn('pd.id', '=', 'ie.planteldocadmins_id');
+                    })->orWhere(function ($subquery) {
+                        $subquery->where('pe.ModoMateria', '=', 'MODO PRÁCTICA DE CONJUNTOS')
+                            ->whereColumn('pd.id', '=', 'ie.planteldocadmins_idPC');
+                    })->orWhere(function ($subquery) {
+                        $subquery->where('pe.ModoMateria', '=', 'MODO INSTRUMENTO COMPLEMENTARIO')
+                            ->whereColumn('pd.id', '=', 'ie.planteldocadmins_idOtros');
+                    });
+                });
+            })
+            ->select([
+                'pe.NombreMateria',
+                'pe.TipoMateria',
+                'pe.ModoMateria',
+                'ie.InstrumentoMusical as Especialidad',
+                'ie.InstrumentoMusicalSecundario as InstrumentoSecundario',
+                'pe.Rango',
+                DB::raw("TRIM(CONCAT(COALESCE(pd.Nombres, ''), ' ', COALESCE(pd.Apellidos, ''))) as Docente"),
+            ])
+            ->where('pe.anio_id', '=', $anioId)
+            ->where('pe.LvlCurso', '=', $lvlCurso)
+            ->where('m.Paralelo', '=', $paralelo)
+            ->where(function ($query) {
+                $query->whereIn('pe.ModoMateria', [
+                    'MODO PRÁCTICA DE CONJUNTOS',
+                    'MODO INSTRUMENTO COMPLEMENTARIO',
+                ])->orWhere(function ($subquery) {
+                    $subquery->where('pe.ModoMateria', '=', 'MODO INSTRUMENTOS DE ESPECIALIDAD')
+                        ->where('pe.NombreMateria', 'like', '%INSTRUMENTO DE ESPECIALIDAD%');
+                });
+            })
+            ->whereNotNull('pd.id')
+            ->orderBy('pe.Rango')
+            ->orderBy('pe.NombreMateria');
+
+        if ($institucionId) {
+            $firmasDocentesInscripcionQuery->where(function ($subquery) use ($institucionId) {
+                $subquery->where('ie.instituciones_id', '=', $institucionId)
+                    ->orWhere('ca.instituciones_id', '=', $institucionId);
+            });
+        }
+
+        $firmasDocentes = $firmasDocentes
+            ->concat($firmasDocentesInscripcionQuery->get()->map(function ($row) {
+                $row->NombreMateria = trim((string) ($row->NombreMateria ?? ''));
+                $row->TipoMateria = trim((string) ($row->TipoMateria ?? ''));
+                $row->ModoMateria = trim((string) ($row->ModoMateria ?? ''));
+                $row->Especialidad = trim((string) ($row->Especialidad ?? ''));
+                $row->InstrumentoSecundario = trim((string) ($row->InstrumentoSecundario ?? ''));
+                $row->Docente = trim((string) ($row->Docente ?? ''));
+                return $row;
+            })->filter(function ($row) {
+                return $row->NombreMateria !== '' && $row->Docente !== '';
+            }))
+            ->unique(function ($row) {
+                return ($row->NombreMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->ModoMateria ?? '') . '|' . ($row->Especialidad ?? '') . '|' . ($row->InstrumentoSecundario ?? '') . '|' . ($row->Docente ?? '');
             })
             ->values();
 

@@ -71,6 +71,53 @@ class ReporteSegundaInstanciaTest extends TestCase
         (new CalificacionesController())->reporteSegundaInstancia($request);
     }
 
+    public function test_materias_para_boletines_respeta_gestion_institucion_y_modo_del_docente(): void
+    {
+        Schema::table('plandeestudios', function (Blueprint $table) { $table->string('ModoMateria')->nullable(); });
+        Schema::table('infoestudiantesifas', function (Blueprint $table) {
+            $table->integer('planteldocadmins_id')->nullable(); $table->integer('planteldocadmins_idPC')->nullable();
+            $table->integer('planteldocadmins_idOtros')->nullable();
+        });
+        Schema::create('planteldocentes', function (Blueprint $table) {
+            $table->integer('id'); $table->integer('instituciones_id');
+        });
+        Schema::create('planteldocentesmaterias', function (Blueprint $table) {
+            $table->integer('planteldocentes_id'); $table->integer('materias_id');
+        });
+        DB::table('planteldocentes')->insert(['id' => 10, 'instituciones_id' => 1]);
+        DB::table('carreras')->insert([['id' => 1, 'instituciones_id' => 1], ['id' => 2, 'instituciones_id' => 2]]);
+        DB::table('infoestudiantesifas')->insert([
+            ['id' => 1, 'estudiantesifas_id' => 1, 'instituciones_id' => 1, 'planteldocadmins_id' => 10, 'planteldocadmins_idPC' => 10, 'planteldocadmins_idOtros' => 10],
+            ['id' => 2, 'estudiantesifas_id' => 2, 'instituciones_id' => 1, 'planteldocadmins_id' => 10, 'planteldocadmins_idPC' => null, 'planteldocadmins_idOtros' => null],
+            ['id' => 3, 'estudiantesifas_id' => 3, 'instituciones_id' => 2, 'planteldocadmins_id' => 10, 'planteldocadmins_idPC' => 10, 'planteldocadmins_idOtros' => 10],
+        ]);
+        $modos = [
+            [1, '1 DOCENTE x MATERIA', 1, 2026],
+            [2, 'MODO INSTRUMENTOS DE ESPECIALIDAD', 1, 2026],
+            [3, 'MODO PRÁCTICA DE CONJUNTOS', 1, 2026],
+            [4, 'MODO INSTRUMENTO COMPLEMENTARIO', 1, 2026],
+            [5, 'MODO PRÁCTICA DE CONJUNTOS', 1, 2026],
+            [6, 'MODO INSTRUMENTOS DE ESPECIALIDAD', 1, 2025],
+            [7, 'MODO INSTRUMENTOS DE ESPECIALIDAD', 2, 2026],
+            [8, 'MODO INSTRUMENTO COMPLEMENTARIO', 1, 2026],
+        ];
+        foreach ($modos as [$id, $modo, $carrera, $anio]) {
+            DB::table('plandeestudios')->insert(['id' => $id, 'carreras_id' => $carrera, 'anio_id' => $anio, 'LvlCurso' => 'Primero', 'NombreMateria' => "Materia $id", 'Rango' => $id, 'ModoMateria' => $modo]);
+            DB::table('materias')->insert(['id' => $id, 'plandeestudios_id' => $id, 'Paralelo' => 'A']);
+            DB::table('calificaciones')->insert(['id' => $id, 'infoestudiantesifas_id' => $id === 5 ? 2 : ($id === 8 ? 3 : 1), 'materias_id' => $id]);
+        }
+        DB::table('planteldocentesmaterias')->insert(['planteldocentes_id' => 10, 'materias_id' => 1]);
+        $request = Request::create('/', 'GET', ['anio_id' => 2026, 'institucion_id' => 1, 'docente_id' => 10]);
+        $request->setUserResolver(fn () => (object) ['instituciones_id' => 1]);
+        $result = (new CalificacionesController())->materiasParaBoletinesDocente($request)->getData(true);
+        $this->assertEqualsCanonicalizing([1, 2, 3, 4], $result['data']);
+
+        $request = Request::create('/', 'GET', ['anio_id' => 2026, 'institucion_id' => 2, 'docente_id' => 10]);
+        $request->setUserResolver(fn () => (object) ['instituciones_id' => 1]);
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        (new CalificacionesController())->materiasParaBoletinesDocente($request);
+    }
+
     public function test_by_materia_includes_teachers_assigned_both_to_subject_and_students(): void
     {
         Schema::table('estudiantesifas', function (Blueprint $table) { $table->string('Foto')->nullable(); });

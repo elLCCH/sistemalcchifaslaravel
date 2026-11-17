@@ -86,6 +86,53 @@ class CalificacionesController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    public function materiasParaBoletinesDocente(Request $request)
+    {
+        $data = $request->validate([
+            'anio_id' => ['required', 'integer', 'min:1'],
+            'institucion_id' => ['required', 'integer', 'min:1'],
+            'docente_id' => ['required', 'integer', 'min:1'],
+        ]);
+        if (!$this->isSuperAdmin($request->user()) && (int) $request->user()->instituciones_id !== (int) $data['institucion_id']) {
+            abort(403);
+        }
+        if (!DB::table('planteldocentes')->where('id', $data['docente_id'])->where('instituciones_id', $data['institucion_id'])->exists()) {
+            abort(404);
+        }
+
+        $ids = DB::table('materias as m')
+            ->join('plandeestudios as pe', 'pe.id', '=', 'm.plandeestudios_id')
+            ->join('carreras as ca', 'ca.id', '=', 'pe.carreras_id')
+            ->where('pe.anio_id', $data['anio_id'])
+            ->where('ca.instituciones_id', $data['institucion_id'])
+            ->where(function ($query) use ($data) {
+                $query->whereExists(function ($directa) use ($data) {
+                    $directa->selectRaw('1')->from('planteldocentesmaterias as pdm')
+                        ->whereColumn('pdm.materias_id', 'm.id')
+                        ->where('pdm.planteldocentes_id', $data['docente_id']);
+                })->orWhereExists(function ($asignacion) use ($data) {
+                    $asignacion->selectRaw('1')->from('calificaciones as cal')
+                        ->join('infoestudiantesifas as info', 'info.id', '=', 'cal.infoestudiantesifas_id')
+                        ->whereColumn('cal.materias_id', 'm.id')
+                        ->where('info.instituciones_id', $data['institucion_id'])
+                        ->where(function ($modo) use ($data) {
+                            foreach ([
+                                'MODO INSTRUMENTOS DE ESPECIALIDAD' => 'info.planteldocadmins_id',
+                                'MODO PRÁCTICA DE CONJUNTOS' => 'info.planteldocadmins_idPC',
+                                'MODO INSTRUMENTO COMPLEMENTARIO' => 'info.planteldocadmins_idOtros',
+                            ] as $nombre => $columna) {
+                                $modo->orWhere(function ($sub) use ($nombre, $columna, $data) {
+                                    $sub->where('pe.ModoMateria', $nombre)->where($columna, $data['docente_id']);
+                                });
+                            }
+                        });
+                });
+            })
+            ->pluck('m.id');
+
+        return response()->json(['data' => $ids]);
+    }
+
     private function normalizeBulkString($value): string
     {
         return trim((string) ($value ?? ''));
