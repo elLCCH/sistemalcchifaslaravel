@@ -128,5 +128,15 @@ class CentralizadorGeneralCapacitacionTest extends TestCase
             'MODO INSTRUMENTO COMPLEMENTARIO|Piano|Flauta|Complementario Piano Docente',
             'MODO INSTRUMENTO COMPLEMENTARIO|Violin|Piano|Complementario Violin Docente',
         ], $firmasPorModo);
+        $this->assertEqualsCanonicalizing(['M3', 'M3', 'M4', 'M4', 'M5', 'M5'], array_column($result['meta']['firmas_docentes'], 'SiglaMateria'));
+
+        DB::table('plandeestudios')->where('id', 2)->update(['NombreMateria' => 'Materia 1']);
+        DB::table('planteldocentesmaterias')->insert([
+            ['planteldocentes_id' => 1, 'materias_id' => 1],
+            ['planteldocentes_id' => 1, 'materias_id' => 2],
+        ]);
+        $result = (new PublicHorariosController())->centralizadorGeneral($request)->getData(true);
+        $firmasComunes = array_filter($result['meta']['firmas_docentes'], fn ($firma) => $firma['NombreMateria'] === 'Materia 1');
+        $this->assertEqualsCanonicalizing(['M1', 'M2'], array_column($firmasComunes, 'SiglaMateria'));
     }
 }

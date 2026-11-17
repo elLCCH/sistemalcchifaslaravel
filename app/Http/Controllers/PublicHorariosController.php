@@ -226,6 +226,7 @@ class PublicHorariosController extends Controller
             ->leftJoin('planteldocentes as pd', 'pd.id', '=', 'pdm.planteldocentes_id')
             ->select([
                 'pe.NombreMateria',
+                'pe.SiglaMateria',
                 'pe.TipoMateria',
                 'pe.ModoMateria',
                 'pe.Rango',
@@ -265,7 +266,7 @@ class PublicHorariosController extends Controller
                 return $row->NombreMateria !== '' && $row->Docente !== '';
             })
             ->unique(function ($row) {
-                return ($row->NombreMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->ModoMateria ?? '') . '|' . ($row->Docente ?? '');
+                return ($row->NombreMateria ?? '') . '|' . ($row->SiglaMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->ModoMateria ?? '') . '|' . ($row->Docente ?? '');
             })
             ->values();
 
@@ -290,6 +291,7 @@ class PublicHorariosController extends Controller
             })
             ->select([
                 'pe.NombreMateria',
+                'pe.SiglaMateria',
                 'pe.TipoMateria',
                 'pe.ModoMateria',
                 'ie.InstrumentoMusical as Especialidad',
@@ -333,7 +335,7 @@ class PublicHorariosController extends Controller
                 return $row->NombreMateria !== '' && $row->Docente !== '';
             }))
             ->unique(function ($row) {
-                return ($row->NombreMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->ModoMateria ?? '') . '|' . ($row->Especialidad ?? '') . '|' . ($row->InstrumentoSecundario ?? '') . '|' . ($row->Docente ?? '');
+                return ($row->NombreMateria ?? '') . '|' . ($row->SiglaMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->ModoMateria ?? '') . '|' . ($row->Especialidad ?? '') . '|' . ($row->InstrumentoSecundario ?? '') . '|' . ($row->Docente ?? '');
             })
             ->values();
 
