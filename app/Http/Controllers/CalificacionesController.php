@@ -928,6 +928,7 @@ class CalificacionesController extends Controller
             'avg_eval_count' => ['nullable', 'integer', 'min:1', 'max:4'],
             'enabled_evals' => ['nullable', 'array', 'size:4'],
             'enabled_evals.*' => ['nullable', 'boolean'],
+            'admin_temp_enabled' => ['sometimes', 'boolean'],
             'items' => ['required', 'array', 'min:1', 'max:500'],
             'items.*.id' => ['required', 'integer'],
             'items.*.Teorico1' => ['nullable', 'integer', 'min:0', 'max:100'],
@@ -956,6 +957,10 @@ class CalificacionesController extends Controller
         }
 
         $isAdminUser = $this->isAdminUser($user);
+        $adminTempEnabled = (bool) ($validated['admin_temp_enabled'] ?? false);
+        if ($adminTempEnabled && !$isAdminUser) {
+            return response()->json(['message' => 'La edición temporal solo está disponible para administradores.'], 403);
+        }
 
         $materiaMeta = DB::table('materias')
             ->join('plandeestudios', 'materias.plandeestudios_id', '=', 'plandeestudios.id')
@@ -1055,7 +1060,7 @@ class CalificacionesController extends Controller
                 $row = $allowed->get($rowId);
                 if (!$row) continue;
 
-                if ($modoEvaluacion === 'NORMAL' || $modoEvaluacion === 'TODAS') {
+                if ($modoEvaluacion === 'NORMAL' || $modoEvaluacion === 'TODAS' || $adminTempEnabled) {
                     // Aplicar solo claves permitidas según evaluaciones habilitadas
                     foreach ([1, 2, 3, 4] as $n) {
                         if ($n > $evalCountMax) continue;
