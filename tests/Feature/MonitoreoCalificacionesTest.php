@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\MonitoreoCalificacionesController;
+use App\Services\AvisosCalificacionesMateria;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -237,6 +238,81 @@ class MonitoreoCalificacionesTest extends TestCase
         DB::table('calificaciones')->where('id', 100)->update(['Promedio' => 50]);
         foreach ([101, 102] as $id) DB::table('calificaciones')->insert(['id' => $id, 'materias_id' => 2, 'infoestudiantesifas_id' => 1, 'Promedio' => 50]);
         $this->assertSame(0, $this->consultar(['evaluaciones' => [], 'incluir_segunda_instancia' => '1'])['meta']['total']);
+    }
+
+    public function test_avisos_muestran_solo_evaluaciones_habilitadas_y_respetan_la_asignacion_docente(): void
+    {
+        DB::table('materias')->whereIn('id', [1, 2, 3, 4])->update(['EstadoHabilitacion' => 'PRIMERA EVALUACIÓN, SEGUNDA EVALUACIÓN, TERCERA EVALUACIÓN']);
+        DB::table('calificaciones')->whereIn('id', [1, 2, 3, 4])->update(['Teorico2' => null, 'Practico1' => 0]);
+        DB::table('infoestudiantesifas')->where('id', 5)->update([
+            'planteldocadmins_id' => 2, 'planteldocadmins_idPC' => 1, 'planteldocadmins_idOtros' => 1,
+        ]);
+        foreach ([1, 2, 3, 4] as $materia) {
+            DB::table('calificaciones')->insert(['id' => 100 + $materia, 'materias_id' => $materia, 'infoestudiantesifas_id' => 5, 'Teorico1' => null, 'Practico1' => 0, 'Teorico2' => 0, 'Practico2' => 0]);
+        }
+        DB::table('calificaciones')->insert(['id' => 200, 'materias_id' => 2, 'infoestudiantesifas_id' => 7]);
+        DB::table('calificaciones')->insert(['id' => 201, 'materias_id' => 2, 'infoestudiantesifas_id' => 5, 'Teorico1' => null, 'Practico1' => 0, 'Teorico2' => 0, 'Practico2' => 0]);
+        DB::table('calificaciones')->insert(['id' => 202, 'materias_id' => 2, 'infoestudiantesifas_id' => 1, 'Teorico1' => 0, 'Practico1' => 0, 'Teorico2' => null, 'Practico2' => 0]);
+        $servicio = new AvisosCalificacionesMateria();
+        $docente = $servicio->consultar([1, 2, 3, 4, 7], 1, 1);
+        $otroDocente = $servicio->consultar([2], 1, 2);
+        $administrativo = $servicio->consultar([1, 2, 3, 4, 7], 1, null);
+        $primeraAlumno5 = ['numero' => 1, 'estudiantes' => 1, 'nombres' => ['López Flores Alumno 5']];
+        $segundaAlumno1 = ['numero' => 2, 'estudiantes' => 1, 'nombres' => ['López Flores Alumno 1']];
+        $segundaAlumnos1y2 = ['numero' => 2, 'estudiantes' => 2, 'nombres' => ['López Flores Alumno 1', 'López Flores Alumno 2']];
+        $this->assertSame([$primeraAlumno5, $segundaAlumno1], $docente[1]['evaluaciones']);
+        $this->assertSame([$segundaAlumnos1y2], $docente[2]['evaluaciones']);
+        $this->assertSame([$primeraAlumno5], $docente[3]['evaluaciones']);
+        $this->assertSame([$primeraAlumno5], $docente[4]['evaluaciones']);
+        $this->assertSame([$primeraAlumno5], $otroDocente[2]['evaluaciones']);
+        $this->assertSame([$primeraAlumno5, $segundaAlumnos1y2], $administrativo[2]['evaluaciones']);
+        $this->assertArrayNotHasKey(7, $docente);
+
+        DB::table('materias')->where('id', 1)->update(['EstadoHabilitacion' => 'TODAS LAS EVALUACIONES']);
+        $this->assertSame([$primeraAlumno5, $segundaAlumno1], $servicio->consultar([1], 1, 1)[1]['evaluaciones']);
+        DB::table('materias')->where('id', 1)->update(['EstadoHabilitacion' => 'PRIMERA EVALUACIÓN']);
+        DB::table('calificaciones')->where('id', 101)->update(['Teorico1' => 0]);
+        $this->assertSame([], $servicio->consultar([1], 1, 1)[1]['evaluaciones']);
+        DB::table('materias')->where('id', 1)->update(['EstadoHabilitacion' => 'NINGUNA EVALUACIÓN']);
+        $this->assertSame([], $servicio->consultar([1], 1, 1)[1]['evaluaciones']);
+        DB::table('materias')->where('id', 1)->update(['EstadoHabilitacion' => 'TODAS LAS EVALUACIONES']);
+        DB::table('carreras')->where('id', 1)->update(['CantidadEvaluaciones' => null]);
+        $this->assertTrue($servicio->consultar([1], 1, 1)[1]['configuracion_desconocida']);
+        DB::table('carreras')->where('id', 1)->update(['CantidadEvaluaciones' => 'CERO EVALUACIONES']);
+        $this->assertSame([], $servicio->consultar([1], 1, 1)[1]['evaluaciones']);
+    }
+
+    public function test_avisos_de_segunda_instancia_solo_incluyen_elegibles_del_docente(): void
+    {
+        DB::table('materias')->where('id', 2)->update(['EstadoHabilitacion' => 'SEGUNDA INSTANCIA']);
+        DB::table('carreras')->where('id', 1)->update(['NotaAprobacion' => 61, 'NotaMinRevalida' => 40]);
+        DB::table('calificaciones')->where('id', 2)->update(['Promedio' => 50]);
+        DB::table('calificaciones')->where('id', 3)->update(['Promedio' => 70]);
+        DB::table('infoestudiantesifas')->where('id', 3)->update(['planteldocadmins_id' => 2]);
+        DB::table('calificaciones')->insert([
+            ['id' => 101, 'materias_id' => 2, 'infoestudiantesifas_id' => 3, 'Promedio' => 50, 'Teorico2' => 10, 'Practico2' => 10],
+            ['id' => 102, 'materias_id' => 2, 'infoestudiantesifas_id' => 4, 'Promedio' => 39, 'Teorico2' => 10, 'Practico2' => 10],
+            ['id' => 103, 'materias_id' => 2, 'infoestudiantesifas_id' => 5, 'Promedio' => 50, 'Teorico2' => 0, 'Practico2' => 0],
+        ]);
+        DB::table('calificaciones')->whereIn('id', [4, 5])->update(['Promedio' => 70]);
+        $servicio = new AvisosCalificacionesMateria();
+        $this->assertSame(['López Flores Alumno 2'], $servicio->consultar([2], 1, 1)[2]['segunda_instancia']);
+        $this->assertSame(['López Flores Alumno 3'], $servicio->consultar([2], 1, 2)[2]['segunda_instancia']);
+        $this->assertSame(['López Flores Alumno 2', 'López Flores Alumno 3'], $servicio->consultar([2], 1, null)[2]['segunda_instancia']);
+        DB::table('materias')->where('id', 2)->update(['EstadoHabilitacion' => 'EVALUACIÓN FINAL']);
+        $this->assertSame(['López Flores Alumno 2'], $servicio->consultar([2], 1, 1)[2]['segunda_instancia']);
+        DB::table('calificaciones')->where('id', 2)->update(['PruebaRecuperacion' => 0]);
+        $this->assertSame([], $servicio->consultar([2], 1, 1)[2]['segunda_instancia']);
+        DB::table('calificaciones')->where('id', 2)->update(['PruebaRecuperacion' => null]);
+        DB::table('calificaciones')->insert(['id' => 107, 'materias_id' => 6, 'infoestudiantesifas_id' => 2, 'Promedio' => null]);
+        $this->assertSame(['López Flores Alumno 2'], $servicio->consultar([2], 1, 1)[2]['segunda_instancia']);
+        DB::table('calificaciones')->insert(['id' => 104, 'materias_id' => 1, 'infoestudiantesifas_id' => 2, 'Promedio' => null]);
+        $this->assertSame([], $servicio->consultar([2], 1, 1)[2]['segunda_instancia']);
+        DB::table('calificaciones')->where('id', 104)->update(['Promedio' => 50]);
+        foreach ([105, 106] as $id) DB::table('calificaciones')->insert(['id' => $id, 'materias_id' => 1, 'infoestudiantesifas_id' => 2, 'Promedio' => 50]);
+        $this->assertSame([], $servicio->consultar([2], 1, 1)[2]['segunda_instancia']);
+        DB::table('materias')->where('id', 2)->update(['EstadoHabilitacion' => 'NINGUNA EVALUACIÓN']);
+        $this->assertSame([], $servicio->consultar([2], 1, null)[2]['segunda_instancia']);
     }
 
     public function test_cambios_de_habilitacion_preservan_las_otras_evaluaciones_y_detectan_conflictos(): void

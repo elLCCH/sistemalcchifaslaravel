@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Middleware\UpdateTokenExpiration;
 use App\Support\EstadoEvaluaciones;
+use App\Support\SegundaInstanciaPendiente;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -67,27 +68,7 @@ class MonitoreoCalificacionesController extends Controller
 
     private function cantidadEvaluaciones($valor): ?int
     {
-        $texto = strtoupper(trim((string) ($valor ?? '')));
-        if (preg_match('/\b(CERO|UN|UNO|UNA|DOS|TRES|CUATRO)\b/u', $texto, $coincidencia)) {
-            return ['CERO' => 0, 'UN' => 1, 'UNO' => 1, 'UNA' => 1, 'DOS' => 2, 'TRES' => 3, 'CUATRO' => 4][$coincidencia[1]];
-        }
-        if (preg_match('/\d+/', $texto, $coincidencia)) {
-            $cantidad = (int) $coincidencia[0];
-            return $cantidad <= 4 ? $cantidad : null;
-        }
-        return null;
-    }
-
-    private function cantidadParaRetiro($valor): int
-    {
-        // Calificaciones interpreta este valor de forma distinta al filtro de evaluaciones.
-        $texto = strtoupper(trim((string) ($valor ?? '')));
-        if ($texto === '' || str_contains($texto, 'CERO')) return 0;
-        if (preg_match('/\d+/', $texto, $match)) {
-            $cantidad = (int) $match[0];
-            return $cantidad <= 4 ? $cantidad : 4;
-        }
-        return 4;
+        return EstadoEvaluaciones::cantidad($valor);
     }
 
     private function aplicarFiltrosAcademicos(Builder $query, array $filtros): void
@@ -243,32 +224,7 @@ class MonitoreoCalificacionesController extends Controller
         }
         $consultaSegunda = clone $query;
         if ($incluirSegunda) {
-            $consultaSegunda->whereNull('cal.PruebaRecuperacion')->whereNotNull('cal.Promedio')
-                ->whereRaw('cal.Promedio >= COALESCE(ca.NotaMinRevalida, 0)')
-                ->whereRaw('cal.Promedio < CASE WHEN ca.NotaAprobacion > 0 THEN ca.NotaAprobacion ELSE 61 END');
-            foreach ([2, 3, 4] as $numero) {
-                $carrerasMenores = $carreras->filter(fn ($carrera) => $this->cantidadParaRetiro($carrera->CantidadEvaluaciones) < $numero)->pluck('id')->all();
-                $consultaSegunda->where(function ($retiro) use ($numero, $carrerasMenores) {
-                    $retiro->whereIn('ca.id', $carrerasMenores)->orWhereNull("cal.Teorico$numero")->orWhereNull("cal.Practico$numero")
-                        ->orWhere("cal.Teorico$numero", '<>', 0)->orWhere("cal.Practico$numero", '<>', 0);
-                });
-            }
-            $consultaSegunda->whereNotExists(function ($pendientes) use ($contexto) {
-                $pendientes->selectRaw('1')->from('calificaciones as otras')
-                    ->join('materias as om', 'om.id', '=', 'otras.materias_id')
-                    ->join('plandeestudios as op', 'op.id', '=', 'om.plandeestudios_id')
-                    ->join('carreras as oc', 'oc.id', '=', 'op.carreras_id')
-                    ->whereColumn('otras.infoestudiantesifas_id', 'cal.infoestudiantesifas_id')
-                    ->where('op.anio_id', $contexto['anio_id'])->where('oc.instituciones_id', $contexto['institucion_id'])
-                    ->whereNull('otras.Promedio');
-            })->whereRaw("(SELECT COUNT(*) FROM calificaciones otras
-                JOIN materias om ON om.id = otras.materias_id
-                JOIN plandeestudios op ON op.id = om.plandeestudios_id
-                JOIN carreras oc ON oc.id = op.carreras_id
-                WHERE otras.infoestudiantesifas_id = cal.infoestudiantesifas_id
-                AND op.anio_id = ? AND oc.instituciones_id = ?
-                AND COALESCE(otras.PruebaRecuperacion, otras.Promedio) < CASE WHEN ca.NotaAprobacion > 0 THEN ca.NotaAprobacion ELSE 61 END) < 4",
-                [$contexto['anio_id'], $contexto['institucion_id']]);
+            SegundaInstanciaPendiente::aplicar($consultaSegunda, $carreras);
         }
 
         $query->where(function ($vacios) use ($carrerasPorEvaluacion, $incluirPromedios, $incluirSegunda, $consultaSegunda) {

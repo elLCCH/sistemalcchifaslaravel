@@ -4,6 +4,19 @@ namespace App\Support;
 
 class EstadoEvaluaciones
 {
+    public static function cantidad($valor): ?int
+    {
+        $texto = strtoupper(trim((string) ($valor ?? '')));
+        if (preg_match('/\b(CERO|UN|UNO|UNA|DOS|TRES|CUATRO)\b/u', $texto, $coincidencia)) {
+            return ['CERO' => 0, 'UN' => 1, 'UNO' => 1, 'UNA' => 1, 'DOS' => 2, 'TRES' => 3, 'CUATRO' => 4][$coincidencia[1]];
+        }
+        if (preg_match('/\d+/', $texto, $coincidencia)) {
+            $cantidad = (int) $coincidencia[0];
+            return $cantidad <= 4 ? $cantidad : null;
+        }
+        return null;
+    }
+
     public static function habilitadas($estado, int $cantidad): array
     {
         $s = strtoupper(trim((string) ($estado ?? '')));

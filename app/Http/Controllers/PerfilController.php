@@ -7,6 +7,7 @@ use App\Models\Estudiantesifas;
 use App\Models\Planteladministrativos;
 use App\Models\Planteldocentes;
 use App\Models\Usuarioslcchs;
+use App\Services\AvisosCalificacionesMateria;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
@@ -643,6 +644,7 @@ class PerfilController extends Controller
                 ->concat(collect($complementario)->map(fn ($r) => (array) $r + ['modo_docente' => 'complementario']))
                 ->unique('materia_id')
                 ->values();
+            $merged = $this->agregarAvisosCalificaciones($merged, (int) $user->instituciones_id, (int) $user->id);
 
             return response()->json([
                 'tipo' => 'planteldocentes',
@@ -699,9 +701,10 @@ class PerfilController extends Controller
                 ])
                 ->orderBy('a.Anio')->orderBy('p.RangoLvlCurso')->orderBy('p.Rango')->orderBy('p.NombreMateria');
 
+            $materias = $this->agregarAvisosCalificaciones($rows->get(), (int) $user->instituciones_id, null);
             return response()->json([
                 'tipo' => 'planteladministrativos',
-                'data' => $this->groupByInstitucion($rows->get()),
+                'data' => $this->groupByInstitucion($materias),
                 'anio_id' => $anioId,
                 'anio_nombre' => $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null,
             ]);
@@ -1005,6 +1008,20 @@ class PerfilController extends Controller
         return response()->json([
             'data' => $this->groupByInstitucion(collect($out)),
         ]);
+    }
+
+    private function agregarAvisosCalificaciones($rows, int $institucionId, ?int $docenteId)
+    {
+        $avisos = app(AvisosCalificacionesMateria::class)->consultar($rows->pluck('materia_id')->all(), $institucionId, $docenteId);
+        return $rows->map(function ($row) use ($avisos) {
+            $id = data_get($row, 'materia_id');
+            if (is_array($row)) {
+                $row['avisos_calificaciones'] = $avisos[$id] ?? null;
+            } else {
+                $row->avisos_calificaciones = $avisos[$id] ?? null;
+            }
+            return $row;
+        });
     }
 
     private function groupByInstitucion($rows)
