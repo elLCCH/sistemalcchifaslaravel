@@ -27,7 +27,7 @@ class MonitoreoCalificacionesTest extends TestCase
         });
         Schema::create('carreras', function (Blueprint $t) {
             $t->integer('id'); $t->integer('instituciones_id'); $t->string('Resolucion')->nullable(); $t->string('NombreCarrera')->nullable();
-            $t->string('CantidadEvaluaciones')->nullable();
+            $t->string('CantidadEvaluaciones')->nullable(); $t->integer('NotaAprobacion')->nullable(); $t->integer('NotaMinRevalida')->nullable();
         });
         Schema::create('plandeestudios', function (Blueprint $t) {
             $t->integer('id'); $t->integer('carreras_id'); $t->integer('anio_id');
@@ -35,11 +35,11 @@ class MonitoreoCalificacionesTest extends TestCase
             $t->integer('RangoLvlCurso');
         });
         Schema::create('materias', function (Blueprint $t) {
-            $t->integer('id'); $t->integer('plandeestudios_id'); $t->string('Paralelo'); $t->string('Turno');
+            $t->integer('id'); $t->integer('plandeestudios_id'); $t->string('Paralelo'); $t->string('Turno'); $t->string('EstadoHabilitacion')->nullable();
         });
         Schema::create('calificaciones', function (Blueprint $t) {
             $t->integer('id'); $t->integer('materias_id'); $t->integer('infoestudiantesifas_id');
-            $t->string('EstadoRegistroMateria')->nullable();
+            $t->string('EstadoRegistroMateria')->nullable(); $t->integer('PruebaRecuperacion')->nullable();
             foreach (['Teorico1', 'Teorico2', 'Teorico3', 'Teorico4', 'Practico1', 'Practico2', 'Practico3', 'Practico4', 'PromTeorico', 'PromPractico', 'Promedio'] as $campo) {
                 $t->integer($campo)->nullable();
             }
@@ -186,6 +186,73 @@ class MonitoreoCalificacionesTest extends TestCase
         $this->assertTrue($opciones['sin_resolucion']);
         $this->assertEqualsCanonicalizing([1, 2, 3], array_column($opciones['docentes'], 'id'));
         $this->assertEqualsCanonicalizing(['Primero', 'Segundo'], $opciones['cursos']);
+    }
+
+    public function test_filtra_multiples_cursos_y_expone_estado_de_la_materia(): void
+    {
+        DB::table('materias')->where('id', 1)->update(['EstadoHabilitacion' => 'PRIMERA EVALUACIÓN, SEGUNDA EVALUACIÓN']);
+        $resultado = $this->consultar(['cursos' => ['Primero', 'Segundo']]);
+        $this->assertSame(5, $resultado['meta']['total']);
+        $fila = collect($resultado['data'])->firstWhere('id', 1);
+        $this->assertSame(1, $fila['materia_id']);
+        $this->assertSame([1, 2], $fila['evaluaciones_habilitadas']);
+        $this->assertSame([4], array_column($this->consultar(['cursos' => ['Segundo']])['data'], 'id'));
+    }
+
+    public function test_filtra_multiples_opciones_por_categoria_y_docentes_por_modo(): void
+    {
+        DB::table('materias')->where('id', 4)->update(['Paralelo' => 'B', 'Turno' => 'T']);
+        $resultado = $this->consultar([
+            'resoluciones' => ['R1', '__SIN_RESOLUCION__'],
+            'cursos' => ['Primero', 'Segundo'], 'paralelos' => ['A', 'B'],
+            'turnos' => ['M', 'T'], 'docentes_ids' => [2, 3],
+        ]);
+        $this->assertEqualsCanonicalizing([1, 3, 4], array_column($resultado['data'], 'id'));
+        $resultado = $this->consultar(['paralelos' => ['B'], 'turnos' => ['T'], 'docentes_ids' => [2, 3]]);
+        $this->assertSame([4], array_column($resultado['data'], 'id'));
+        $this->assertSame(0, $this->consultar(['resoluciones' => ['__SIN_RESOLUCION__']])['meta']['total']);
+    }
+
+    public function test_rechaza_docente_de_otra_institucion_en_seleccion_multiple(): void
+    {
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        $this->consultar(['docentes_ids' => [1, 4]]);
+    }
+
+    public function test_segunda_instancia_identifica_elegibles_incluso_con_otros_vacios(): void
+    {
+        DB::table('carreras')->where('id', 1)->update(['NotaAprobacion' => 61, 'NotaMinRevalida' => 40]);
+        DB::table('calificaciones')->where('id', 1)->update(['Promedio' => 50]);
+        DB::table('calificaciones')->where('id', 2)->update(['Promedio' => 39]);
+        DB::table('calificaciones')->where('id', 3)->update(['Promedio' => 61]);
+        DB::table('calificaciones')->where('id', 4)->update(['Promedio' => 50, 'PruebaRecuperacion' => 70]);
+        DB::table('calificaciones')->where('id', 5)->update(['Promedio' => 50, 'Teorico2' => 0, 'Practico2' => 0]);
+        $filas = collect($this->consultar(['incluir_segunda_instancia' => '1'])['data'])->keyBy('id');
+        $this->assertContains('Segunda instancia', $filas[1]['vacios']);
+        foreach ([2, 3, 4, 5] as $id) $this->assertNotContains('Segunda instancia', $filas[$id]['vacios']);
+        $soloSegunda = $this->consultar(['evaluaciones' => [], 'incluir_segunda_instancia' => '1']);
+        $this->assertSame([1], array_column($soloSegunda['data'], 'id'));
+        DB::table('calificaciones')->insert(['id' => 100, 'materias_id' => 2, 'infoestudiantesifas_id' => 1, 'Promedio' => null]);
+        $this->assertSame(0, $this->consultar(['evaluaciones' => [], 'incluir_segunda_instancia' => '1'])['meta']['total']);
+        DB::table('calificaciones')->where('id', 100)->update(['Promedio' => 50]);
+        foreach ([101, 102] as $id) DB::table('calificaciones')->insert(['id' => $id, 'materias_id' => 2, 'infoestudiantesifas_id' => 1, 'Promedio' => 50]);
+        $this->assertSame(0, $this->consultar(['evaluaciones' => [], 'incluir_segunda_instancia' => '1'])['meta']['total']);
+    }
+
+    public function test_cambios_de_habilitacion_preservan_las_otras_evaluaciones_y_detectan_conflictos(): void
+    {
+        $controller = new MonitoreoCalificacionesController();
+        $cambiar = function ($estado, $numero, $habilitar) use ($controller) {
+            $request = Request::create('/', 'PUT', ['anio_id' => 2026, 'institucion_id' => 1, 'estado_actual' => $estado, 'evaluacion' => $numero, 'habilitar' => $habilitar]);
+            $request->setUserResolver(fn () => (object) ['instituciones_id' => 1]);
+            return $controller->cambiarHabilitacion($request, 1);
+        };
+        $this->assertSame('PRIMERA EVALUACIÓN', $cambiar(null, 1, true)->getData(true)['estado_habilitacion']);
+        $this->assertSame('PRIMERA EVALUACIÓN, SEGUNDA EVALUACIÓN', $cambiar('PRIMERA EVALUACIÓN', 2, true)->getData(true)['estado_habilitacion']);
+        $this->assertSame(409, $cambiar('PRIMERA EVALUACIÓN', 1, false)->getStatusCode());
+        $this->assertSame('SEGUNDA INSTANCIA', $cambiar('PRIMERA EVALUACIÓN, SEGUNDA EVALUACIÓN', 5, true)->getData(true)['estado_habilitacion']);
+        $this->assertSame('NINGUNA EVALUACIÓN', $cambiar('SEGUNDA INSTANCIA', 5, false)->getData(true)['estado_habilitacion']);
+        $this->assertSame(422, $cambiar('NINGUNA EVALUACIÓN', 4, true)->getStatusCode());
     }
 
     public function test_pagina_los_resultados_y_no_permita_otra_institucion(): void

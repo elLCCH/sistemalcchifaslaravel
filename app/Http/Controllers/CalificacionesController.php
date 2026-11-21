@@ -264,27 +264,7 @@ class CalificacionesController extends Controller
 
     private function parseEnabledEvaluations($estado, int $evalCountMax): array
     {
-        $out = [];
-        $raw = trim((string) ($estado ?? ''));
-        if ($raw === '') return $out;
-
-        $s = strtoupper($raw);
-        if (str_contains($s, 'DESHABIL')) return $out;
-        if (str_contains($s, 'SEGUNDA INSTANCIA') || str_contains($s, 'EVALUACIÓN FINAL') || str_contains($s, 'EVALUACION FINAL')) return $out;
-
-        if (str_contains($s, 'HABILIT') || str_contains($s, 'TODAS') || str_contains($s, 'TODO')) {
-            for ($i = 1; $i <= max(1, min(4, $evalCountMax)); $i++) $out[] = $i;
-            return $out;
-        }
-
-        if (str_contains($s, 'PRIMERA') || preg_match('/\b1\b/', $s)) $out[] = 1;
-        if (str_contains($s, 'SEGUNDA') || preg_match('/\b2\b/', $s)) $out[] = 2;
-        if (str_contains($s, 'TERCERA') || preg_match('/\b3\b/', $s)) $out[] = 3;
-        if (str_contains($s, 'CUARTA') || preg_match('/\b4\b/', $s)) $out[] = 4;
-
-        $out = array_values(array_unique(array_filter($out, fn ($n) => $n >= 1 && $n <= 4)));
-        sort($out);
-        return $out;
+        return \App\Support\EstadoEvaluaciones::habilitadas($estado, $evalCountMax);
     }
 
     private function getInstitucionIdFromInfo(int $infoId): ?int

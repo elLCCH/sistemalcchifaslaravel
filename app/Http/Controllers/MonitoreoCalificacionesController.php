@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Middleware\UpdateTokenExpiration;
+use App\Support\EstadoEvaluaciones;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class MonitoreoCalificacionesController extends Controller
 {
@@ -50,6 +52,7 @@ class MonitoreoCalificacionesController extends Controller
         };
         $docentes = DB::table('planteldocentes')->where('instituciones_id', $data['institucion_id'])
             ->select('id', 'Nombres', 'Apellidos')->orderBy('Apellidos')->orderBy('Nombres')->get();
+        $token = $request->bearerToken() ? PersonalAccessToken::findToken($request->bearerToken()) : null;
 
         return response()->json([
             'resoluciones' => $opciones('Resolucion'),
@@ -58,6 +61,7 @@ class MonitoreoCalificacionesController extends Controller
             'paralelos' => $opciones('Paralelo'),
             'turnos' => $opciones('Turno'),
             'docentes' => $docentes,
+            'puede_editar' => $token && ($token->can('CREADOR') || $token->can('DIRECTOR(A)_ACADÉMICO(A)') || $token->can('SECRETARIO(A)')),
         ]);
     }
 
@@ -74,15 +78,74 @@ class MonitoreoCalificacionesController extends Controller
         return null;
     }
 
+    private function cantidadParaRetiro($valor): int
+    {
+        // Calificaciones interpreta este valor de forma distinta al filtro de evaluaciones.
+        $texto = strtoupper(trim((string) ($valor ?? '')));
+        if ($texto === '' || str_contains($texto, 'CERO')) return 0;
+        if (preg_match('/\d+/', $texto, $match)) {
+            $cantidad = (int) $match[0];
+            return $cantidad <= 4 ? $cantidad : 4;
+        }
+        return 4;
+    }
+
     private function aplicarFiltrosAcademicos(Builder $query, array $filtros): void
     {
-        foreach (['resolucion' => 'ca.Resolucion', 'curso' => 'p.LvlCurso', 'paralelo' => 'm.Paralelo', 'turno' => 'm.Turno'] as $filtro => $columna) {
-            if (!empty($filtros[$filtro])) {
-                $valor = $filtro === 'resolucion' && $filtros[$filtro] === '__SIN_RESOLUCION__' ? '' : trim($filtros[$filtro]);
-                $query->whereRaw("TRIM(COALESCE($columna, '')) = ?", [$valor]);
+        foreach (['resolucion' => ['resoluciones', 'ca.Resolucion'], 'paralelo' => ['paralelos', 'm.Paralelo'], 'turno' => ['turnos', 'm.Turno']] as $filtro => [$plural, $columna]) {
+            $valores = $filtros[$plural] ?? [];
+            if (!$valores && !empty($filtros[$filtro])) $valores = [$filtros[$filtro]];
+            if ($valores) {
+                $valores = array_map(fn ($valor) => $filtro === 'resolucion' && $valor === '__SIN_RESOLUCION__' ? '' : trim($valor), $valores);
+                $query->whereIn(DB::raw("TRIM(COALESCE($columna, ''))"), $valores);
             }
         }
+        if (!empty($filtros['cursos'])) $query->whereIn(DB::raw("TRIM(COALESCE(p.LvlCurso, ''))"), $filtros['cursos']);
+        elseif (!empty($filtros['curso'])) $query->whereRaw("TRIM(COALESCE(p.LvlCurso, '')) = ?", [trim($filtros['curso'])]);
         if (!empty($filtros['materia'])) $query->where('p.NombreMateria', 'like', '%' . $filtros['materia'] . '%');
+    }
+
+    public function cambiarHabilitacion(Request $request, int $materiaId)
+    {
+        $contexto = $this->validarContexto($request);
+        $data = $request->validate([
+            'evaluacion' => ['required', 'integer', 'between:1,5'],
+            'habilitar' => ['required', 'boolean'],
+            'estado_actual' => ['present', 'nullable', 'string', 'max:255'],
+        ]);
+        return DB::transaction(function () use ($contexto, $data, $materiaId) {
+            $materia = DB::table('materias as m')
+                ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
+                ->join('carreras as ca', 'ca.id', '=', 'p.carreras_id')
+                ->where('m.id', $materiaId)->where('p.anio_id', $contexto['anio_id'])
+                ->where('ca.instituciones_id', $contexto['institucion_id'])
+                ->select('m.EstadoHabilitacion', 'ca.CantidadEvaluaciones')->lockForUpdate()->first();
+            if (!$materia) abort(404);
+            if ($materia->EstadoHabilitacion !== $data['estado_actual']) {
+                return response()->json(['message' => 'El estado de la materia cambió. Actualice el monitoreo antes de modificarlo.'], 409);
+            }
+            $numero = (int) $data['evaluacion'];
+            $cantidad = $this->cantidadEvaluaciones($materia->CantidadEvaluaciones);
+            if ($numero !== 5 && ($cantidad === null || $numero > $cantidad)) {
+                return response()->json(['message' => 'La evaluación no está configurada para esta carrera.'], 422);
+            }
+            $estado = strtoupper(trim((string) $materia->EstadoHabilitacion));
+            if ($numero === 5) {
+                $nuevo = $data['habilitar'] ? 'SEGUNDA INSTANCIA' : 'NINGUNA EVALUACIÓN';
+                if (!$data['habilitar'] && !str_contains($estado, 'SEGUNDA INSTANCIA')) {
+                    return response()->json(['message' => 'La segunda instancia no está habilitada.'], 409);
+                }
+            } else {
+                $habilitadas = EstadoEvaluaciones::habilitadas($estado, $cantidad);
+                $habilitadas = array_values(array_filter($habilitadas, fn ($n) => $n <= $cantidad && $n !== $numero));
+                if ($data['habilitar']) $habilitadas[] = $numero;
+                sort($habilitadas);
+                $nombres = [1 => 'PRIMERA EVALUACIÓN', 'SEGUNDA EVALUACIÓN', 'TERCERA EVALUACIÓN', 'CUARTA EVALUACIÓN'];
+                $nuevo = $habilitadas ? implode(', ', array_map(fn ($n) => $nombres[$n], $habilitadas)) : 'NINGUNA EVALUACIÓN';
+            }
+            DB::table('materias')->where('id', $materiaId)->update(['EstadoHabilitacion' => $nuevo]);
+            return response()->json(['estado_habilitacion' => $nuevo]);
+        });
     }
 
     public function buscar(Request $request)
@@ -90,20 +153,32 @@ class MonitoreoCalificacionesController extends Controller
         $contexto = $this->validarContexto($request);
         $filtros = $request->validate([
             'resolucion' => ['nullable', 'string', 'max:255'],
+            'resoluciones' => ['nullable', 'array'],
+            'resoluciones.*' => ['string', 'max:255', 'distinct'],
             'curso' => ['nullable', 'string', 'max:100'],
+            'cursos' => ['nullable', 'array', 'max:100'],
+            'cursos.*' => ['string', 'max:100', 'distinct'],
             'paralelo' => ['nullable', 'string', 'max:100'],
+            'paralelos' => ['nullable', 'array'],
+            'paralelos.*' => ['string', 'max:100', 'distinct'],
             'turno' => ['nullable', 'string', 'max:100'],
+            'turnos' => ['nullable', 'array'],
+            'turnos.*' => ['string', 'max:100', 'distinct'],
             'materia' => ['nullable', 'string', 'max:100'],
             'estudiante' => ['nullable', 'string', 'max:100'],
             'docente_id' => ['nullable', 'integer', 'min:1'],
+            'docentes_ids' => ['nullable', 'array'],
+            'docentes_ids.*' => ['integer', 'min:1', 'distinct'],
             'evaluaciones' => ['nullable', 'array', 'max:4'],
             'evaluaciones.*' => ['integer', 'between:1,4', 'distinct'],
             'incluir_promedios' => ['required', 'boolean'],
+            'incluir_segunda_instancia' => ['sometimes', 'boolean'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
         $evaluaciones = array_map('intval', $filtros['evaluaciones'] ?? []);
         $incluirPromedios = (bool) $filtros['incluir_promedios'];
-        if (!$evaluaciones && !$incluirPromedios) {
+        $incluirSegunda = (bool) ($filtros['incluir_segunda_instancia'] ?? false);
+        if (!$evaluaciones && !$incluirPromedios && !$incluirSegunda) {
             return response()->json(['message' => 'Seleccione al menos una evaluación o incluya los promedios.'], 422);
         }
 
@@ -149,23 +224,54 @@ class MonitoreoCalificacionesController extends Controller
                 });
             }
         }
-        if (!empty($filtros['docente_id'])) {
-            $docenteId = $filtros['docente_id'];
-            if (!DB::table('planteldocentes')->where('id', $docenteId)->where('instituciones_id', $contexto['institucion_id'])->exists()) {
+        $docentesIds = $filtros['docentes_ids'] ?? [];
+        if (!$docentesIds && !empty($filtros['docente_id'])) $docentesIds = [$filtros['docente_id']];
+        if ($docentesIds) {
+            if (DB::table('planteldocentes')->whereIn('id', $docentesIds)->where('instituciones_id', $contexto['institucion_id'])->count() !== count($docentesIds)) {
                 abort(404);
             }
-            $query->where(function ($sub) use ($docenteId) {
+            $query->where(function ($sub) use ($docentesIds) {
                 foreach (self::MODOS as $modo => $campo) {
-                    $sub->orWhere(fn ($especial) => $especial->where('p.ModoMateria', $modo)->where("info.$campo", $docenteId));
+                    $sub->orWhere(fn ($especial) => $especial->where('p.ModoMateria', $modo)->whereIn("info.$campo", $docentesIds));
                 }
-                $sub->orWhere(function ($normal) use ($docenteId) {
+                $sub->orWhere(function ($normal) use ($docentesIds) {
                     $normal->where(fn ($modo) => $modo->whereNotIn('p.ModoMateria', array_keys(self::MODOS))->orWhereNull('p.ModoMateria'))
                         ->whereExists(fn ($asignacion) => $asignacion->selectRaw('1')->from('planteldocentesmaterias as pdm')
-                            ->whereColumn('pdm.materias_id', 'm.id')->where('pdm.planteldocentes_id', $docenteId));
+                            ->whereColumn('pdm.materias_id', 'm.id')->whereIn('pdm.planteldocentes_id', $docentesIds));
                 });
             });
         }
-        $query->where(function ($vacios) use ($carrerasPorEvaluacion, $incluirPromedios) {
+        $consultaSegunda = clone $query;
+        if ($incluirSegunda) {
+            $consultaSegunda->whereNull('cal.PruebaRecuperacion')->whereNotNull('cal.Promedio')
+                ->whereRaw('cal.Promedio >= COALESCE(ca.NotaMinRevalida, 0)')
+                ->whereRaw('cal.Promedio < CASE WHEN ca.NotaAprobacion > 0 THEN ca.NotaAprobacion ELSE 61 END');
+            foreach ([2, 3, 4] as $numero) {
+                $carrerasMenores = $carreras->filter(fn ($carrera) => $this->cantidadParaRetiro($carrera->CantidadEvaluaciones) < $numero)->pluck('id')->all();
+                $consultaSegunda->where(function ($retiro) use ($numero, $carrerasMenores) {
+                    $retiro->whereIn('ca.id', $carrerasMenores)->orWhereNull("cal.Teorico$numero")->orWhereNull("cal.Practico$numero")
+                        ->orWhere("cal.Teorico$numero", '<>', 0)->orWhere("cal.Practico$numero", '<>', 0);
+                });
+            }
+            $consultaSegunda->whereNotExists(function ($pendientes) use ($contexto) {
+                $pendientes->selectRaw('1')->from('calificaciones as otras')
+                    ->join('materias as om', 'om.id', '=', 'otras.materias_id')
+                    ->join('plandeestudios as op', 'op.id', '=', 'om.plandeestudios_id')
+                    ->join('carreras as oc', 'oc.id', '=', 'op.carreras_id')
+                    ->whereColumn('otras.infoestudiantesifas_id', 'cal.infoestudiantesifas_id')
+                    ->where('op.anio_id', $contexto['anio_id'])->where('oc.instituciones_id', $contexto['institucion_id'])
+                    ->whereNull('otras.Promedio');
+            })->whereRaw("(SELECT COUNT(*) FROM calificaciones otras
+                JOIN materias om ON om.id = otras.materias_id
+                JOIN plandeestudios op ON op.id = om.plandeestudios_id
+                JOIN carreras oc ON oc.id = op.carreras_id
+                WHERE otras.infoestudiantesifas_id = cal.infoestudiantesifas_id
+                AND op.anio_id = ? AND oc.instituciones_id = ?
+                AND COALESCE(otras.PruebaRecuperacion, otras.Promedio) < CASE WHEN ca.NotaAprobacion > 0 THEN ca.NotaAprobacion ELSE 61 END) < 4",
+                [$contexto['anio_id'], $contexto['institucion_id']]);
+        }
+
+        $query->where(function ($vacios) use ($carrerasPorEvaluacion, $incluirPromedios, $incluirSegunda, $consultaSegunda) {
             $vacios->whereRaw('1 = 0');
             foreach ($carrerasPorEvaluacion as $numero => $ids) {
                 if (!$ids) continue;
@@ -177,15 +283,18 @@ class MonitoreoCalificacionesController extends Controller
             if ($incluirPromedios) {
                 $vacios->orWhereNull('cal.PromTeorico')->orWhereNull('cal.PromPractico')->orWhereNull('cal.Promedio');
             }
+            if ($incluirSegunda) {
+                $vacios->orWhereIn('cal.id', (clone $consultaSegunda)->select('cal.id'));
+            }
         });
 
         $pagina = $query->select([
             'cal.id', 'cal.materias_id', 'cal.EstadoRegistroMateria',
             'cal.Teorico1', 'cal.Teorico2', 'cal.Teorico3', 'cal.Teorico4',
             'cal.Practico1', 'cal.Practico2', 'cal.Practico3', 'cal.Practico4',
-            'cal.PromTeorico', 'cal.PromPractico', 'cal.Promedio',
+            'cal.PromTeorico', 'cal.PromPractico', 'cal.Promedio', 'cal.PruebaRecuperacion',
             'e.Ap_Paterno', 'e.Ap_Materno', 'e.Nombre', 'e.CI',
-            'p.NombreMateria', 'p.ModoMateria', 'p.LvlCurso', 'm.Paralelo', 'm.Turno',
+            'p.NombreMateria', 'p.ModoMateria', 'p.LvlCurso', 'm.Paralelo', 'm.Turno', 'm.EstadoHabilitacion',
             'ca.Resolucion', 'ca.CantidadEvaluaciones',
             'info.InstrumentoMusical', 'info.InstrumentoMusicalSecundario',
             'info.planteldocadmins_id', 'info.planteldocadmins_idPC', 'info.planteldocadmins_idOtros',
@@ -193,6 +302,9 @@ class MonitoreoCalificacionesController extends Controller
             ->orderBy('p.NombreMateria')->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre')
             ->orderBy('cal.id')->paginate(50, ['*'], 'page', (int) ($filtros['page'] ?? 1));
 
+        $idsSegunda = $incluirSegunda
+            ? $consultaSegunda->whereIn('cal.id', $pagina->getCollection()->pluck('id')->all())->pluck('cal.id')->all()
+            : [];
         $materiasIds = $pagina->getCollection()->pluck('materias_id')->unique()->all();
         $asignaciones = DB::table('planteldocentesmaterias as pdm')
             ->whereIn('pdm.materias_id', $materiasIds)
@@ -206,7 +318,7 @@ class MonitoreoCalificacionesController extends Controller
             ->select('id', 'Nombres', 'Apellidos')->get()->keyBy('id');
         $asignaciones = $asignaciones->groupBy('materias_id');
 
-        $filas = $pagina->getCollection()->map(function ($fila) use ($evaluaciones, $incluirPromedios, $asignaciones, $docentes) {
+        $filas = $pagina->getCollection()->map(function ($fila) use ($evaluaciones, $incluirPromedios, $idsSegunda, $asignaciones, $docentes) {
             $vacios = [];
             foreach ($evaluaciones as $numero) {
                 $cantidad = $this->cantidadEvaluaciones($fila->CantidadEvaluaciones);
@@ -219,6 +331,7 @@ class MonitoreoCalificacionesController extends Controller
                     if ($fila->$campo === null) $vacios[] = $label;
                 }
             }
+            if (in_array($fila->id, $idsSegunda)) $vacios[] = 'Segunda instancia';
             $campoDocente = self::MODOS[trim((string) $fila->ModoMateria)] ?? null;
             $ids = $campoDocente
                 ? ($fila->$campoDocente ? [(int) $fila->$campoDocente] : [])
@@ -228,7 +341,10 @@ class MonitoreoCalificacionesController extends Controller
                 return $docente ? trim("$docente->Apellidos $docente->Nombres") : "Docente no disponible (ID $id)";
             }, $ids);
             return [
-                'id' => $fila->id, 'materia' => $fila->NombreMateria, 'modo' => $fila->ModoMateria,
+                'id' => $fila->id, 'materia_id' => $fila->materias_id, 'materia' => $fila->NombreMateria, 'modo' => $fila->ModoMateria,
+                'estado_habilitacion' => $fila->EstadoHabilitacion,
+                'evaluaciones_habilitadas' => EstadoEvaluaciones::habilitadas($fila->EstadoHabilitacion, $this->cantidadEvaluaciones($fila->CantidadEvaluaciones) ?? 4),
+                'cantidad_evaluaciones' => $this->cantidadEvaluaciones($fila->CantidadEvaluaciones),
                 'curso' => $fila->LvlCurso, 'paralelo' => $fila->Paralelo, 'turno' => $fila->Turno,
                 'resolucion' => $fila->Resolucion, 'estado' => $fila->EstadoRegistroMateria,
                 'estudiante' => trim(implode(' ', array_filter([$fila->Ap_Paterno, $fila->Ap_Materno, $fila->Nombre]))),
