@@ -81,7 +81,7 @@ class MonitoreoCalificacionesController extends Controller
                 $query->whereIn(DB::raw("TRIM(COALESCE($columna, ''))"), $valores);
             }
         }
-        if (!empty($filtros['cursos'])) $query->whereIn(DB::raw("TRIM(COALESCE(p.LvlCurso, ''))"), $filtros['cursos']);
+        if (!empty($filtros['cursos'])) $query->whereIn(DB::raw("TRIM(COALESCE(p.LvlCurso, ''))"), array_map('trim', $filtros['cursos']));
         elseif (!empty($filtros['curso'])) $query->whereRaw("TRIM(COALESCE(p.LvlCurso, '')) = ?", [trim($filtros['curso'])]);
         if (!empty($filtros['materia'])) $query->where('p.NombreMateria', 'like', '%' . $filtros['materia'] . '%');
     }
@@ -154,6 +154,22 @@ class MonitoreoCalificacionesController extends Controller
             'evaluaciones.*' => ['integer', 'between:1,4', 'distinct'],
             'incluir_promedios' => ['required', 'boolean'],
             'incluir_segunda_instancia' => ['sometimes', 'boolean'],
+            'tabla_texto' => ['nullable', 'string', 'max:100'],
+            'tabla_docentes' => ['nullable', 'array'],
+            'tabla_docentes.*' => ['string', 'max:255', 'distinct'],
+            'tabla_cursos' => ['nullable', 'array'],
+            'tabla_cursos.*' => ['string', 'max:100', 'distinct'],
+            'tabla_paralelos' => ['nullable', 'array'],
+            'tabla_paralelos.*' => ['string', 'max:100', 'distinct'],
+            'tabla_materias' => ['nullable', 'array'],
+            'tabla_materias.*' => ['string', 'max:255', 'distinct'],
+            'tabla_turnos' => ['nullable', 'array'],
+            'tabla_turnos.*' => ['string', 'max:100', 'distinct'],
+            'tabla_resoluciones' => ['nullable', 'array'],
+            'tabla_resoluciones.*' => ['string', 'max:255', 'distinct'],
+            'tabla_modos' => ['nullable', 'array'],
+            'tabla_modos.*' => ['string', 'max:255', 'distinct'],
+            'reporte' => ['sometimes', 'boolean'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
         $evaluaciones = array_map('intval', $filtros['evaluaciones'] ?? []);
@@ -244,7 +260,19 @@ class MonitoreoCalificacionesController extends Controller
             }
         });
 
-        $pagina = $query->select([
+        $idsSegunda = $incluirSegunda
+            ? array_fill_keys($consultaSegunda->pluck('cal.id')->all(), true)
+            : [];
+        $asignaciones = DB::table('planteldocentesmaterias as pdm')
+            ->join('materias as m', 'm.id', '=', 'pdm.materias_id')
+            ->join('plandeestudios as p', 'p.id', '=', 'm.plandeestudios_id')
+            ->join('carreras as ca', 'ca.id', '=', 'p.carreras_id')
+            ->where('p.anio_id', $contexto['anio_id'])->where('ca.instituciones_id', $contexto['institucion_id'])
+            ->select('pdm.materias_id', 'pdm.planteldocentes_id')->get()->groupBy('materias_id');
+        $docentes = DB::table('planteldocentes')->where('instituciones_id', $contexto['institucion_id'])
+            ->select('id', 'Nombres', 'Apellidos')->get()->keyBy('id');
+
+        $registros = $query->select([
             'cal.id', 'cal.materias_id', 'cal.EstadoRegistroMateria',
             'cal.Teorico1', 'cal.Teorico2', 'cal.Teorico3', 'cal.Teorico4',
             'cal.Practico1', 'cal.Practico2', 'cal.Practico3', 'cal.Practico4',
@@ -256,25 +284,19 @@ class MonitoreoCalificacionesController extends Controller
             'info.planteldocadmins_id', 'info.planteldocadmins_idPC', 'info.planteldocadmins_idOtros',
         ])->orderBy('p.RangoLvlCurso')->orderBy('p.LvlCurso')->orderBy('m.Paralelo')
             ->orderBy('p.NombreMateria')->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre')
-            ->orderBy('cal.id')->paginate(50, ['*'], 'page', (int) ($filtros['page'] ?? 1));
+            ->orderBy('cal.id')->cursor();
 
-        $idsSegunda = $incluirSegunda
-            ? $consultaSegunda->whereIn('cal.id', $pagina->getCollection()->pluck('id')->all())->pluck('cal.id')->all()
-            : [];
-        $materiasIds = $pagina->getCollection()->pluck('materias_id')->unique()->all();
-        $asignaciones = DB::table('planteldocentesmaterias as pdm')
-            ->whereIn('pdm.materias_id', $materiasIds)
-            ->select('pdm.materias_id', 'pdm.planteldocentes_id')->get();
-        $docentesIds = $asignaciones->pluck('planteldocentes_id')
-            ->concat($pagina->getCollection()->flatMap(fn ($fila) => [
-                $fila->planteldocadmins_id, $fila->planteldocadmins_idPC, $fila->planteldocadmins_idOtros,
-            ]))->filter()->unique()->values()->all();
-        $docentes = DB::table('planteldocentes')->where('instituciones_id', $contexto['institucion_id'])
-            ->whereIn('id', $docentesIds)
-            ->select('id', 'Nombres', 'Apellidos')->get()->keyBy('id');
-        $asignaciones = $asignaciones->groupBy('materias_id');
-
-        $filas = $pagina->getCollection()->map(function ($fila) use ($evaluaciones, $incluirPromedios, $idsSegunda, $asignaciones, $docentes) {
+        $pagina = (int) ($filtros['page'] ?? 1);
+        $porPagina = 50;
+        $esReporte = (bool) ($filtros['reporte'] ?? false);
+        $reporte = [];
+        $total = 0;
+        $filas = [];
+        $ultimaPagina = [];
+        $paginasRojas = [];
+        $opcionesTabla = ['docentes' => [], 'cursos' => [], 'paralelos' => [], 'materias' => [], 'turnos' => [], 'resoluciones' => [], 'modos' => []];
+        $texto = mb_strtolower(trim($filtros['tabla_texto'] ?? ''));
+        foreach ($registros as $fila) {
             $vacios = [];
             foreach ($evaluaciones as $numero) {
                 $cantidad = $this->cantidadEvaluaciones($fila->CantidadEvaluaciones);
@@ -287,32 +309,105 @@ class MonitoreoCalificacionesController extends Controller
                     if ($fila->$campo === null) $vacios[] = $label;
                 }
             }
-            if (in_array($fila->id, $idsSegunda)) $vacios[] = 'Segunda instancia';
+            if (isset($idsSegunda[$fila->id])) $vacios[] = 'Segunda instancia';
             $campoDocente = self::MODOS[trim((string) $fila->ModoMateria)] ?? null;
             $ids = $campoDocente
                 ? ($fila->$campoDocente ? [(int) $fila->$campoDocente] : [])
-                : ($asignaciones->get($fila->materias_id) ?? collect())->pluck('planteldocentes_id')->unique()->all();
+                : ($asignaciones->get($fila->materias_id) ?? collect())->pluck('planteldocentes_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
             $nombres = array_map(function ($id) use ($docentes) {
                 $docente = $docentes->get($id);
                 return $docente ? trim("$docente->Apellidos $docente->Nombres") : "Docente no disponible (ID $id)";
             }, $ids);
-            return [
-                'id' => $fila->id, 'materia_id' => $fila->materias_id, 'materia' => $fila->NombreMateria, 'modo' => $fila->ModoMateria,
+            $registro = [
+                'id' => $fila->id, 'materia_id' => $fila->materias_id, 'materia' => $fila->NombreMateria, 'modo' => $fila->ModoMateria === null ? null : trim($fila->ModoMateria),
                 'estado_habilitacion' => $fila->EstadoHabilitacion,
                 'evaluaciones_habilitadas' => EstadoEvaluaciones::habilitadas($fila->EstadoHabilitacion, $this->cantidadEvaluaciones($fila->CantidadEvaluaciones) ?? 4),
                 'cantidad_evaluaciones' => $this->cantidadEvaluaciones($fila->CantidadEvaluaciones),
-                'curso' => $fila->LvlCurso, 'paralelo' => $fila->Paralelo, 'turno' => $fila->Turno,
-                'resolucion' => $fila->Resolucion, 'estado' => $fila->EstadoRegistroMateria,
+                'curso' => trim((string) $fila->LvlCurso), 'paralelo' => trim((string) $fila->Paralelo), 'turno' => $fila->Turno === null ? null : trim($fila->Turno),
+                'resolucion' => $fila->Resolucion === null ? null : trim($fila->Resolucion), 'estado' => $fila->EstadoRegistroMateria,
                 'estudiante' => trim(implode(' ', array_filter([$fila->Ap_Paterno, $fila->Ap_Materno, $fila->Nombre]))),
                 'ci' => $fila->CI, 'docentes' => $nombres,
                 'instrumento' => $campoDocente === 'planteldocadmins_id' ? $fila->InstrumentoMusical
                     : ($campoDocente === 'planteldocadmins_idOtros' ? $fila->InstrumentoMusicalSecundario : null),
                 'vacios' => $vacios,
             ];
-        });
+            $docentesTabla = $nombres ?: ['__SIN_VALOR__'];
+            foreach (['docentes' => $docentesTabla, 'cursos' => [$registro['curso']], 'paralelos' => [$registro['paralelo']], 'materias' => [$registro['materia']],
+                'turnos' => [$registro['turno']], 'resoluciones' => [$registro['resolucion']], 'modos' => [$registro['modo']]] as $campo => $valores) {
+                foreach ($valores as $valor) {
+                    $valor = $valor === null || $valor === '' ? '__SIN_VALOR__' : $valor;
+                    $opcionesTabla[$campo]['v:' . $valor] = $valor;
+                }
+            }
 
-        return response()->json(['data' => $filas, 'carreras_sin_cantidad' => $sinConfiguracion, 'meta' => [
-            'current_page' => $pagina->currentPage(), 'last_page' => $pagina->lastPage(), 'total' => $pagina->total(),
+            if (!empty($filtros['tabla_docentes']) && !array_intersect($filtros['tabla_docentes'], $docentesTabla)) continue;
+            foreach (['tabla_cursos' => 'curso', 'tabla_paralelos' => 'paralelo', 'tabla_materias' => 'materia',
+                'tabla_turnos' => 'turno', 'tabla_resoluciones' => 'resolucion', 'tabla_modos' => 'modo'] as $filtro => $campo) {
+                $valor = $registro[$campo] === null || $registro[$campo] === '' ? '__SIN_VALOR__' : $registro[$campo];
+                if (!empty($filtros[$filtro]) && !in_array($valor, $filtros[$filtro], true)) continue 2;
+            }
+            if ($texto !== '') {
+                $campos = array_merge([$registro['estudiante'], $registro['ci'], $registro['materia'], $registro['curso'], $registro['paralelo'],
+                    $registro['turno'], $registro['resolucion'], $registro['modo'], $registro['estado'], $registro['instrumento'], $registro['estado_habilitacion']], $nombres, $vacios);
+                if (!collect($campos)->contains(fn ($valor) => str_contains(mb_strtolower((string) $valor), $texto))) continue;
+            }
+            if ($esReporte) {
+                $docentesReporte = $ids ?: [null];
+                foreach ($docentesReporte as $indice => $docenteId) {
+                    $clave = $docenteId === null ? 'sin_docente' : 'docente_' . $docenteId;
+                    if (!isset($reporte[$clave])) {
+                        $reporte[$clave] = ['docente_id' => $docenteId, 'docente' => $docenteId === null ? 'Sin docente asignado' : ($nombres[$indice] ?: "Docente sin nombre (ID $docenteId)"), 'materias' => []];
+                    }
+                    $materiaId = $registro['materia_id'];
+                    if (!isset($reporte[$clave]['materias'][$materiaId])) {
+                        $reporte[$clave]['materias'][$materiaId] = [
+                            'materia_id' => $materiaId, 'materia' => $registro['materia'], 'curso' => $registro['curso'],
+                            'paralelo' => $registro['paralelo'], 'turno' => $registro['turno'], 'resolucion' => $registro['resolucion'],
+                            'estado_habilitacion' => $registro['estado_habilitacion'], 'registros' => 0, 'vacios' => [],
+                        ];
+                    }
+                    $materiaReporte = &$reporte[$clave]['materias'][$materiaId];
+                    $materiaReporte['registros']++;
+                    foreach ($vacios as $vacio) $materiaReporte['vacios'][$vacio] = ($materiaReporte['vacios'][$vacio] ?? 0) + 1;
+                    unset($materiaReporte);
+                }
+                $total++;
+                continue;
+            }
+            $numeroPagina = intdiv($total, $porPagina) + 1;
+            if ($total % $porPagina === 0) $ultimaPagina = [];
+            foreach ($vacios as $vacio) {
+                $numero = preg_match('/^(?:Teórico|Práctico) ([1-4])$/u', $vacio, $match) ? (int) $match[1] : ($vacio === 'Segunda instancia' ? 5 : null);
+                $habilitada = $numero === 5
+                    ? str_contains(strtoupper((string) $registro['estado_habilitacion']), 'SEGUNDA INSTANCIA')
+                    : in_array($numero, $registro['evaluaciones_habilitadas'], true);
+                if ($numero !== null && !$habilitada) $paginasRojas[$numeroPagina] = true;
+            }
+            if ($numeroPagina === $pagina) $filas[] = $registro;
+            $ultimaPagina[] = $registro;
+            $total++;
+        }
+        if ($esReporte) {
+            foreach ($reporte as &$docenteReporte) {
+                $docenteReporte['materias'] = array_values($docenteReporte['materias']);
+            }
+            unset($docenteReporte);
+            $reporte = array_values($reporte);
+            usort($reporte, fn ($a, $b) => strnatcasecmp($a['docente'], $b['docente']) ?: ($a['docente_id'] <=> $b['docente_id']));
+            return response()->json(['docentes' => $reporte, 'total_registros' => $total, 'carreras_sin_cantidad' => $sinConfiguracion]);
+        }
+        foreach ($opcionesTabla as $campo => $valores) {
+            $opcionesTabla[$campo] = array_values($valores);
+            sort($opcionesTabla[$campo], SORT_NATURAL | SORT_FLAG_CASE);
+        }
+        $ultima = max(1, (int) ceil($total / $porPagina));
+        if ($pagina > $ultima) {
+            $pagina = $ultima;
+            $filas = $ultimaPagina;
+        }
+        return response()->json(['data' => $filas, 'opciones_tabla' => $opcionesTabla, 'carreras_sin_cantidad' => $sinConfiguracion, 'meta' => [
+            'current_page' => $pagina, 'last_page' => $ultima, 'total' => $total,
+            'paginas_rojas' => array_keys($paginasRojas),
         ]]);
     }
 }

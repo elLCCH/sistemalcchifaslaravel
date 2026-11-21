@@ -345,4 +345,62 @@ class MonitoreoCalificacionesTest extends TestCase
         $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
         (new MonitoreoCalificacionesController())->buscar($request);
     }
+
+    public function test_filtra_toda_la_busqueda_y_marca_las_paginas_con_evaluaciones_deshabilitadas(): void
+    {
+        DB::table('materias')->where('id', 1)->update(['EstadoHabilitacion' => 'PRIMERA EVALUACIÓN']);
+        DB::table('materias')->where('id', 4)->update(['Paralelo' => ' B ']);
+        for ($i = 100; $i < 149; $i++) {
+            DB::table('calificaciones')->insert(['id' => $i, 'materias_id' => 1, 'infoestudiantesifas_id' => 1, 'Teorico1' => 0, 'Practico1' => null]);
+        }
+        $primera = $this->consultar();
+        $segunda = $this->consultar(['page' => 2]);
+        $this->assertSame(54, $primera['meta']['total']);
+        $this->assertSame(2, $this->consultar(['page' => 99])['meta']['current_page']);
+        $this->assertSame(array_column($segunda['data'], 'id'), array_column($this->consultar(['page' => 99])['data'], 'id'));
+        $this->assertSame([2], $primera['meta']['paginas_rojas']);
+        $this->assertSame([2], $segunda['meta']['paginas_rojas']);
+        $this->assertContains('Segundo', $primera['opciones_tabla']['cursos']);
+        $this->assertContains('B', $primera['opciones_tabla']['paralelos']);
+        $this->assertContains('Materia 4', $primera['opciones_tabla']['materias']);
+        $this->assertContains('Vega Sol', $primera['opciones_tabla']['docentes']);
+
+        $filtrado = $this->consultar(['tabla_cursos' => ['Segundo'], 'tabla_paralelos' => ['B'], 'tabla_materias' => ['Materia 4'], 'tabla_docentes' => ['Vega Sol'],
+            'tabla_turnos' => ['M'], 'tabla_resoluciones' => ['R1'], 'tabla_modos' => ['MODO INSTRUMENTO COMPLEMENTARIO']]);
+        $this->assertSame([4], array_column($filtrado['data'], 'id'));
+        $this->assertSame(1, $filtrado['meta']['total']);
+        $this->assertSame([1], $filtrado['meta']['paginas_rojas']);
+        $this->assertContains('Primero', $filtrado['opciones_tabla']['cursos']);
+        $this->assertSame([4], array_column($this->consultar(['cursos' => [' Segundo '], 'paralelos' => [' B ']])['data'], 'id'));
+        $this->assertSame([4], array_column($this->consultar(['tabla_texto' => 'mAtErIa 4'])['data'], 'id'));
+        $this->assertSame([5], array_column($this->consultar(['tabla_docentes' => ['__SIN_VALOR__']])['data'], 'id'));
+        $this->assertSame([8], array_column($this->consultar(['evaluaciones' => [], 'incluir_promedios' => '1', 'tabla_resoluciones' => ['__SIN_VALOR__']])['data'], 'id'));
+        $this->assertSame(0, $this->consultar(['tabla_cursos' => ['Segundo'], 'tabla_paralelos' => ['A']])['meta']['total']);
+        DB::table('materias')->whereIn('id', [2, 3, 4, 5])->update(['EstadoHabilitacion' => 'PRIMERA EVALUACIÓN']);
+        $this->assertSame([], $this->consultar()['meta']['paginas_rojas']);
+    }
+
+    public function test_reporte_agrupa_todos_los_resultados_por_docente_y_materia_sin_exponer_estudiantes(): void
+    {
+        DB::table('planteldocentes')->where('id', 2)->update(['Nombres' => 'Ana', 'Apellidos' => 'Pérez']);
+        for ($i = 100; $i < 155; $i++) {
+            DB::table('calificaciones')->insert(['id' => $i, 'materias_id' => 1, 'infoestudiantesifas_id' => 1, 'Teorico1' => null, 'Practico1' => 0]);
+        }
+        $reporte = $this->consultar(['reporte' => '1']);
+        $docentes = collect($reporte['docentes'])->keyBy(fn ($docente) => $docente['docente_id'] ?? 'sin');
+        $this->assertSame(60, $reporte['total_registros']);
+        $this->assertSame('Pérez Ana', $docentes[1]['docente']);
+        $this->assertSame('Pérez Ana', $docentes[2]['docente']);
+        $this->assertSame('Sin docente asignado', $docentes['sin']['docente']);
+        $materia = collect($docentes[1]['materias'])->firstWhere('materia_id', 1);
+        $this->assertSame(56, $materia['registros']);
+        $this->assertSame(['Práctico 1' => 1, 'Teórico 1' => 55], $materia['vacios']);
+        $this->assertSame(56, collect($docentes[2]['materias'])->firstWhere('materia_id', 1)['registros']);
+        $this->assertSame([2], array_column($this->consultar(['reporte' => '1', 'tabla_materias' => ['Materia 2']])['docentes'][0]['materias'], 'materia_id'));
+        $reporteDocente = $this->consultar(['reporte' => '1', 'docentes_ids' => [3], 'tabla_materias' => ['Materia 4']]);
+        $this->assertSame(1, $reporteDocente['total_registros']);
+        $this->assertSame('Vega Sol', $reporteDocente['docentes'][0]['docente']);
+        $this->assertStringNotContainsString('López', json_encode($reporte, JSON_UNESCAPED_UNICODE));
+        $this->assertSame([], $this->consultar(['reporte' => '1', 'tabla_texto' => 'sin coincidencia'])['docentes']);
+    }
 }
