@@ -115,6 +115,9 @@ Route::prefix('v1/sesiones-avance')->middleware(['auth:sanctum', UpdateTokenExpi
     Route::get('/mis-estudiantes-cursos', [SesionAvanceEstudiantilController::class, 'misEstudiantesCursos']);
     Route::get('/mis-estudiantes-paginado', [SesionAvanceEstudiantilController::class, 'misEstudiantesPaginado']);
     Route::get('/mis-estudiantes-todos-ids', [SesionAvanceEstudiantilController::class, 'misEstudiantesTodosIds']);
+    Route::get('/horarios-gestor', [SesionAvanceEstudiantilController::class, 'horariosGestor']);
+    Route::post('/horarios-gestor', [SesionAvanceEstudiantilController::class, 'guardarHorariosGestor']);
+    Route::post('/calificaciones-grupales', [SesionAvanceEstudiantilController::class, 'calificacionesGrupales']);
     Route::get('/resumen-baterias', [SesionAvanceEstudiantilController::class, 'resumenBaterias']);
     Route::post('/comparacion',    [SesionAvanceEstudiantilController::class, 'comparacion']);
     Route::get('/mis-sesiones',    [SesionAvanceEstudiantilController::class, 'misSesionesEstudiante']);

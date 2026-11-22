@@ -11,9 +11,16 @@ use App\Models\Usuarioslcchs;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class SesionAvanceEstudiantilController extends Controller
 {
+    private const MODOS_POR_TIPO = [
+        'ESPECIALIDAD' => ['MODO INSTRUMENTOS DE ESPECIALIDAD', 'MODO INSTRUMENTO DE ESPECIALIDAD'],
+        'PRACTICA_CONJUNTOS' => ['MODO PRÁCTICA DE CONJUNTOS', 'MODO PRACTICA DE CONJUNTOS', 'MODO PRÁCTICA DE CONJUNTO', 'MODO PRACTICA DE CONJUNTO'],
+        'COMPLEMENTARIO' => ['MODO INSTRUMENTO COMPLEMENTARIO', 'MODO OTROS'],
+    ];
+
     public function __construct()
     {
         $this->middleware(['auth:sanctum', UpdateTokenExpiration::class]);
@@ -34,27 +41,99 @@ class SesionAvanceEstudiantilController extends Controller
     }
 
     /** Resolver anio_id desde request o usar predeterminado. */
-    private function resolveAnioId(Request $request): ?int
+    private function resolveAnioId(Request $request): int
     {
         $anioId = $request->query('anios_id');
         if ($anioId !== null && $anioId !== '') {
-            return (int) $anioId;
+            $anioId = (int) $anioId;
+        } else {
+            $anioId = $this->getAnioPredeterminadoId();
         }
-        return $this->getAnioPredeterminadoId();
+        if (!$anioId || $anioId < 1) {
+            throw ValidationException::withMessages(['anios_id' => 'Seleccione una gestión o configure una gestión predeterminada.']);
+        }
+        return $anioId;
     }
 
-    /** Scope: filtrar infoestudiantesifas por año vía calificaciones → materias → plandeestudios. */
-    private function scopeAnio($query, ?int $anioId, string $infoAlias = 'info'): void
+    /** Filtrar por materia de la gestión y del tipo de asignación correspondiente. */
+    private function scopeAnio($query, int $anioId, string $tipo, string $infoAlias = 'info'): void
     {
-        if (!$anioId) return;
-        $query->whereExists(function ($sub) use ($anioId, $infoAlias) {
+        $modos = self::MODOS_POR_TIPO[$tipo] ?? [];
+        $query->whereExists(function ($sub) use ($anioId, $infoAlias, $modos) {
             $sub->select(DB::raw(1))
                 ->from('calificaciones as _cal')
                 ->join('materias as _m', '_cal.materias_id', '=', '_m.id')
                 ->join('plandeestudios as _p', '_m.plandeestudios_id', '=', '_p.id')
                 ->whereColumn('_cal.infoestudiantesifas_id', "$infoAlias.id")
-                ->where('_p.anio_id', $anioId);
+                ->where('_p.anio_id', $anioId)
+                ->whereIn('_p.ModoMateria', $modos);
         });
+    }
+
+    private function gestionesPorInscripcion(array $infoIds): array
+    {
+        if (!$infoIds) return [];
+
+        $rows = DB::table('calificaciones as cal')
+            ->join('materias as mat', 'cal.materias_id', '=', 'mat.id')
+            ->join('plandeestudios as plan', 'mat.plandeestudios_id', '=', 'plan.id')
+            ->join('anios as anio', 'plan.anio_id', '=', 'anio.id')
+            ->whereIn('cal.infoestudiantesifas_id', $infoIds)
+            ->select('cal.infoestudiantesifas_id', 'plan.ModoMateria', 'anio.id', 'anio.Anio')
+            ->distinct()
+            ->get();
+
+        $result = [];
+        foreach ($rows as $row) {
+            foreach (self::MODOS_POR_TIPO as $tipo => $modos) {
+                if (in_array(mb_strtoupper(trim((string) $row->ModoMateria), 'UTF-8'), $modos, true)) {
+                    $result[(int) $row->infoestudiantesifas_id][$tipo][(int) $row->id] = $row->Anio;
+                    break;
+                }
+            }
+        }
+        return $result;
+    }
+
+    private function aplicarGestionSesiones($query, array $gestiones, int $anioId): void
+    {
+        $permitidos = [];
+        foreach ($gestiones as $infoId => $tipos) {
+            foreach ($tipos as $tipo => $anios) {
+                if (!array_key_exists($anioId, $anios)) continue;
+                if (count($anios) > 1) {
+                    $ambiguas = (clone $query)->where('sesiones_avance_estudiantil.infoestudiantesifas_id', $infoId)
+                        ->where('sesiones_avance_estudiantil.tipo_asignacion', $tipo)->exists();
+                    if ($ambiguas) {
+                        throw ValidationException::withMessages([
+                            'anios_id' => 'Una inscripción tiene materias del mismo tipo en varias gestiones. Solicite revisar su asignación antes de consultar las sesiones.',
+                        ]);
+                    }
+                    continue;
+                }
+                $permitidos[$tipo][] = $infoId;
+            }
+        }
+
+        $query->where(function ($filtro) use ($permitidos) {
+            foreach ($permitidos as $tipo => $ids) {
+                $filtro->orWhere(function ($sub) use ($tipo, $ids) {
+                    $sub->where('sesiones_avance_estudiantil.tipo_asignacion', $tipo)
+                        ->whereIn('sesiones_avance_estudiantil.infoestudiantesifas_id', $ids);
+                });
+            }
+            if (!$permitidos) $filtro->whereRaw('1 = 0');
+        });
+    }
+
+    private function agregarGestionSesiones($sesiones, array $gestiones): void
+    {
+        foreach ($sesiones as $sesion) {
+            $anios = $gestiones[(int) $sesion->infoestudiantesifas_id][$sesion->tipo_asignacion] ?? [];
+            $sesion->setAttribute('gestion_id', count($anios) === 1 ? array_key_first($anios) : null);
+            $sesion->setAttribute('gestion_nombre', count($anios) === 1 ? reset($anios) : null);
+            $sesion->setAttribute('gestion_ambigua', count($anios) > 1);
+        }
     }
 
     // ─────────────────────────────────────────────────────
@@ -98,7 +177,7 @@ class SesionAvanceEstudiantilController extends Controller
             ->join('instituciones as i', 'info.instituciones_id', '=', 'i.id')
             ->where('info.planteldocadmins_id', $docenteId)
             ->where('info.instituciones_id', $instId);
-        $this->scopeAnio($qEsp, $anioId);
+        $this->scopeAnio($qEsp, $anioId, 'ESPECIALIDAD');
         $especialidad = $qEsp->select($selectBase)
             ->orderBy('e.Ap_Paterno')
             ->orderBy('e.Ap_Materno')
@@ -112,7 +191,7 @@ class SesionAvanceEstudiantilController extends Controller
             ->join('instituciones as i', 'info.instituciones_id', '=', 'i.id')
             ->where('info.planteldocadmins_idPC', $docenteId)
             ->where('info.instituciones_id', $instId);
-        $this->scopeAnio($qPra, $anioId);
+        $this->scopeAnio($qPra, $anioId, 'PRACTICA_CONJUNTOS');
         $practica = $qPra->select($selectBase)
             ->orderBy('e.Ap_Paterno')
             ->orderBy('e.Ap_Materno')
@@ -126,7 +205,7 @@ class SesionAvanceEstudiantilController extends Controller
             ->join('instituciones as i', 'info.instituciones_id', '=', 'i.id')
             ->where('info.planteldocadmins_idOtros', $docenteId)
             ->where('info.instituciones_id', $instId);
-        $this->scopeAnio($qCom, $anioId);
+        $this->scopeAnio($qCom, $anioId, 'COMPLEMENTARIO');
         $complementario = $qCom->select($selectBase)
             ->orderBy('e.Ap_Paterno')
             ->orderBy('e.Ap_Materno')
@@ -158,7 +237,7 @@ class SesionAvanceEstudiantilController extends Controller
     }
 
     /** Query base de estudiantes asignados a un docente por tipo. */
-    private function queryMisEstudiantesBase($userOrDocenteId, string $tipo, ?int $instId = null)
+    private function queryMisEstudiantesBase($userOrDocenteId, string $tipo, ?int $instId, int $anioId)
     {
         $col = $this->columnaDocentePorTipo($tipo);
         if (!$col) return null;
@@ -195,7 +274,7 @@ class SesionAvanceEstudiantilController extends Controller
             ->join('instituciones as i', 'info.instituciones_id', '=', 'i.id')
             ->where("info.$col", $docenteId)
             ->where('info.instituciones_id', $instId);
-        $this->scopeAnio($q, $this->getAnioPredeterminadoId());
+        $this->scopeAnio($q, $anioId, $tipo);
         return $q->select($selectBase);
     }
 
@@ -236,11 +315,15 @@ class SesionAvanceEstudiantilController extends Controller
         $anioId = $this->resolveAnioId($request);
 
         $base = DB::table('infoestudiantesifas as info')->where('info.instituciones_id', $instId);
-        $this->scopeAnio($base, $anioId);
-
-        $especialidad = (clone $base)->where('info.planteldocadmins_id', $docenteId)->count();
-        $practica     = (clone $base)->where('info.planteldocadmins_idPC', $docenteId)->count();
-        $complement   = (clone $base)->where('info.planteldocadmins_idOtros', $docenteId)->count();
+        $qEsp = (clone $base)->where('info.planteldocadmins_id', $docenteId);
+        $qPra = (clone $base)->where('info.planteldocadmins_idPC', $docenteId);
+        $qCom = (clone $base)->where('info.planteldocadmins_idOtros', $docenteId);
+        $this->scopeAnio($qEsp, $anioId, 'ESPECIALIDAD');
+        $this->scopeAnio($qPra, $anioId, 'PRACTICA_CONJUNTOS');
+        $this->scopeAnio($qCom, $anioId, 'COMPLEMENTARIO');
+        $especialidad = $qEsp->count();
+        $practica = $qPra->count();
+        $complement = $qCom->count();
 
         $anioNombre = $anioId ? DB::table('anios')->where('id', $anioId)->value('Anio') : null;
 
@@ -289,7 +372,7 @@ class SesionAvanceEstudiantilController extends Controller
         $q = DB::table('infoestudiantesifas as info')
             ->where("info.$col", $docenteId)
             ->where('info.instituciones_id', $instId);
-        $this->scopeAnio($q, $anioId);
+        $this->scopeAnio($q, $anioId, $tipo);
 
         $cursos = (clone $q)
             ->select('info.Curso_Solicitado')
@@ -363,7 +446,7 @@ class SesionAvanceEstudiantilController extends Controller
         $rows = DB::table('infoestudiantesifas as info')
             ->where("info.$col", $docenteId)
             ->where('info.instituciones_id', $instId);
-        $this->scopeAnio($rows, $anioId);
+        $this->scopeAnio($rows, $anioId, $tipo);
         $rows = $rows->select([
                 'info.Curso_Solicitado',
                 'info.Paralelo_Solicitado',
@@ -409,6 +492,7 @@ class SesionAvanceEstudiantilController extends Controller
 
         $tipo = (string) $request->query('tipo_asignacion', '');
         if (!$tipo) return response()->json(['message' => 'tipo_asignacion requerido.'], 422);
+        $anioId = $this->resolveAnioId($request);
 
         if ($isAdmin) {
             $adminDocenteId = (int) $request->query('planteldocentes_id', 0);
@@ -417,9 +501,11 @@ class SesionAvanceEstudiantilController extends Controller
             }
             $docente = Planteldocentes::find($adminDocenteId);
             if (!$docente) return response()->json(['message' => 'Docente no encontrado.'], 404);
-            $q = $this->queryMisEstudiantesBase($docente->id, $tipo, (int) $docente->instituciones_id);
+            $q = $this->queryMisEstudiantesBase($docente->id, $tipo, (int) $docente->instituciones_id, $anioId);
+            $docenteId = (int) $docente->id;
         } else {
-            $q = $this->queryMisEstudiantesBase($user, $tipo);
+            $q = $this->queryMisEstudiantesBase($user, $tipo, null, $anioId);
+            $docenteId = (int) $user->id;
         }
         if (!$q) return response()->json(['message' => 'tipo_asignacion inválido.'], 422);
 
@@ -438,43 +524,38 @@ class SesionAvanceEstudiantilController extends Controller
         if (!empty($turnos)) $q->whereIn('info.Turno', $turnos);
         if (!empty($instrumentos)) $q->whereIn('info.InstrumentoMusical', $instrumentos);
 
-        // 1. APLICAR EL FILTRO POR DÍA (si se envía desde Angular)
-        // $diaSemana = $request->query('dia_semana'); // Ej: 1 para Lunes
-        // if (!empty($diaSemana)) {
-        //     // Hacemos JOIN con la tabla de horarios para filtrar
-        //     $q->join('horarios_estudiantes as he', function ($join) use ($tipo) {
-        //         $join->on('he.infoestudiantesifas_id', '=', 'info.id')
-        //              ->where('he.tipo_asignacion', '=', $tipo);
-        //     })->where('he.dia_semana', (int) $diaSemana);
-        // }
-
-        // 1. APLICAR EL FILTRO POR DÍA Y HORA (Modo Live)
-        $diaSemana = $request->query('dia_semana'); 
-        $horaActual = $request->query('hora_actual'); // Ej: '14:51'
+        $diaSemana = $request->query('dia_semana');
+        $horaActual = $request->query('hora_actual');
 
         if (!empty($diaSemana)) {
-            $q->join('horarios_estudiantes as he', function ($join) use ($tipo) {
-                $join->on('he.infoestudiantesifas_id', '=', 'info.id')
-                     ->where('he.tipo_asignacion', '=', $tipo);
-            })->where('he.dia_semana', (int) $diaSemana);
+            $q->whereExists(function ($horarios) use ($tipo, $diaSemana, $horaActual) {
+                $horarios->select(DB::raw(1))
+                    ->from('horarios_estudiantes as he')
+                    ->whereColumn('he.infoestudiantesifas_id', 'info.id')
+                    ->where('he.tipo_asignacion', $tipo);
 
-            // Si Angular envió la hora actual, filtramos por rango
-            if (!empty($horaActual)) {
-                $q->where(function($query) use ($horaActual) {
-                    /*
-                     * LÓGICA MEJORADA:
-                     * La hora actual debe ser MAYOR o IGUAL a (hora_inicio - 1 hora)
-                     * Y MENOR o IGUAL a (hora_fin + 1 hora)
-                     * 3600 segundos = 1 hora.
-                     */
-                    $query->whereRaw("
-                        (TIME_TO_SEC(?) >= TIME_TO_SEC(he.hora_inicio) - 3600) 
-                        AND 
-                        (TIME_TO_SEC(?) <= TIME_TO_SEC(COALESCE(he.hora_fin, he.hora_inicio)) + 3600)
-                    ", [$horaActual, $horaActual])
-                    ->orWhereNull('he.hora_inicio'); // Mantiene a los que no tienen hora configurada
-                });
-            }
+                if (!empty($horaActual)) {
+                    $diaAnterior = (int) $diaSemana === 1 ? 7 : (int) $diaSemana - 1;
+                    $horarios->where(function ($rango) use ($diaSemana, $diaAnterior, $horaActual) {
+                        $rango->where(function ($normal) use ($diaSemana, $horaActual) {
+                            $normal->where('he.dia_semana', (int) $diaSemana)
+                                ->whereRaw('SUBSTR(he.hora_inicio, 1, 5) <= SUBSTR(he.hora_fin, 1, 5)')
+                                ->whereRaw('SUBSTR(he.hora_inicio, 1, 5) <= ?', [$horaActual])
+                                ->whereRaw('SUBSTR(he.hora_fin, 1, 5) >= ?', [$horaActual]);
+                        })->orWhere(function ($inicio) use ($diaSemana, $horaActual) {
+                            $inicio->where('he.dia_semana', (int) $diaSemana)
+                                ->whereRaw('SUBSTR(he.hora_inicio, 1, 5) > SUBSTR(he.hora_fin, 1, 5)')
+                                ->whereRaw('SUBSTR(he.hora_inicio, 1, 5) <= ?', [$horaActual]);
+                        })->orWhere(function ($fin) use ($diaAnterior, $horaActual) {
+                            $fin->where('he.dia_semana', $diaAnterior)
+                                ->whereRaw('SUBSTR(he.hora_inicio, 1, 5) > SUBSTR(he.hora_fin, 1, 5)')
+                                ->whereRaw('SUBSTR(he.hora_fin, 1, 5) >= ?', [$horaActual]);
+                        });
+                    });
+                } else {
+                    $horarios->where('he.dia_semana', (int) $diaSemana);
+                }
+            });
         }
         if ($search !== '') {
             $searchLower = mb_strtolower($search);
@@ -498,12 +579,33 @@ class SesionAvanceEstudiantilController extends Controller
             });
         }
 
-        $q->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre');
+        if ($request->boolean('agrupar_curso')) {
+            $q->orderByRaw("TRIM(COALESCE(info.Curso_Solicitado, ''))")
+                ->orderByRaw("TRIM(COALESCE(info.Paralelo_Solicitado, ''))");
+        }
+        $q->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre')->orderBy('info.id');
 
         $paginated = $q->paginate($perPage);
         // 2. ADJUNTAR LOS HORARIOS A LOS ESTUDIANTES OBTENIDOS
         $estudiantesIds = collect($paginated->items())->pluck('infoestudiantesifas_id')->toArray();
         if (!empty($estudiantesIds)) {
+            $ultimosAvances = DB::table('sesiones_avance_estudiantil as sesion')
+                ->whereIn('sesion.infoestudiantesifas_id', $estudiantesIds)
+                ->where('sesion.planteldocentes_id', $docenteId)
+                ->where('sesion.tipo_asignacion', $tipo)
+                ->where('sesion.id', '=', function ($ultima) {
+                    $ultima->select('anterior.id')
+                        ->from('sesiones_avance_estudiantil as anterior')
+                        ->whereColumn('anterior.infoestudiantesifas_id', 'sesion.infoestudiantesifas_id')
+                        ->whereColumn('anterior.planteldocentes_id', 'sesion.planteldocentes_id')
+                        ->whereColumn('anterior.tipo_asignacion', 'sesion.tipo_asignacion')
+                        ->orderByDesc('anterior.fecha')
+                        ->orderByDesc('anterior.id')
+                        ->limit(1);
+                })
+                ->get(['sesion.infoestudiantesifas_id', 'sesion.avance_texto'])
+                ->keyBy('infoestudiantesifas_id');
+
             $horarios = DB::table('horarios_estudiantes')
                 ->whereIn('infoestudiantesifas_id', $estudiantesIds)
                 ->where('tipo_asignacion', $tipo)
@@ -513,6 +615,18 @@ class SesionAvanceEstudiantilController extends Controller
 
             foreach ($paginated->items() as $item) {
                 $item->horarios = $horarios->get($item->infoestudiantesifas_id, []);
+                $avance = $ultimosAvances->get($item->infoestudiantesifas_id)?->avance_texto;
+                $texto = $avance === null ? null : mb_strtoupper(html_entity_decode(strip_tags($avance), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                $sinContenido = $texto === null || (
+                    preg_match('/[^\s\x{00A0}\x{200B}\x{FEFF}]/u', $texto) === 0
+                    && !preg_match('/<(?:img|video|audio|iframe|object|embed|svg|canvas)\b/i', $avance)
+                );
+                $item->estado_avance = match (true) {
+                    $sinContenido => 'sin_avance',
+                    str_contains($texto, 'RETIRADO') => 'retirado',
+                    str_contains($texto, 'ABANDONO') => 'abandono',
+                    default => 'normal',
+                };
             }
         }
 
@@ -533,15 +647,16 @@ class SesionAvanceEstudiantilController extends Controller
 
         $tipo = (string) $request->query('tipo_asignacion', '');
         if (!$tipo) return response()->json(['message' => 'tipo_asignacion requerido.'], 422);
+        $anioId = $this->resolveAnioId($request);
 
         if ($isAdmin) {
             $adminDocenteId = (int) $request->query('planteldocentes_id', 0);
             if ($adminDocenteId <= 0) return response()->json(['message' => 'Debe indicar planteldocentes_id.'], 422);
             $docente = Planteldocentes::find($adminDocenteId);
             if (!$docente) return response()->json(['message' => 'Docente no encontrado.'], 404);
-            $q = $this->queryMisEstudiantesBase($docente->id, $tipo, (int) $docente->instituciones_id);
+            $q = $this->queryMisEstudiantesBase($docente->id, $tipo, (int) $docente->instituciones_id, $anioId);
         } else {
-            $q = $this->queryMisEstudiantesBase($user, $tipo);
+            $q = $this->queryMisEstudiantesBase($user, $tipo, null, $anioId);
         }
         if (!$q) return response()->json(['message' => 'tipo_asignacion inválido.'], 422);
 
@@ -559,6 +674,152 @@ class SesionAvanceEstudiantilController extends Controller
         $results = $q->get();
 
         return response()->json(['data' => $results]);
+    }
+
+    private function queryGestorHorarios(Request $request, string $tipo)
+    {
+        $user = $request->user();
+        $anioId = $this->resolveAnioId($request);
+        if ($user instanceof Planteldocentes) {
+            return $this->queryMisEstudiantesBase($user, $tipo, null, $anioId);
+        }
+        if ($user instanceof Planteladministrativos || $user instanceof Usuarioslcchs) {
+            $docente = Planteldocentes::find((int) $request->query('planteldocentes_id', 0));
+            if ($docente) {
+                return $this->queryMisEstudiantesBase($docente->id, $tipo, (int) $docente->instituciones_id, $anioId);
+            }
+        }
+        return null;
+    }
+
+    public function horariosGestor(Request $request)
+    {
+        $tipo = (string) $request->query('tipo_asignacion', '');
+        $q = $this->queryGestorHorarios($request, $tipo);
+        if (!$q) return response()->json(['message' => 'No se pudo acceder a los estudiantes de esta asignación.'], 403);
+
+        $estudiantes = $q->orderBy('info.Curso_Solicitado')->orderBy('info.Paralelo_Solicitado')
+            ->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre')->get();
+        $horarios = DB::table('horarios_estudiantes')
+            ->whereIn('infoestudiantesifas_id', $estudiantes->pluck('infoestudiantesifas_id'))
+            ->where('tipo_asignacion', $tipo)
+            ->orderBy('dia_semana')->orderBy('hora_inicio')->get()
+            ->groupBy('infoestudiantesifas_id');
+        foreach ($estudiantes as $estudiante) {
+            $estudiante->horarios = $horarios->get($estudiante->infoestudiantesifas_id, collect());
+        }
+        return response()->json(['data' => $estudiantes]);
+    }
+
+    public function guardarHorariosGestor(Request $request)
+    {
+        $tipo = (string) $request->query('tipo_asignacion', '');
+        $q = $this->queryGestorHorarios($request, $tipo);
+        if (!$q) return response()->json(['message' => 'No se pudo acceder a los estudiantes de esta asignación.'], 403);
+
+        $datos = $request->validate([
+            'estudiantes' => 'required|array|min:1',
+            'estudiantes.*.id' => 'required|integer|distinct',
+            'estudiantes.*.horarios' => 'present|array',
+            'estudiantes.*.horarios.*.dia_semana' => 'required|integer|between:1,7',
+            'estudiantes.*.horarios.*.hora_inicio' => 'present|nullable|date_format:H:i',
+            'estudiantes.*.horarios.*.hora_fin' => 'present|nullable|date_format:H:i',
+        ]);
+        $ids = array_column($datos['estudiantes'], 'id');
+        $autorizados = $q->whereIn('info.id', $ids)->get()->pluck('infoestudiantesifas_id')
+            ->map(fn ($id) => (int) $id)->all();
+        if (count($autorizados) !== count($ids)) {
+            return response()->json(['message' => 'Hay estudiantes que no pertenecen a esta asignación.'], 403);
+        }
+
+        DB::transaction(function () use ($datos, $ids, $tipo) {
+            DB::table('horarios_estudiantes')->whereIn('infoestudiantesifas_id', $ids)
+                ->where('tipo_asignacion', $tipo)->delete();
+            $filas = [];
+            foreach ($datos['estudiantes'] as $estudiante) {
+                foreach ($estudiante['horarios'] as $horario) {
+                    $filas[] = [
+                        'infoestudiantesifas_id' => (int) $estudiante['id'],
+                        'tipo_asignacion' => $tipo,
+                        'dia_semana' => (int) $horario['dia_semana'],
+                        'hora_inicio' => $horario['hora_inicio'],
+                        'hora_fin' => $horario['hora_fin'],
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+            }
+            foreach (array_chunk($filas, 500) as $bloque) {
+                DB::table('horarios_estudiantes')->insert($bloque);
+            }
+        });
+
+        return response()->json(['message' => 'Horarios actualizados correctamente.']);
+    }
+
+    public function calificacionesGrupales(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof Planteldocentes) && !($user instanceof Planteladministrativos) && !($user instanceof Usuarioslcchs)) {
+            return response()->json(['message' => 'No autorizado.'], 403);
+        }
+
+        $datos = $request->validate([
+            'info_ids' => 'required|array|min:1|max:200',
+            'info_ids.*' => 'required|integer|min:1|distinct',
+            'tipo_asignacion' => 'required|in:ESPECIALIDAD,PRACTICA_CONJUNTOS,COMPLEMENTARIO',
+            'anios_id' => 'nullable|integer|min:1',
+            'planteldocentes_id' => 'nullable|integer|min:1',
+        ]);
+        if ($user instanceof Planteldocentes) {
+            $docente = $user;
+        } else {
+            $docente = Planteldocentes::find((int) ($datos['planteldocentes_id'] ?? 0));
+            $esSuper = $user instanceof Usuarioslcchs && empty($user->instituciones_id);
+            if (!$docente || (!$esSuper && ((int) $user->instituciones_id < 1 || (int) $user->instituciones_id !== (int) $docente->instituciones_id))) {
+                return response()->json(['message' => 'Docente no autorizado.'], 403);
+            }
+        }
+        $anioId = $this->resolveAnioId($request);
+        $ids = array_map('intval', $datos['info_ids']);
+        $autorizados = $this->queryMisEstudiantesBase($docente, $datos['tipo_asignacion'], null, $anioId)
+            ->whereIn('info.id', $ids)->get()->pluck('infoestudiantesifas_id')->map(fn ($id) => (int) $id)->all();
+        if (count($autorizados) !== count($ids)) {
+            return response()->json(['message' => 'Hay estudiantes que no pertenecen a esta asignación o gestión.'], 403);
+        }
+
+        $calificaciones = DB::table('calificaciones as cal')
+            ->join('materias as m', 'cal.materias_id', '=', 'm.id')
+            ->join('plandeestudios as p', 'm.plandeestudios_id', '=', 'p.id')
+            ->join('carreras as c', 'p.carreras_id', '=', 'c.id')
+            ->leftJoin('anios as a', 'p.anio_id', '=', 'a.id')
+            ->whereIn('cal.infoestudiantesifas_id', $ids)
+            ->where('p.anio_id', $anioId)
+            ->where('c.instituciones_id', (int) $docente->instituciones_id)
+            ->select('cal.*', 'm.Paralelo as MateriaParalelo', 'p.NombreMateria', 'p.SiglaMateria',
+                'p.LvlCurso', 'a.Anio', 'c.NombreCarrera', 'c.CantidadEvaluaciones')
+            ->orderBy('p.RangoLvlCurso')->orderBy('p.Rango')->orderBy('p.NombreMateria')->orderBy('cal.id')
+            ->get();
+
+        $porEstudiante = array_fill_keys($ids, []);
+        foreach ($calificaciones as $cal) {
+            $porEstudiante[(int) $cal->infoestudiantesifas_id][(int) $cal->materias_id] = [
+                'materia_id' => (int) $cal->materias_id,
+                'nombre_materia' => $cal->NombreMateria,
+                'sigla_materia' => $cal->SiglaMateria,
+                'lvl_curso' => $cal->LvlCurso,
+                'paralelo' => $cal->MateriaParalelo,
+                'anio' => $cal->Anio,
+                'carrera' => $cal->NombreCarrera,
+                'cantidad_evaluaciones' => $cal->CantidadEvaluaciones,
+                'calificacion' => $cal,
+            ];
+        }
+        $resultado = [];
+        foreach ($ids as $id) {
+            $resultado[] = ['infoestudiantesifas_id' => $id, 'materias' => array_values($porEstudiante[$id])];
+        }
+        return response()->json(['data' => $resultado]);
     }
 
     // ─────────────────────────────────────────────────────
@@ -597,6 +858,7 @@ class SesionAvanceEstudiantilController extends Controller
             $docenteId = (int) $user->id;
         }
 
+        $request->validate(['anios_id' => ['nullable', 'integer', 'min:1']]);
         $query = SesionAvanceEstudiantil::where('infoestudiantesifas_id', $infoId)
             ->where('planteldocentes_id', $docenteId)
             ->where('tipo_asignacion', $tipo);
@@ -604,12 +866,17 @@ class SesionAvanceEstudiantilController extends Controller
         if ($eval !== null && $eval !== '') {
             $query->where('evaluacion', (int) $eval);
         }
+        $gestiones = $this->gestionesPorInscripcion([$infoId]);
+        if ($request->filled('anios_id')) {
+            $this->aplicarGestionSesiones($query, $gestiones, (int) $request->query('anios_id'));
+        }
 
         $perPage = (int) $request->query('per_page', 0);
         if ($perPage > 0) {
             $paginated = $query->orderBy('fecha', 'desc')
                 ->orderBy('id', 'desc')
                 ->paginate($perPage);
+            $this->agregarGestionSesiones($paginated->items(), $gestiones);
             return response()->json($paginated);
         }
 
@@ -617,6 +884,7 @@ class SesionAvanceEstudiantilController extends Controller
             ->orderBy('id', 'desc')
             ->get();
 
+        $this->agregarGestionSesiones($sesiones, $gestiones);
         return response()->json(['data' => $sesiones]);
     }
 
@@ -898,6 +1166,7 @@ class SesionAvanceEstudiantilController extends Controller
     // ─────────────────────────────────────────────────────
     public function misSesionesEstudiante(Request $request)
     {
+        $validated = $request->validate(['anios_id' => ['nullable', 'integer', 'min:1']]);
         $user = $request->user();
 
         if ($user instanceof \App\Models\Estudiantesifas) {
@@ -906,11 +1175,7 @@ class SesionAvanceEstudiantilController extends Controller
             $infoQuery = DB::table('infoestudiantesifas as info')
                 ->where('info.estudiantesifas_id', (int) $user->id);
             
-            // OPCIONAL: Si quieres que el estudiante SÓLO vea las sesiones de este año, 
-            // descomenta las 2 líneas de abajo. Si las dejas comentadas (recomendado), 
-            // el estudiante podrá ver su historial de años pasados también.
-            // $anioId = $this->getAnioPredeterminadoId();
-            // $this->scopeAnio($infoQuery, $anioId); 
+            // El estudiante conserva el acceso a su historial de años pasados.
             
             $infoIds = $infoQuery->pluck('info.id')->toArray();
 
@@ -945,12 +1210,17 @@ class SesionAvanceEstudiantilController extends Controller
         if ($eval !== null && $eval !== '') {
             $query->where('sesiones_avance_estudiantil.evaluacion', (int) $eval);
         }
+        $gestiones = $this->gestionesPorInscripcion($infoIds);
+        if (isset($validated['anios_id'])) {
+            $this->aplicarGestionSesiones($query, $gestiones, (int) $validated['anios_id']);
+        }
 
         $perPage = (int) $request->query('per_page', 0);
         if ($perPage > 0) {
             $paginated = $query->orderBy('sesiones_avance_estudiantil.fecha', 'desc')
                 ->orderBy('sesiones_avance_estudiantil.id', 'desc')
                 ->paginate($perPage);
+            $this->agregarGestionSesiones($paginated->items(), $gestiones);
             return response()->json($paginated);
         }
 
@@ -958,6 +1228,7 @@ class SesionAvanceEstudiantilController extends Controller
             ->orderBy('sesiones_avance_estudiantil.id', 'desc')
             ->get();
 
+        $this->agregarGestionSesiones($sesiones, $gestiones);
         return response()->json(['data' => $sesiones]);
     }
 
@@ -990,7 +1261,8 @@ class SesionAvanceEstudiantilController extends Controller
         }
 
         // Obtener todos los estudiantes asignados al docente en este tipo
-        $estudiantesIds = $this->obtenerIdsEstudiantes($user, $tipo, $cursos);
+        $anioId = $this->resolveAnioId($request);
+        $estudiantesIds = $this->obtenerIdsEstudiantes($user, $tipo, $anioId, $cursos);
         if (empty($estudiantesIds)) {
             return response()->json(['message' => 'No tienes estudiantes asignados.'], 422);
         }
@@ -1542,7 +1814,7 @@ class SesionAvanceEstudiantilController extends Controller
     /**
      * Helper: obtener IDs de infoestudiantesifas asignados al docente por tipo.
      */
-    private function obtenerIdsEstudiantes($user, string $tipo, array $cursoKeys = []): array
+    private function obtenerIdsEstudiantes($user, string $tipo, int $anioId, array $cursoKeys = []): array
     {
         $docenteId = (int) $user->id;
         $instId    = (int) $user->instituciones_id;
@@ -1561,18 +1833,7 @@ class SesionAvanceEstudiantilController extends Controller
             ->where($column, $docenteId)
             ->where('instituciones_id', $instId);
 
-        // Filtrar por año predeterminado
-        $anioId = $this->getAnioPredeterminadoId();
-        if ($anioId) {
-            $q->whereExists(function ($sub) use ($anioId) {
-                $sub->select(DB::raw(1))
-                    ->from('calificaciones as _cal')
-                    ->join('materias as _m', '_cal.materias_id', '=', '_m.id')
-                    ->join('plandeestudios as _p', '_m.plandeestudios_id', '=', '_p.id')
-                    ->whereColumn('_cal.infoestudiantesifas_id', 'infoestudiantesifas.id')
-                    ->where('_p.anio_id', $anioId);
-            });
-        }
+        $this->scopeAnio($q, $anioId, $tipo, 'infoestudiantesifas');
 
         // Filtro opcional por curso+paralelo+turno (keys: "CURSO||PARALELO||TURNO")
         // Compatibilidad: también acepta "CURSO||TURNO".
