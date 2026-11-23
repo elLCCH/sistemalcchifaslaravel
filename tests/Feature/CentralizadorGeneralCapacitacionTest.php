@@ -130,6 +130,44 @@ class CentralizadorGeneralCapacitacionTest extends TestCase
         ], $firmasPorModo);
         $this->assertEqualsCanonicalizing(['M3', 'M3', 'M4', 'M4', 'M5', 'M5'], array_column($result['meta']['firmas_docentes'], 'SiglaMateria'));
 
+        DB::table('planteldocentes')->insert(['id' => 7, 'Nombres' => 'Otro Piano', 'Apellidos' => 'Docente']);
+        DB::table('estudiantesifas')->insert([
+            ['id' => 3, 'Ap_Paterno' => 'Rojas', 'Ap_Materno' => '', 'Nombre' => 'Luis', 'CI' => '789', 'Sexo' => 'M'],
+            ['id' => 4, 'Ap_Paterno' => 'Diaz', 'Ap_Materno' => '', 'Nombre' => 'Juan', 'CI' => '987', 'Sexo' => 'M'],
+        ]);
+        DB::table('infoestudiantesifas')->insert([
+            ['id' => 3, 'estudiantesifas_id' => 3, 'instituciones_id' => 1, 'InstrumentoMusical' => 'Piano',
+                'InstrumentoMusicalSecundario' => 'Guitarra', 'planteldocadmins_id' => 1,
+                'planteldocadmins_idPC' => 2, 'planteldocadmins_idOtros' => 3],
+            ['id' => 4, 'estudiantesifas_id' => 4, 'instituciones_id' => 1, 'InstrumentoMusical' => 'Piano',
+                'InstrumentoMusicalSecundario' => 'Flauta', 'planteldocadmins_id' => 7,
+                'planteldocadmins_idPC' => 2, 'planteldocadmins_idOtros' => 3],
+        ]);
+        foreach ([3, 4, 5] as $materiaId) {
+            foreach ([3, 4] as $estudianteId) {
+                DB::table('calificaciones')->insert([
+                    'id' => $materiaId * 10 + $estudianteId - 1, 'infoestudiantesifas_id' => $estudianteId,
+                    'materias_id' => $materiaId, 'Promedio' => 80,
+                ]);
+            }
+        }
+
+        $result = (new PublicHorariosController())->centralizadorGeneral($request)->getData(true);
+        $firmas = $result['meta']['firmas_docentes'];
+        $porModo = fn ($modo) => array_values(array_filter($firmas, fn ($firma) => $firma['ModoMateria'] === $modo));
+        $this->assertEqualsCanonicalizing(
+            ['Especialidad Piano Docente', 'Especialidad Violin Docente', 'Otro Piano Docente'],
+            array_column($porModo('MODO INSTRUMENTOS DE ESPECIALIDAD'), 'Docente')
+        );
+        $this->assertEqualsCanonicalizing(
+            ['Conjunto Piano Docente', 'Conjunto Violin Docente'],
+            array_column($porModo('MODO PRÁCTICA DE CONJUNTOS'), 'Docente')
+        );
+        $this->assertEqualsCanonicalizing(
+            ['Piano|Flauta', 'Piano|Guitarra', 'Violin|Piano'],
+            array_map(fn ($firma) => $firma['Especialidad'] . '|' . $firma['InstrumentoSecundario'], $porModo('MODO INSTRUMENTO COMPLEMENTARIO'))
+        );
+
         DB::table('plandeestudios')->where('id', 2)->update(['NombreMateria' => 'Materia 1']);
         DB::table('planteldocentesmaterias')->insert([
             ['planteldocentes_id' => 1, 'materias_id' => 1],

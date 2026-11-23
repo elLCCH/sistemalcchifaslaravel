@@ -335,7 +335,10 @@ class PublicHorariosController extends Controller
                 return $row->NombreMateria !== '' && $row->Docente !== '';
             }))
             ->unique(function ($row) {
-                return ($row->NombreMateria ?? '') . '|' . ($row->SiglaMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->ModoMateria ?? '') . '|' . ($row->Especialidad ?? '') . '|' . ($row->InstrumentoSecundario ?? '') . '|' . ($row->Docente ?? '');
+                $instrumentoSecundario = ($row->ModoMateria ?? '') === 'MODO INSTRUMENTO COMPLEMENTARIO'
+                    ? ($row->InstrumentoSecundario ?? '')
+                    : '';
+                return ($row->NombreMateria ?? '') . '|' . ($row->SiglaMateria ?? '') . '|' . ($row->TipoMateria ?? '') . '|' . ($row->ModoMateria ?? '') . '|' . ($row->Especialidad ?? '') . '|' . $instrumentoSecundario . '|' . ($row->Docente ?? '');
             })
             ->values();
 
