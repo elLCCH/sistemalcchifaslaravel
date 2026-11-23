@@ -72,6 +72,7 @@ class CentralizadorGeneralCapacitacionTest extends TestCase
         $result = (new PublicHorariosController())->centralizadorGeneral($request)->getData(true);
         $this->assertSame(['NO EXISTE REPROBADOS', null], array_column($result['data'], 'Capacitacion'));
         $this->assertSame([50, 50], array_column($result['data'], 'Promedio'));
+        $this->assertSame([1, 2], array_column($result['data'], 'Rango'));
 
         DB::table('planteldocentes')->insert([
             ['id' => 1, 'Nombres' => 'Especialidad Piano', 'Apellidos' => 'Docente'],

@@ -185,6 +185,7 @@ class PublicHorariosController extends Controller
                 'm.Turno',
                 'pe.NombreMateria',
                 'pe.SiglaMateria',
+                'pe.Rango',
                 'c.Promedio',
                 'c.PruebaRecuperacion',
                 'c.EstadoRegistroMateria',
