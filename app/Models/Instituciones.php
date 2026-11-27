@@ -15,6 +15,8 @@ class Instituciones extends Model
         'NIT',
         'Nombre',
         'Logo',
+        'LogoBoletin2026',
+        'LogoCentralizador2026',
         'BannerInicial',
         'ImagenVision',
         'ImagenMision',
@@ -39,5 +41,10 @@ class Instituciones extends Model
         'ColorBajo',
         'Estado',
         'Visibilidad',
+    ];
+
+    protected $casts = [
+        'LogoBoletin2026' => 'array',
+        'LogoCentralizador2026' => 'array',
     ];
 }

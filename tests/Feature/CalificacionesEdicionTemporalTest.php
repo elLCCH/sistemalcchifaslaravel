@@ -78,6 +78,21 @@ class CalificacionesEdicionTemporalTest extends TestCase
         $this->assertSame(70, $row->PruebaRecuperacion);
     }
 
+    public function test_guardar_una_fila_no_sobrescribe_las_notas_recientes_de_otro_estudiante(): void
+    {
+        DB::table('calificaciones')->insert(['id' => 2, 'materias_id' => 1, 'Teorico3' => 10, 'Practico3' => 20]);
+        DB::table('calificaciones')->where('id', 2)->update(['Teorico3' => 28, 'Practico3' => 65, 'Promedio' => 93]);
+
+        $response = $this->guardar((object) ['instituciones_id' => null], true);
+
+        $this->assertSame(1, $response->getData()->data->updated);
+        $this->assertSame(25, DB::table('calificaciones')->where('id', 1)->value('Teorico3'));
+        $other = DB::table('calificaciones')->where('id', 2)->first();
+        $this->assertSame(28, $other->Teorico3);
+        $this->assertSame(65, $other->Practico3);
+        $this->assertSame(93, $other->Promedio);
+    }
+
     public function test_sin_edicion_temporal_no_modifica_evaluaciones_en_segunda_instancia(): void
     {
         $this->guardar((object) ['instituciones_id' => null], false);

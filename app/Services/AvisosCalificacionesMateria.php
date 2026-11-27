@@ -28,6 +28,7 @@ class AvisosCalificacionesMateria
 
         $avisos = [];
         $ordinarias = [];
+        $noHabilitadas = [];
         $segunda = [];
         foreach ($materias as $materia) {
             $estado = strtoupper(trim((string) $materia->EstadoHabilitacion));
@@ -36,10 +37,14 @@ class AvisosCalificacionesMateria
             $habilitadas = array_values(array_filter($habilitadas, fn ($numero) => $cantidad === null || $numero <= $cantidad));
             $avisos[$materia->id] = [
                 'evaluaciones' => [],
+                'evaluaciones_no_habilitadas' => [],
                 'segunda_instancia' => [],
-                'configuracion_desconocida' => $cantidad === null && count($habilitadas) > 0,
+                'configuracion_desconocida' => $cantidad === null,
             ];
             if ($cantidad !== null && $habilitadas) $ordinarias[$materia->id] = $habilitadas;
+            if ($cantidad !== null && $cantidad > 0) {
+                $noHabilitadas[$materia->id] = array_values(array_diff(range(1, $cantidad), $habilitadas));
+            }
             if (!str_contains($estado, 'DESHABIL') && !str_contains($estado, 'NINGUNA')
                 && (str_contains($estado, 'SEGUNDA INSTANCIA') || str_contains($estado, 'EVALUACIÓN FINAL') || str_contains($estado, 'EVALUACION FINAL'))) {
                 $segunda[] = $materia->id;
@@ -67,6 +72,26 @@ class AvisosCalificacionesMateria
                     $nombres = $estudiantes->filter(fn ($estudiante) => (int) $estudiante->{"vacios$numero"} === 1)
                         ->unique('infoestudiantesifas_id')->map(fn ($estudiante) => $this->nombreEstudiante($estudiante))->values()->all();
                     if ($nombres) $avisos[$materiaId]['evaluaciones'][] = ['numero' => $numero, 'estudiantes' => count($nombres), 'nombres' => $nombres];
+                }
+            }
+        }
+
+        $noHabilitadas = array_filter($noHabilitadas);
+        if ($noHabilitadas) {
+            $query = $this->calificaciones(array_keys($noHabilitadas), $institucionId, $docenteId)
+                ->join('estudiantesifas as e', 'e.id', '=', 'info.estudiantesifas_id')
+                ->select('cal.materias_id', 'cal.infoestudiantesifas_id', 'e.Ap_Paterno', 'e.Ap_Materno', 'e.Nombre');
+            foreach ([1, 2, 3, 4] as $numero) {
+                $query->selectRaw("CASE WHEN cal.Teorico$numero IS NOT NULL OR cal.Practico$numero IS NOT NULL THEN 1 ELSE 0 END as iniciado$numero");
+                $query->selectRaw("CASE WHEN cal.Teorico$numero IS NULL OR cal.Practico$numero IS NULL THEN 1 ELSE 0 END as vacios$numero");
+            }
+            $estudiantesPorMateria = $query->orderBy('e.Ap_Paterno')->orderBy('e.Ap_Materno')->orderBy('e.Nombre')->get()->groupBy('materias_id');
+            foreach ($estudiantesPorMateria as $materiaId => $estudiantes) {
+                foreach ($noHabilitadas[$materiaId] as $numero) {
+                    if (!$estudiantes->contains(fn ($estudiante) => (int) $estudiante->{"iniciado$numero"} === 1)) continue;
+                    $nombres = $estudiantes->filter(fn ($estudiante) => (int) $estudiante->{"vacios$numero"} === 1)
+                        ->unique('infoestudiantesifas_id')->map(fn ($estudiante) => $this->nombreEstudiante($estudiante))->values()->all();
+                    if ($nombres) $avisos[$materiaId]['evaluaciones_no_habilitadas'][] = ['numero' => $numero, 'estudiantes' => count($nombres), 'nombres' => $nombres];
                 }
             }
         }

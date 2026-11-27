@@ -282,6 +282,49 @@ class MonitoreoCalificacionesTest extends TestCase
         $this->assertSame([], $servicio->consultar([1], 1, 1)[1]['evaluaciones']);
     }
 
+    public function test_avisos_no_habilitados_solo_detectan_evaluaciones_iniciadas_en_el_ambito_del_docente(): void
+    {
+        DB::table('carreras')->where('id', 1)->update(['CantidadEvaluaciones' => 'TRES EVALUACIONES']);
+        DB::table('materias')->where('id', 2)->update(['EstadoHabilitacion' => 'PRIMERA EVALUACIÓN']);
+        DB::table('infoestudiantesifas')->where('id', 5)->update(['planteldocadmins_id' => 2]);
+        DB::table('calificaciones')->where('id', 2)->update(['Teorico2' => null, 'Practico2' => null, 'Teorico4' => 5]);
+        DB::table('calificaciones')->insert([
+            ['id' => 101, 'materias_id' => 2, 'infoestudiantesifas_id' => 1, 'Teorico3' => null],
+            ['id' => 102, 'materias_id' => 2, 'infoestudiantesifas_id' => 5, 'Teorico3' => 10],
+        ]);
+        $servicio = new AvisosCalificacionesMateria();
+        $docente = $servicio->consultar([2], 1, 1)[2];
+        $this->assertSame([], $docente['evaluaciones_no_habilitadas']);
+        $this->assertNotEmpty($docente['evaluaciones']);
+
+        DB::table('calificaciones')->where('id', 2)->update(['Teorico2' => 0]);
+        $esperado = ['numero' => 2, 'estudiantes' => 2, 'nombres' => ['López Flores Alumno 1', 'López Flores Alumno 2']];
+        $docente = $servicio->consultar([2], 1, 1)[2];
+        $this->assertSame([$esperado], $docente['evaluaciones_no_habilitadas']);
+        $administrativo = $servicio->consultar([2], 1, null)[2]['evaluaciones_no_habilitadas'];
+        $this->assertSame([2, 3], array_column($administrativo, 'numero'));
+
+        DB::table('calificaciones')->whereIn('id', [2, 101])->update(['Teorico2' => 0, 'Practico2' => 0]);
+        $this->assertSame([], $servicio->consultar([2], 1, 1)[2]['evaluaciones_no_habilitadas']);
+        DB::table('calificaciones')->where('id', 2)->update(['Practico2' => null]);
+        DB::table('calificaciones')->where('id', 101)->update(['Teorico2' => null, 'Practico2' => null]);
+        DB::table('materias')->where('id', 2)->update(['EstadoHabilitacion' => 'SEGUNDA EVALUACIÓN']);
+        $docente = $servicio->consultar([2], 1, 1)[2];
+        $this->assertSame([$esperado], $docente['evaluaciones']);
+        $this->assertSame([1], array_column($docente['evaluaciones_no_habilitadas'], 'numero'));
+        DB::table('materias')->where('id', 2)->update(['EstadoHabilitacion' => 'NINGUNA EVALUACIÓN']);
+        $docente = $servicio->consultar([2], 1, 1)[2];
+        $this->assertSame([], $docente['evaluaciones']);
+        $this->assertSame([1, 2], array_column($docente['evaluaciones_no_habilitadas'], 'numero'));
+        DB::table('materias')->where('id', 2)->update(['EstadoHabilitacion' => 'TODAS LAS EVALUACIONES']);
+        $this->assertSame([], $servicio->consultar([2], 1, 1)[2]['evaluaciones_no_habilitadas']);
+        DB::table('carreras')->where('id', 1)->update(['CantidadEvaluaciones' => null]);
+        DB::table('materias')->where('id', 2)->update(['EstadoHabilitacion' => 'NINGUNA EVALUACIÓN']);
+        $docente = $servicio->consultar([2], 1, 1)[2];
+        $this->assertTrue($docente['configuracion_desconocida']);
+        $this->assertSame([], $docente['evaluaciones_no_habilitadas']);
+    }
+
     public function test_avisos_de_segunda_instancia_solo_incluyen_elegibles_del_docente(): void
     {
         DB::table('materias')->where('id', 2)->update(['EstadoHabilitacion' => 'SEGUNDA INSTANCIA']);

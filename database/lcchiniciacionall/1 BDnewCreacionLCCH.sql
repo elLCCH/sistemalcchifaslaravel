@@ -46,6 +46,8 @@ CREATE TABLE `instituciones` (
     NIT VARCHAR(30) NULL,
     Nombre VARCHAR(100) NULL,
     Logo TEXT NULL,
+    LogoBoletin2026 JSON NULL,
+    LogoCentralizador2026 JSON NULL,
     BannerInicial VARCHAR(80) NULL,
     ImagenVision VARCHAR(80) NULL,
     ImagenMision VARCHAR(80) NULL,
